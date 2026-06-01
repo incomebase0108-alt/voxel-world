@@ -41,6 +41,9 @@ VARIANT = os.environ.get("PVARIANT", "")
 PALETTE = {
     "":        dict(suit=(0.12,0.22,0.55), acc=(0.85,0.16,0.16), boot=(0.30,0.06,0.06), hair=(0.10,0.08,0.07)),
     "crimson": dict(suit=(0.55,0.10,0.12), acc=(0.10,0.10,0.12), boot=(0.08,0.08,0.10), hair=(0.10,0.08,0.07)),
+    "azure":   dict(suit=(0.10,0.45,0.85), acc=(0.95,0.95,1.00), boot=(0.06,0.18,0.35), hair=(0.10,0.08,0.07)),
+    "emerald": dict(suit=(0.10,0.50,0.28), acc=(0.92,0.78,0.20), boot=(0.06,0.22,0.12), hair=(0.10,0.08,0.07)),
+    "gold":    dict(suit=(0.85,0.66,0.16), acc=(0.25,0.20,0.10), boot=(0.30,0.22,0.06), hair=(0.10,0.08,0.07)),
 }
 P = PALETTE.get(VARIANT, PALETTE[""])
 MAT_SKIN = mat("Skin",(0.86,0.66,0.52),0.5);  MAT_SUIT = mat("Suit",P["suit"],0.45)
