@@ -37,12 +37,13 @@
     display: flex; gap: 6px; z-index: 10; padding: 6px; background: rgba(0,0,0,.35); border-radius: 8px;
   }
   .slot {
+    position: relative;
     width: 48px; height: 48px; border: 2px solid rgba(255,255,255,.3); border-radius: 6px;
     display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-size: 10px;
   }
   .slot.active { border-color: #ffd54a; box-shadow: 0 0 10px #ffd54a; }
   .slot .sw { width: 24px; height: 24px; border-radius: 4px; margin-bottom: 2px; border: 1px solid rgba(0,0,0,.3); }
-  .slot .no { position: absolute; }
+  .slot .cnt { position: absolute; right: 3px; bottom: 1px; font-size: 11px; font-weight: bold; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
 
   #hud {
     position: fixed; left: 10px; top: 10px; z-index: 10; color: #fff; font-size: 12px;
@@ -61,7 +62,8 @@
   <div class="ops">
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動　/　<kbd>Space</kbd> ジャンプ　/　<kbd>Shift</kbd> ダッシュ<br>
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
-    <kbd>1</kbd>〜<kbd>6</kbd> 置くブロックを選ぶ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候切替（晴/雨/雪/雷）　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断　/　<kbd>Esc</kbd> 一時停止
+    <kbd>1</kbd>〜<kbd>6</kbd> ブロック選択　/　<kbd>E</kbd> インベントリ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断<br>
+    壊して入手 → 置いて消費（所持0は置けない）
   </div>
   <div class="start">クリックして開始</div>
 </div>
@@ -108,6 +110,8 @@ const SWATCH = {
   [B.log]:'#6b4d2b',[B.leaves]:'#398033',[B.sand]:'#d6c98c'
 };
 const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand];
+const counts = {};          // ブロック種別ごとの所持数（破壊で増え、設置で減る）
+HOTBAR.forEach(b => counts[b] = 0);
 
 // 立方体の6面（外向き法線・四隅・明るさ）
 // shade で上面を明るく・底面を暗くして簡易ライティング風にする
@@ -251,6 +255,7 @@ function saveWorld() {
       edits: [...edits],
       player: { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch },
       hp: hp,
+      counts: counts,
     }));
     flashSaved();
   } catch (e) { console.warn('[voxel] セーブ失敗', e); }
@@ -266,6 +271,7 @@ function loadWorld() {
       player.yaw = obj.player.yaw; player.pitch = obj.player.pitch;
     }
     if (typeof obj.hp === 'number') hp = obj.hp;
+    if (obj.counts) for (const k in obj.counts) if (counts[k] !== undefined) counts[k] = obj.counts[k];
     return true;
   } catch (e) { console.warn('[voxel] ロード失敗', e); return false; }
 }
@@ -745,7 +751,11 @@ function inReach(cell) {
 }
 function breakBlock() {
   const r = raycastVoxel();
-  if (r.hit && inReach(r.hit)) setBlock(r.hit.x, r.hit.y, r.hit.z, B.air);
+  if (r.hit && inReach(r.hit)) {
+    const b = getBlock(r.hit.x, r.hit.y, r.hit.z);
+    setBlock(r.hit.x, r.hit.y, r.hit.z, B.air);
+    if (b !== B.air && counts[b] !== undefined) { counts[b]++; updateHotbar(); } // 壊したブロックを入手
+  }
 }
 function placeBlock() {
   const r = raycastVoxel();
@@ -754,7 +764,9 @@ function placeBlock() {
   // 自分に重なる位置は、接地中のみ不可（埋まり防止）。
   // ジャンプ中（空中）は足元設置を許可＝ピラー積み（ジャンプしながら下に置いて登る）が可能
   if (overlapsPlayer(p.x, p.y, p.z) && player.onGround) return;
+  if (!counts[selBlock] || counts[selBlock] <= 0) return; // 所持していないブロックは置けない
   setBlock(p.x, p.y, p.z, selBlock);
+  counts[selBlock]--; updateHotbar(); // 在庫を消費
 }
 
 // ===================================================================
@@ -763,7 +775,7 @@ function placeBlock() {
 const overlay = document.getElementById('overlay');
 overlay.addEventListener('click', () => canvas.requestPointerLock());
 document.addEventListener('pointerlockchange', () => {
-  overlay.style.display = (document.pointerLockElement === canvas) ? 'none' : 'flex';
+  overlay.style.display = (document.pointerLockElement === canvas || invOpen) ? 'none' : 'flex';
 });
 document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== canvas) return;
@@ -792,6 +804,8 @@ document.addEventListener('keydown', (e) => {
     weatherTimer = 25 + Math.random()*35; // 手動切替時は自動遷移を先送り
   }
   if (e.code === 'KeyJ') autoWeather = !autoWeather; // 自動天候 on/off
+  if (e.code === 'KeyE') { invOpen ? closeInventory() : openInventory(); } // インベントリ開閉
+  if (e.code === 'Escape' && invOpen) closeInventory();
   if (e.code === 'Space') e.preventDefault();
 });
 document.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -809,9 +823,33 @@ function updateHotbar() {
   hotbarEl.innerHTML = HOTBAR.map((b,i) =>
     `<div class="slot ${b===selBlock?'active':''}">
        <div class="sw" style="background:${SWATCH[b]}"></div>${i+1}:${NAMES[b]}
+       <div class="cnt">${counts[b]||0}</div>
      </div>`).join('');
 }
 updateHotbar();
+
+// インベントリ画面（Eキーで開閉。クリックで選択）
+const invEl = document.createElement('div');
+invEl.style.cssText = 'position:fixed;inset:0;z-index:22;display:none;align-items:center;justify-content:center;background:rgba(10,20,35,.82);';
+document.body.appendChild(invEl);
+let invOpen = false;
+function buildInventory() {
+  invEl.innerHTML = `<div style="background:rgba(0,0,0,.5);padding:20px;border-radius:10px;text-align:center;color:#fff;max-width:80vw;">`
+    + `<div style="font-size:20px;margin-bottom:12px;">インベントリ（クリックで選択 / E・Escで閉じる）</div>`
+    + `<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">`
+    + HOTBAR.map(b => `<div class="inv-item" data-b="${b}" style="cursor:pointer;width:86px;padding:8px;border:2px solid ${b===selBlock?'#ffd54a':'rgba(255,255,255,.3)'};border-radius:8px;">`
+        + `<div style="width:40px;height:40px;margin:0 auto 4px;border-radius:6px;background:${SWATCH[b]};border:1px solid rgba(0,0,0,.3);"></div>`
+        + `<div style="font-size:13px;">${NAMES[b]}</div>`
+        + `<div style="font-size:12px;opacity:.85;">所持 ${counts[b]||0}</div></div>`).join('')
+    + `</div></div>`;
+  invEl.querySelectorAll('.inv-item').forEach(el =>
+    el.addEventListener('click', () => { selBlock = parseInt(el.dataset.b); updateHotbar(); buildInventory(); }));
+}
+function openInventory() {
+  invOpen = true; buildInventory(); invEl.style.display = 'flex'; overlay.style.display = 'none';
+  if (document.pointerLockElement === canvas) document.exitPointerLock();
+}
+function closeInventory() { invOpen = false; invEl.style.display = 'none'; overlay.style.display = 'flex'; }
 const hud = document.getElementById('hud');
 
 // セーブ表示（右上に一瞬だけ出す）
@@ -881,6 +919,7 @@ function buildDiag() {
     `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
     `HP / 息      : ${hp}/${MAX_HP} / ${breath.toFixed(1)}`,
+    `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
   ].join('\n');
 }
 window.diag = () => { const s = buildDiag(); console.log(s); return s; }; // コンソールから diag()
