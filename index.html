@@ -65,6 +65,7 @@
     <kbd>1</kbd>〜<kbd>6</kbd> ブロック選択　/　<kbd>E</kbd> インベントリ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断<br>
     壊して入手 → 置いて消費（所持0は置けない）　/　左クリックで前方のモブを攻撃　/　<kbd>Q</kbd> 食べる
   </div>
+  <div id="charsel"></div>
   <div class="start">クリックして開始</div>
 </div>
 
@@ -1048,7 +1049,7 @@ function buildDiag() {
     `プロトコル   : ${location.protocol}${location.protocol === 'file:' ? '（※file:ではGLB読込不可。HTTPサーバー/Pagesで開く）' : ''}`,
     `チャンクmesh : 総${meshes.size} / 描画あり${nonNull}`,
     `player.glb   : ${glbStr}`,
-    `アバター反映 : ${playerAvatar ? '有' : '無'}（表示=${playerAvatar && playerAvatar.visible ? 'ON' : 'OFF'}）`,
+    `アバター反映 : ${playerAvatar ? '有' : '無'}（表示=${playerAvatar && playerAvatar.visible ? 'ON' : 'OFF'} / 色=${(currentPlayerFile.match(/player_?(\w*)\.glb/)||[])[1]||'標準'}）`,
     `ライト       : ${lc}個 [${ls.join(', ')}]`,
     `背景色       : #${scene.background.getHexString()}`,
     `カメラ位置   : ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}`,
@@ -1106,34 +1107,63 @@ function playAvatarAnim(moving) {
     curAction = target;
   }
 }
-gltfLoader.load('models/player.glb',
-  (gltf) => {
-    playerAvatar = gltf.scene;
-    playerAvatar.visible = false; // 一人称では非表示。Fキーで三人称にすると見える
-    scene.add(playerAvatar);
-    // 診断用：頂点数・メッシュ数を集計
-    let v = 0, mc = 0;
-    playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
-    diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc, clips:[] };
-    // アニメ：idle/walk クリップがあれば AnimationMixer を用意（無くてもOK）
-    if (gltf.animations && gltf.animations.length) {
-      mixer = new THREE.AnimationMixer(playerAvatar);
-      const byName = {}; gltf.animations.forEach(c => byName[c.name] = c);
-      diag.glb.clips = gltf.animations.map(c => c.name);
-      const idleClip = byName['idle'] || gltf.animations[0];
-      const walkClip = byName['walk'] || gltf.animations[1] || idleClip;
-      actIdle = mixer.clipAction(idleClip);
-      actWalk = mixer.clipAction(walkClip);
-      actIdle.play(); curAction = actIdle;
+// (C) プレイヤー色選択：5色から選んでアバターを読み込む（選択は保存）
+const PLAYER_SKINS = [
+  { file:'models/player.glb',         name:'標準', color:'#8fb5e0' },
+  { file:'models/player_crimson.glb', name:'深紅', color:'#b23a48' },
+  { file:'models/player_azure.glb',   name:'蒼',   color:'#3a6db2' },
+  { file:'models/player_emerald.glb', name:'翠',   color:'#3aa86a' },
+  { file:'models/player_gold.glb',    name:'金',   color:'#d4af37' },
+];
+let currentPlayerFile = localStorage.getItem('voxel_player_model') || 'models/player.glb';
+function loadAvatar(file) {
+  currentPlayerFile = file;
+  try { localStorage.setItem('voxel_player_model', file); } catch (e) {}
+  // 既存アバター・ミキサーを破棄
+  if (playerAvatar) { scene.remove(playerAvatar); playerAvatar = null; }
+  if (mixer) { mixer.stopAllAction(); mixer = null; }
+  actIdle = actWalk = curAction = null;
+  gltfLoader.load(file,
+    (gltf) => {
+      playerAvatar = gltf.scene;
+      playerAvatar.visible = thirdPerson; // 三人称なら即表示
+      scene.add(playerAvatar);
+      let v = 0, mc = 0;
+      playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
+      diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc, clips:[] };
+      if (gltf.animations && gltf.animations.length) {
+        mixer = new THREE.AnimationMixer(playerAvatar);
+        const byName = {}; gltf.animations.forEach(c => byName[c.name] = c);
+        diag.glb.clips = gltf.animations.map(c => c.name);
+        actIdle = mixer.clipAction(byName['idle'] || gltf.animations[0]);
+        actWalk = mixer.clipAction(byName['walk'] || gltf.animations[1] || (byName['idle'] || gltf.animations[0]));
+        actIdle.play(); curAction = actIdle;
+      }
+      console.log(`[voxel] アバター読込 OK(${file})：頂点${v} / clips=[${diag.glb.clips}]`);
+    },
+    undefined,
+    (err) => {
+      diag.glb = { tried:true, ok:false, error:String((err && err.message) || err || 'load error'), vertices:0, meshes:0, clips:[] };
+      console.warn('[voxel] アバター読込 失敗（未配置なら無視可）:', err);
     }
-    console.log(`[voxel] アバター読込 OK：頂点${v} / メッシュ${mc} / clips=[${diag.glb.clips}]`);
-  },
-  undefined,
-  (err) => {
-    diag.glb = { tried:true, ok:false, error:String((err && err.message) || err || 'load error'), vertices:0, meshes:0, clips:[] };
-    console.warn('[voxel] アバター読込 失敗（未配置なら無視可）:', err);
-  }
-);
+  );
+}
+loadAvatar(currentPlayerFile);
+
+// タイトル画面のキャラ選択ボタンを構築
+const charselEl = document.getElementById('charsel');
+function buildCharSel() {
+  charselEl.innerHTML = '<div style="margin:4px 0 6px;font-size:14px;opacity:.9;">キャラクター選択</div>'
+    + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">'
+    + PLAYER_SKINS.map(s => `<button class="chbtn" data-f="${s.file}" style="cursor:pointer;border:2px solid ${s.file===currentPlayerFile?'#ffd54a':'rgba(255,255,255,.4)'};background:rgba(0,0,0,.3);color:#fff;border-radius:8px;padding:6px;width:64px;">`
+        + `<div style="width:34px;height:34px;border-radius:6px;margin:0 auto 3px;background:${s.color};"></div><div style="font-size:11px;">${s.name}</div></button>`).join('')
+    + '</div>';
+  charselEl.querySelectorAll('.chbtn').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation(); // タイトルの「クリックで開始」に伝播させない
+    loadAvatar(b.dataset.f); buildCharSel();
+  }));
+}
+buildCharSel();
 
 // ===================================================================
 // ⑥ モブ：スポーンと徘徊AI（中立=徘徊/逃げ、敵性=接近→攻撃）
