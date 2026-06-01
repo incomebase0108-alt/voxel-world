@@ -2,7 +2,8 @@
 # mob_cow.glb を読み込んで アニメ一覧確認 ＋ 前/横プレビュー
 import bpy, os, mathutils
 repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-glb = os.path.join(repo, "models", "mob_cow.glb")
+MOB = os.environ.get("MOB", "mob_cow")   # 例: MOB=mob_sheep
+glb = os.path.join(repo, "models", MOB + ".glb")
 
 bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete()
 bpy.ops.import_scene.gltf(filepath=glb)
@@ -35,6 +36,7 @@ def shot(name, loc, look=(0,0.1,0.55)):
     bpy.ops.render.render(write_still=True)
     print("[voxel] preview ->", scene.render.filepath)
 
-# 正面=+Y(顔側) / 斜め前
-shot("preview_mob_front.png", (0.0, 3.4, 0.9))
-shot("preview_mob_3q.png",   (2.6, 2.0, 1.1))
+# 正面=+Y(顔側) / 斜め前。高さに合わせ少し寄る
+zmax=max(zs); look=(0,0.1,zmax*0.55)
+shot("preview_%s_front.png"%MOB, (0.0, zmax*3.4+0.3, zmax*0.9), look)
+shot("preview_%s_3q.png"%MOB,   (zmax*2.6, zmax*2.0, zmax*1.1), look)
