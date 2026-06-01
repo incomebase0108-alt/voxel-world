@@ -90,8 +90,8 @@ const BUILD_PER_FRAME = 3; // 1フレームで生成するチャンクの上限�
 const SEA = 14;            // おおよその地表の基準高さ
 const AMP = 22;            // 地形の起伏の大きさ
 
-// ブロック種別（0=空気）
-const B = { air:0, grass:1, dirt:2, stone:3, log:4, leaves:5, sand:6 };
+// ブロック種別（0=空気）。water=7 は溺れ判定の WATER_ID と一致させる
+const B = { air:0, grass:1, dirt:2, stone:3, log:4, leaves:5, sand:6, water:7, snow:8 };
 
 // ブロックの基本色（面ごとに上面・側面・底面を分けられるよう構造化）
 // 値は 0..1 のRGB
@@ -103,13 +103,15 @@ const COLORS = {
   [B.log]:    { top: rgb(.56,.43,.26), side: rgb(.42,.30,.17), bottom: rgb(.56,.43,.26) },
   [B.leaves]: { all: rgb(.22,.50,.20) },
   [B.sand]:   { all: rgb(.84,.79,.55) },
+  [B.water]:  { all: rgb(.18,.40,.78) },
+  [B.snow]:   { top: rgb(.92,.95,.99), side: rgb(.85,.89,.95), bottom: rgb(.50,.38,.26) },
 };
 // ホットバー表示用の代表色
 const SWATCH = {
   [B.grass]:'#5ba844',[B.dirt]:'#80613f',[B.stone]:'#7d7d85',
-  [B.log]:'#6b4d2b',[B.leaves]:'#398033',[B.sand]:'#d6c98c'
+  [B.log]:'#6b4d2b',[B.leaves]:'#398033',[B.sand]:'#d6c98c',[B.snow]:'#eef4f8'
 };
-const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand];
+const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand, B.snow];
 const counts = {};          // ブロック種別ごとの所持数（破壊で増え、設置で減る）
 HOTBAR.forEach(b => counts[b] = 0);
 
@@ -153,9 +155,25 @@ function fbm(x, y) {
   for (let i=0;i<4;i++){ sum += amp*valueNoise(x*freq, y*freq); norm+=amp; amp*=0.5; freq*=2; }
   return sum / norm;
 }
+const WATER_LEVEL = SEA - 2; // 水面の高さ（これ以下の窪地は水で満たす）
+// 大陸性ノイズ（低周波）。低いほど海・高いほど内陸
+function continental(wx, wz) { return valueNoise(wx*0.006 + 100, wz*0.006 + 100); }
 function heightAt(wx, wz) {
-  const h = SEA + Math.floor(fbm(wx*0.018, wz*0.018) * AMP);
+  const cont = continental(wx, wz);          // 0..1
+  const offset = (cont - 0.45) * 26;         // 海(低)〜内陸(高)の連続オフセット（境界の崖を抑える）
+  const h = SEA + Math.floor(fbm(wx*0.018, wz*0.018) * AMP * 0.55 + offset);
   return Math.max(1, Math.min(HEIGHT-8, h));
+}
+// バイオーム（地表ブロックの決定に使用）
+function biomeAt(wx, wz) {
+  if (heightAt(wx, wz) <= WATER_LEVEL + 1) return 'ocean';  // 水際・海
+  const temp = valueNoise(wx*0.005 + 50, wz*0.005 + 50);
+  if (temp > 0.66) return 'desert';
+  if (temp < 0.34) return 'snow';
+  return 'plains';
+}
+function surfaceBlock(bi) {
+  return (bi === 'desert' || bi === 'ocean') ? B.sand : bi === 'snow' ? B.snow : B.grass;
 }
 function treeAt(wx, wz) {
   // まばらに木を生やす（決定論的）
@@ -177,24 +195,29 @@ function generateChunk(cx, cz) {
     if (onlyAir && data[i]!==B.air && data[i]!==B.leaves) return;
     data[i] = b;
   };
-  // 地表の生成
+  // 地表の生成（バイオームで地表ブロックを変える＋窪地は水で満たす）
   for (let z=0; z<CHUNK; z++) for (let x=0; x<CHUNK; x++) {
     const wx = cx*CHUNK+x, wz = cz*CHUNK+z;
     const h = heightAt(wx, wz);
+    const top = surfaceBlock(biomeAt(wx, wz));
+    const sub = (top === B.sand) ? B.sand : B.dirt; // 砂地は地下も砂
     for (let y=0; y<=h && y<HEIGHT; y++) {
       let b;
-      if (y === h)      b = (h <= SEA-1) ? B.sand : B.grass;
-      else if (y >= h-3) b = B.dirt;
+      if (y === h)       b = top;
+      else if (y >= h-3) b = sub;
       else               b = B.stone;
       data[idx(x,y,z)] = b;
     }
+    // 窪地を水面まで水で満たす（海・水たまり）
+    for (let y=h+1; y<=WATER_LEVEL && y<HEIGHT; y++) data[idx(x,y,z)] = B.water;
   }
   // 木（葉が隣チャンクにはみ出しても整合するよう、周囲2マスまで走査して刈り込み配置）
   for (let z=-2; z<CHUNK+2; z++) for (let x=-2; x<CHUNK+2; x++) {
     const wx = cx*CHUNK+x, wz = cz*CHUNK+z;
     if (!treeAt(wx, wz)) continue;
     const h = heightAt(wx, wz);
-    if (h <= SEA) continue; // 低地・砂地には生やさない
+    const bi = biomeAt(wx, wz);
+    if (h <= WATER_LEVEL || (bi !== 'plains' && bi !== 'snow')) continue; // 砂漠・海には生やさない
     const th = 4 + (hashi(wx,wz) % 3); // 幹の高さ 4〜6
     for (let t=1; t<=th; t++) stamp(x, h+t, z, B.log);
     const top = h + th;
@@ -243,7 +266,7 @@ function setBlock(wx, wy, wz, b) {
   if (lz === 0)        markDirty(cx, cz-1);
   if (lz === CHUNK-1)  markDirty(cx, cz+1);
 }
-const isSolid = b => b !== B.air;
+const isSolid = b => b !== B.air && b !== B.water; // 水は通り抜け可（当たり判定では非個体）
 
 // ---- セーブ／ロード（localStorage に編集差分とプレイヤー位置を保存）----
 const SAVE_KEY = 'voxel_world_save_v1';
@@ -477,12 +500,17 @@ camera.rotation.order = 'YXZ';
 
 // 頂点カラーを焼き込んでいるのでライト不要。面ごとの shade だけで陰影を表現
 const material = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide });
+// 水は半透明（透けて中が見える）。奥行きソートを避けるため depthWrite=false
+const waterMaterial = new THREE.MeshBasicMaterial({ vertexColors:true, transparent:true, opacity:0.6, depthWrite:false, side:THREE.DoubleSide });
 
-// チャンクのメッシュ管理
-const meshes = new Map(); // key -> THREE.Mesh
-const dirty = new Set();   // 編集等で作り直しが必要なチャンク key
+// チャンクのメッシュ管理（固体メッシュと水メッシュを別管理）
+const meshes = new Map();       // key -> THREE.Mesh（固体）
+const waterMeshes = new Map();  // key -> THREE.Mesh（水）
+const dirty = new Set();        // 編集等で作り直しが必要なチャンク key
 function markDirty(cx, cz) { if (meshes.has(cx+','+cz)) dirty.add(cx+','+cz); }
+const isOpaque = b => b !== B.air && b !== B.water; // 不透明（水・空気は透過扱い）
 
+// 固体ブロックのジオメトリ（水は別途）。隣が不透明でない面だけ描く
 function buildGeometry(cx, cz) {
   const d = getChunkData(cx, cz);
   const positions = [], colors = [], indices = [];
@@ -491,11 +519,39 @@ function buildGeometry(cx, cz) {
     for (let z=0; z<CHUNK; z++)
       for (let x=0; x<CHUNK; x++) {
         const b = d[idx(x,y,z)];
-        if (b === B.air) continue;
+        if (b === B.air || b === B.water) continue;
         const wx = cx*CHUNK+x, wy = y, wz = cz*CHUNK+z;
         for (const f of FACES) {
-          if (isSolid(getBlock(wx+f.dir[0], wy+f.dir[1], wz+f.dir[2]))) continue; // 隣が埋まってる面は描かない
+          if (isOpaque(getBlock(wx+f.dir[0], wy+f.dir[1], wz+f.dir[2]))) continue; // 隣が不透明なら面を描かない
           const col = faceColor(b, f);
+          for (const c of f.corners) {
+            positions.push(wx+c[0], wy+c[1], wz+c[2]);
+            colors.push(col.r, col.g, col.b);
+          }
+          indices.push(vc, vc+1, vc+2, vc, vc+2, vc+3);
+          vc += 4;
+        }
+      }
+  if (positions.length === 0) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3));
+  g.setIndex(indices);
+  return g;
+}
+// 水のジオメトリ（空気に接する面だけ描く＝水面と露出した側面）
+function buildWaterGeometry(cx, cz) {
+  const d = getChunkData(cx, cz);
+  const positions = [], colors = [], indices = [];
+  let vc = 0;
+  for (let y=0; y<HEIGHT; y++)
+    for (let z=0; z<CHUNK; z++)
+      for (let x=0; x<CHUNK; x++) {
+        if (d[idx(x,y,z)] !== B.water) continue;
+        const wx = cx*CHUNK+x, wy = y, wz = cz*CHUNK+z;
+        for (const f of FACES) {
+          if (getBlock(wx+f.dir[0], wy+f.dir[1], wz+f.dir[2]) !== B.air) continue; // 空気に接する面だけ
+          const col = faceColor(B.water, f);
           for (const c of f.corners) {
             positions.push(wx+c[0], wy+c[1], wz+c[2]);
             colors.push(col.r, col.g, col.b);
@@ -514,10 +570,14 @@ function buildGeometry(cx, cz) {
 function rebuildChunk(cx, cz) {
   const key = cx+','+cz;
   const old = meshes.get(key);
-  if (old) { scene.remove(old); old.geometry.dispose(); meshes.delete(key); }
+  if (old) { scene.remove(old); old.geometry.dispose(); }
+  const oldW = waterMeshes.get(key);
+  if (oldW) { scene.remove(oldW); oldW.geometry.dispose(); waterMeshes.delete(key); }
   const g = buildGeometry(cx, cz);
   if (g) { const m = new THREE.Mesh(g, material); scene.add(m); meshes.set(key, m); }
   else meshes.set(key, null); // 空チャンクも「生成済み」として記録
+  const gw = buildWaterGeometry(cx, cz);
+  if (gw) { const mw = new THREE.Mesh(gw, waterMaterial); scene.add(mw); waterMeshes.set(key, mw); }
 }
 
 // プレイヤー近傍のチャンクを読み込み／遠方を解放
@@ -530,6 +590,8 @@ function updateChunks() {
       const m = meshes.get(key);
       if (m) { scene.remove(m); m.geometry.dispose(); }
       meshes.delete(key);
+      const mw = waterMeshes.get(key);
+      if (mw) { scene.remove(mw); mw.geometry.dispose(); waterMeshes.delete(key); }
     }
   }
   // 編集による作り直し
@@ -602,9 +664,17 @@ function updatePlayer(dt) {
   player.vel.x = move.x;
   player.vel.z = move.z;
 
-  // 重力とジャンプ
-  player.vel.y -= 26 * dt;
-  if (keys['Space'] && player.onGround) { player.vel.y = 8.6; player.onGround = false; }
+  // 水中判定（腰のあたりが水）
+  const inWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.8), Math.floor(player.pos.z)) === B.water;
+  // 重力とジャンプ（水中は浮力で重力弱め＋スペースで浮上）
+  if (inWater) {
+    player.vel.y -= 8 * dt;
+    if (player.vel.y < -4) player.vel.y = -4;       // 沈下速度を制限
+    if (keys['Space']) player.vel.y = 4;            // 泳いで浮上
+  } else {
+    player.vel.y -= 26 * dt;
+    if (keys['Space'] && player.onGround) { player.vel.y = 8.6; player.onGround = false; }
+  }
 
   player.onGround = false;
   // 軸ごとに移動→衝突解決
@@ -673,12 +743,13 @@ function respawn() {
 
 function updateHealth(dt) {
   gameTime += dt;
-  // --- 落下ダメージ ---
-  if (player.onGround && !prevOnGround) {
+  // --- 落下ダメージ（水中は無効＝水に落ちても痛くない）---
+  const feetWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.5), Math.floor(player.pos.z)) === B.water;
+  if (player.onGround && !prevOnGround && !feetWater) {
     const fall = fallPeakY - player.pos.y;
     if (fall > FALL_SAFE) damage(Math.floor((fall - FALL_SAFE) * FALL_DMG_PER_BLOCK), 'fall');
   }
-  if (player.onGround) fallPeakY = player.pos.y;
+  if (player.onGround || feetWater) fallPeakY = player.pos.y; // 水中・接地で落下蓄積をリセット
   else fallPeakY = Math.max(fallPeakY, player.pos.y);
   prevOnGround = player.onGround;
 
@@ -818,7 +889,7 @@ addEventListener('resize', () => {
 // UI（ホットバー / HUD）
 // ===================================================================
 const hotbarEl = document.getElementById('hotbar');
-const NAMES = { [B.grass]:'草',[B.dirt]:'土',[B.stone]:'石',[B.log]:'原木',[B.leaves]:'葉',[B.sand]:'砂' };
+const NAMES = { [B.grass]:'草',[B.dirt]:'土',[B.stone]:'石',[B.log]:'原木',[B.leaves]:'葉',[B.sand]:'砂',[B.water]:'水',[B.snow]:'雪' };
 function updateHotbar() {
   hotbarEl.innerHTML = HOTBAR.map((b,i) =>
     `<div class="slot ${b===selBlock?'active':''}">
@@ -920,6 +991,7 @@ function buildDiag() {
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
     `HP / 息      : ${hp}/${MAX_HP} / ${breath.toFixed(1)}`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
+    `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
   ].join('\n');
 }
 window.diag = () => { const s = buildDiag(); console.log(s); return s; }; // コンソールから diag()
