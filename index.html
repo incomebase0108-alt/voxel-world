@@ -625,6 +625,7 @@ const player = {
 const keys = {};
 let selBlock = B.grass;
 let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
+let avatarYaw = 0;       // 三人称アバターの向き（移動方向に追従）
 
 function collideAxis(axis) {
   const minX = Math.floor(player.pos.x-PW), maxX = Math.floor(player.pos.x+PW);
@@ -693,8 +694,19 @@ function updatePlayer(dt) {
   // アバター（三人称時のみ表示）をプレイヤーに追従させる
   if (playerAvatar) {
     playerAvatar.position.set(player.pos.x, player.pos.y, player.pos.z);
-    playerAvatar.rotation.y = player.yaw;
+    // ④ 回頭：移動方向にアバターのY回転を合わせる（正面 -Z 基準）。静止時は最後の向き維持
+    const vx = player.vel.x, vz = player.vel.z;
+    const moving = (vx*vx + vz*vz) > 0.5;
+    if (moving) {
+      const target = Math.atan2(-vx, -vz);
+      let diff = target - avatarYaw;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // 最短角
+      avatarYaw += diff * Math.min(1, dt * 12);          // 滑らかに回頭
+    }
+    playerAvatar.rotation.y = avatarYaw;
     playerAvatar.visible = thirdPerson;
+    // ⑤ アニメ：移動中=walk / 静止=idle
+    playAvatarAnim(moving);
   }
 }
 
@@ -992,6 +1004,7 @@ function buildDiag() {
     `HP / 息      : ${hp}/${MAX_HP} / ${breath.toFixed(1)}`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
+    `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
   ].join('\n');
 }
 window.diag = () => { const s = buildDiag(); console.log(s); return s; }; // コンソールから diag()
@@ -1024,6 +1037,17 @@ function loadCharacter(url, pos, opts = {}) {
 // プレイヤーのアバター：player.glb を本人モデルとして読み込み、三人称時に表示する
 //   （4号機の本番モデルに差し替わると、そのまま自分のキャラとして見える）
 let playerAvatar = null;
+// ⑤ アニメ再生土台（クリップが無くてもエラーにならない作り）
+let mixer = null, actIdle = null, actWalk = null, curAction = null;
+function playAvatarAnim(moving) {
+  if (!mixer) return;
+  const target = moving ? actWalk : actIdle;
+  if (target && target !== curAction) {
+    target.reset().fadeIn(0.2).play();
+    if (curAction) curAction.fadeOut(0.2);
+    curAction = target;
+  }
+}
 gltfLoader.load('models/player.glb',
   (gltf) => {
     playerAvatar = gltf.scene;
@@ -1032,12 +1056,23 @@ gltfLoader.load('models/player.glb',
     // 診断用：頂点数・メッシュ数を集計
     let v = 0, mc = 0;
     playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
-    diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc };
-    console.log(`[voxel] アバター読込 OK：頂点${v} / メッシュ${mc}`);
+    diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc, clips:[] };
+    // アニメ：idle/walk クリップがあれば AnimationMixer を用意（無くてもOK）
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(playerAvatar);
+      const byName = {}; gltf.animations.forEach(c => byName[c.name] = c);
+      diag.glb.clips = gltf.animations.map(c => c.name);
+      const idleClip = byName['idle'] || gltf.animations[0];
+      const walkClip = byName['walk'] || gltf.animations[1] || idleClip;
+      actIdle = mixer.clipAction(idleClip);
+      actWalk = mixer.clipAction(walkClip);
+      actIdle.play(); curAction = actIdle;
+    }
+    console.log(`[voxel] アバター読込 OK：頂点${v} / メッシュ${mc} / clips=[${diag.glb.clips}]`);
   },
   undefined,
   (err) => {
-    diag.glb = { tried:true, ok:false, error:String((err && err.message) || err || 'load error'), vertices:0, meshes:0 };
+    diag.glb = { tried:true, ok:false, error:String((err && err.message) || err || 'load error'), vertices:0, meshes:0, clips:[] };
     console.warn('[voxel] アバター読込 失敗（未配置なら無視可）:', err);
   }
 );
@@ -1055,6 +1090,7 @@ function loop(now) {
   updateSky(dt);
   updateParticles(dt);
   updateClouds(dt);
+  if (mixer) mixer.update(dt); // アバターのアニメ再生
   updateChunks();
   renderer.render(scene, camera);
 
