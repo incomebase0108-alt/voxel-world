@@ -61,7 +61,7 @@
   <div class="ops">
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動　/　<kbd>Space</kbd> ジャンプ　/　<kbd>Shift</kbd> ダッシュ<br>
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
-    <kbd>1</kbd>〜<kbd>6</kbd> 置くブロックを選ぶ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候切替　/　<kbd>H</kbd> 診断パネル　/　<kbd>Esc</kbd> 一時停止
+    <kbd>1</kbd>〜<kbd>6</kbd> 置くブロックを選ぶ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候切替（晴/雨/雪/雷）　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断　/　<kbd>Esc</kbd> 一時停止
   </div>
   <div class="start">クリックして開始</div>
 </div>
@@ -328,8 +328,20 @@ function updateSky(dt) {
   let si = a.si + (b.si - a.si) * f;
   let amb = a.amb + (b.amb - a.amb) * f;
   // ===== 軸2: 天候を時間帯の「上に重ねる」（乗算で暗く/白く。時間帯ロジックは壊さない）=====
-  if (weather === 'rain')      { _sky.multiplyScalar(0.7); si *= 0.55; amb *= 0.85; }
-  else if (weather === 'snow') { _sky.lerp(WHITE, 0.18);   amb *= 0.95; }
+  if (weather === 'rain')         { _sky.multiplyScalar(0.7); si *= 0.55; amb *= 0.85; }
+  else if (weather === 'snow')    { _sky.lerp(WHITE, 0.18);   amb *= 0.95; }
+  else if (weather === 'thunder') { _sky.multiplyScalar(0.5); si *= 0.40; amb *= 0.80; }
+  // 雷の閃光：thunder時に一定間隔で発生し、空とライトを一瞬ブースト（音は後付けトリガーだけ用意）
+  if (weather === 'thunder') {
+    nextStrike -= dt;
+    if (nextStrike <= 0) {
+      flash = 1;
+      nextStrike = 3 + Math.random() * 8;
+      if (window.onThunderSound) window.onThunderSound();
+    }
+  }
+  flash = Math.max(0, flash - dt * 6); // 約0.16秒で減衰
+  if (flash > 0) { _sky.lerp(WHITE, flash * 0.85); si += flash * 1.6; amb += flash * 0.9; }
   scene.background.copy(_sky);
   scene.fog.color.copy(_sky);
   // 太陽（方向のみ意味を持つ。時間帯に連動して角度が変わる）
@@ -340,8 +352,28 @@ function updateSky(dt) {
   ambient.intensity = amb;
 }
 
-// ===== 軸2: 天候（パーティクル）=====
-let weather = 'clear'; // 'clear' | 'rain' | 'snow'（雷は後回し）
+// ===== 軸2: 天候（パーティクル＋雷＋自動遷移）=====
+let weather = 'clear';     // 'clear' | 'rain' | 'snow' | 'thunder'
+let flash = 0;             // 雷の閃光の強さ（0..1、減衰）
+let nextStrike = 4;        // 次の落雷までの秒数
+let autoWeather = true;    // 自動天候変化（Jキーで on/off）
+let weatherTimer = 30 + Math.random()*30; // 次の自動遷移までの秒数
+// 自然な遷移テーブル（晴れは続きやすい／雷は雨の強状態でやがて雨か晴れへ）
+const WEATHER_TRANS = {
+  clear:   ['clear','clear','rain','snow'],
+  rain:    ['rain','thunder','clear','rain'],
+  snow:    ['snow','snow','clear'],
+  thunder: ['rain','rain','clear'],
+};
+function stepWeatherAuto(dt) {
+  if (!autoWeather) return;
+  weatherTimer -= dt;
+  if (weatherTimer <= 0) {
+    const opts = WEATHER_TRANS[weather] || ['clear'];
+    setWeather(opts[Math.floor(Math.random()*opts.length)]);
+    weatherTimer = 25 + Math.random()*35;
+  }
+}
 function makeField(count, color, size, opacity) {
   const g = new THREE.BufferGeometry();
   const pos = new Float32Array(count*3);
@@ -363,7 +395,7 @@ const rainField = makeField(2000, 0x9fb8ff, 0.12, 0.55);
 const snowField = makeField(1200, 0xffffff, 0.20, 0.90);
 function setWeather(w) {
   weather = w;
-  rainField.points.visible = (w === 'rain');
+  rainField.points.visible = (w === 'rain' || w === 'thunder');
   snowField.points.visible = (w === 'snow');
 }
 window.setWeather = setWeather; // コンソールからも手動切替可
@@ -671,10 +703,12 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.code === 'KeyF') thirdPerson = !thirdPerson; // 一人称⇄三人称
   if (e.code === 'KeyH') { diagVisible = !diagVisible; diagEl.style.display = diagVisible ? 'block' : 'none'; } // 診断パネル
-  if (e.code === 'KeyG') { // 天候を手動切替（デバッグ用）：晴れ→雨→雪→…
-    const order = ['clear','rain','snow'];
+  if (e.code === 'KeyG') { // 天候を手動切替：晴れ→雨→雪→雷→…
+    const order = ['clear','rain','snow','thunder'];
     setWeather(order[(order.indexOf(weather) + 1) % order.length]);
+    weatherTimer = 25 + Math.random()*35; // 手動切替時は自動遷移を先送り
   }
+  if (e.code === 'KeyJ') autoWeather = !autoWeather; // 自動天候 on/off
   if (e.code === 'Space') e.preventDefault();
 });
 document.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -806,6 +840,7 @@ function loop(now) {
   dt = Math.min(dt, 0.05); // タブ復帰時などの暴れ防止
 
   if (document.pointerLockElement === canvas) updatePlayer(dt);
+  stepWeatherAuto(dt);
   updateSky(dt);
   updateParticles(dt);
   updateClouds(dt);
@@ -815,11 +850,11 @@ function loop(now) {
   // 時刻表示（dayTime 0.5 を正午=12:00 として24時間換算）
   const hh = Math.floor(((dayTime + 0.5) % 1) * 24);
   const mm = Math.floor((((dayTime + 0.5) % 1) * 24 % 1) * 60);
-  const WNAME = { clear:'晴れ', rain:'雨', snow:'雪' };
+  const WNAME = { clear:'晴れ', rain:'雨', snow:'雪', thunder:'雷' };
   hud.innerHTML =
     `XYZ: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>` +
     `時刻: ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}　読込チャンク: ${meshes.size}<br>` +
-    `天候: ${WNAME[weather]}（Gキーで切替）　H:診断`;
+    `天候: ${WNAME[weather]}${autoWeather ? '(自動)' : ''}（G切替/J自動）　H:診断`;
   if (diagVisible) diagEl.textContent = buildDiag();
   requestAnimationFrame(loop);
 }
