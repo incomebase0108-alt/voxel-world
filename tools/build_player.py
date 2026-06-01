@@ -35,10 +35,18 @@ def mat(name, rgb, rough=0.55, metal=0.0):
     b.inputs["Base Color"].default_value = (*rgb, 1.0)
     b.inputs["Roughness"].default_value = rough; b.inputs["Metallic"].default_value = metal
     return m
-MAT_SKIN = mat("Skin",(0.86,0.66,0.52),0.5);  MAT_SUIT = mat("Suit",(0.12,0.22,0.55),0.45)
-MAT_ACC  = mat("Accent",(0.85,0.16,0.16),0.4); MAT_HAIR = mat("Hair",(0.10,0.08,0.07),0.6)
+# 見た目バリアント（PVARIANT 環境変数）。未指定=既定の青ヒーロー、出力は player.glb。
+#   例: PVARIANT=crimson → player_crimson.glb（赤黒コスチューム）
+VARIANT = os.environ.get("PVARIANT", "")
+PALETTE = {
+    "":        dict(suit=(0.12,0.22,0.55), acc=(0.85,0.16,0.16), boot=(0.30,0.06,0.06), hair=(0.10,0.08,0.07)),
+    "crimson": dict(suit=(0.55,0.10,0.12), acc=(0.10,0.10,0.12), boot=(0.08,0.08,0.10), hair=(0.10,0.08,0.07)),
+}
+P = PALETTE.get(VARIANT, PALETTE[""])
+MAT_SKIN = mat("Skin",(0.86,0.66,0.52),0.5);  MAT_SUIT = mat("Suit",P["suit"],0.45)
+MAT_ACC  = mat("Accent",P["acc"],0.4);         MAT_HAIR = mat("Hair",P["hair"],0.6)
 MAT_EYE  = mat("Eye",(0.05,0.05,0.08),0.2);    MAT_BELT = mat("Belt",(0.90,0.74,0.20),0.35,0.6)
-MAT_BOOT = mat("Boot",(0.30,0.06,0.06),0.45)
+MAT_BOOT = mat("Boot",P["boot"],0.45)
 
 # ----------------------------------------------------------------------
 # プリミティブ（グループ list に集約）
@@ -197,7 +205,7 @@ push(body,"attack")
 # ----------------------------------------------------------------------
 repo=os.path.abspath(os.path.join(os.path.dirname(__file__),".."))
 models=os.path.join(repo,"models"); os.makedirs(models,exist_ok=True)
-out=os.path.join(models,"player.glb")
+out=os.path.join(models, "player.glb" if not VARIANT else ("player_%s.glb"%VARIANT))
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', use_selection=True,
     export_yup=True, export_apply=True, export_animations=True,
