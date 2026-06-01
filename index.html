@@ -250,6 +250,7 @@ function saveWorld() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       edits: [...edits],
       player: { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch },
+      hp: hp,
     }));
     flashSaved();
   } catch (e) { console.warn('[voxel] セーブ失敗', e); }
@@ -264,6 +265,7 @@ function loadWorld() {
       player.pos.set(obj.player.x, obj.player.y, obj.player.z);
       player.yaw = obj.player.yaw; player.pitch = obj.player.pitch;
     }
+    if (typeof obj.hp === 'number') hp = obj.hp;
     return true;
   } catch (e) { console.warn('[voxel] ロード失敗', e); return false; }
 }
@@ -621,6 +623,87 @@ function updatePlayer(dt) {
 }
 
 // ===================================================================
+// 体力（HP）とダメージシステム
+//   数値は調整できるよう定数化。落下/溺れ/自然回復/死亡復活を扱う
+// ===================================================================
+const MAX_HP = 20;            // 最大HP（=ハート10個ぶん）
+const FALL_SAFE = 4;          // この落差(ブロック)までは無傷
+const FALL_DMG_PER_BLOCK = 1; // 超過1ブロックあたりのダメージ
+const REGEN_DELAY = 5;        // 最後の被ダメージから回復開始までの秒
+const REGEN_INTERVAL = 1.5;   // 1回復あたりの間隔（秒）
+const BREATH_MAX = 10;        // 息が続く秒数
+const DROWN_INTERVAL = 1;     // 溺れダメージの間隔（秒）
+const WATER_ID = 7;           // 水ブロック（水バイオーム実装後に有効化＝それまで溺れは作動しない）
+
+let hp = MAX_HP;
+let gameTime = 0;             // 経過秒（回復タイミング判定用）
+let lastDamageTime = -999;
+let regenAccum = 0;
+let breath = BREATH_MAX;
+let drownAccum = 0;
+let hurtFlash = 0;            // 被ダメージ時の赤フラッシュ（0..1、減衰）
+let fallPeakY = 0;           // 落下開始の最高到達点
+let prevOnGround = true;
+
+function damage(amount, cause) {
+  if (amount <= 0 || hp <= 0) return;
+  hp = Math.max(0, hp - amount);
+  lastDamageTime = gameTime;
+  regenAccum = 0;
+  hurtFlash = 1;
+  if (window.onPlayerHurt) window.onPlayerHurt(cause, amount); // 音は後付け前提のトリガー
+  scheduleSave();
+  if (hp <= 0) respawn();
+}
+window.damagePlayer = (a) => damage(a, 'external'); // 敵モブからの被ダメージ用の口（後接続）
+
+function respawn() {
+  player.pos.set(8, heightAt(8,8) + 3, 8);
+  player.vel.set(0, 0, 0);
+  hp = MAX_HP; breath = BREATH_MAX;
+  fallPeakY = player.pos.y; prevOnGround = true;
+  scheduleSave();
+}
+
+function updateHealth(dt) {
+  gameTime += dt;
+  // --- 落下ダメージ ---
+  if (player.onGround && !prevOnGround) {
+    const fall = fallPeakY - player.pos.y;
+    if (fall > FALL_SAFE) damage(Math.floor((fall - FALL_SAFE) * FALL_DMG_PER_BLOCK), 'fall');
+  }
+  if (player.onGround) fallPeakY = player.pos.y;
+  else fallPeakY = Math.max(fallPeakY, player.pos.y);
+  prevOnGround = player.onGround;
+
+  // --- 溺れ（頭が水ブロックの中。水未実装のうちは作動しない）---
+  const headBlock = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + PH - 0.1), Math.floor(player.pos.z));
+  if (headBlock === WATER_ID) {
+    breath -= dt;
+    if (breath <= 0) { drownAccum += dt; if (drownAccum >= DROWN_INTERVAL) { drownAccum = 0; damage(1, 'drown'); } }
+  } else {
+    breath = Math.min(BREATH_MAX, breath + dt * 3); // 水から出たら息は早めに回復
+    drownAccum = 0;
+  }
+
+  // --- 自然回復（一定時間ダメージを受けていなければ）---
+  if (hp > 0 && hp < MAX_HP && gameTime - lastDamageTime >= REGEN_DELAY) {
+    regenAccum += dt;
+    if (regenAccum >= REGEN_INTERVAL) { regenAccum = 0; hp = Math.min(MAX_HP, hp + 1); scheduleSave(); }
+  }
+
+  hurtFlash = Math.max(0, hurtFlash - dt * 3); // 赤フラッシュ減衰
+}
+
+// HUD用のハート列（1ハート=2HP、半分はピンクで表現）
+function heartsHTML() {
+  const full = Math.floor(hp / 2), half = hp % 2;
+  let s = '';
+  for (let i = 0; i < MAX_HP/2; i++) s += (i < full) ? '❤️' : (i === full && half) ? '💗' : '🤍';
+  return s;
+}
+
+// ===================================================================
 // ブロックの選択（視線の先のボクセルをDDAで探す）
 // ===================================================================
 function raycastVoxel(maxDist = 6) {
@@ -742,6 +825,22 @@ function flashSaved() {
   saveFlashTimer = setTimeout(() => { saveEl.textContent = ''; }, 1200);
 }
 
+// 体力ハート（ホットバーの上）
+const hpEl = document.createElement('div');
+hpEl.style.cssText = 'position:fixed;left:50%;bottom:72px;transform:translateX(-50%);z-index:10;'
+  + 'font-size:18px;letter-spacing:1px;text-shadow:0 0 3px #000;user-select:none;';
+document.body.appendChild(hpEl);
+// 息ゲージ（水中のときだけ表示）
+const breathEl = document.createElement('div');
+breathEl.style.cssText = 'position:fixed;left:50%;bottom:98px;transform:translateX(-50%);z-index:10;'
+  + 'font-size:16px;text-shadow:0 0 3px #000;user-select:none;';
+document.body.appendChild(breathEl);
+// 被ダメージ時の赤フラッシュ（画面全体）
+const hurtEl = document.createElement('div');
+hurtEl.style.cssText = 'position:fixed;inset:0;z-index:25;pointer-events:none;'
+  + 'background:radial-gradient(circle, rgba(180,0,0,0) 40%, rgba(180,0,0,0.6) 100%);opacity:0;';
+document.body.appendChild(hurtEl);
+
 // 起動時にセーブデータがあれば復元
 loadWorld();
 
@@ -781,6 +880,7 @@ function buildDiag() {
     `視点         : ${thirdPerson ? '三人称' : '一人称'}`,
     `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
+    `HP / 息      : ${hp}/${MAX_HP} / ${breath.toFixed(1)}`,
   ].join('\n');
 }
 window.diag = () => { const s = buildDiag(); console.log(s); return s; }; // コンソールから diag()
@@ -839,7 +939,7 @@ function loop(now) {
   let dt = (now - last) / 1000; last = now;
   dt = Math.min(dt, 0.05); // タブ復帰時などの暴れ防止
 
-  if (document.pointerLockElement === canvas) updatePlayer(dt);
+  if (document.pointerLockElement === canvas) { updatePlayer(dt); updateHealth(dt); }
   stepWeatherAuto(dt);
   updateSky(dt);
   updateParticles(dt);
@@ -856,6 +956,11 @@ function loop(now) {
     `時刻: ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}　読込チャンク: ${meshes.size}<br>` +
     `天候: ${WNAME[weather]}${autoWeather ? '(自動)' : ''}（G切替/J自動）　H:診断`;
   if (diagVisible) diagEl.textContent = buildDiag();
+
+  // 体力・息・被ダメージ表示
+  hpEl.innerHTML = heartsHTML();
+  hurtEl.style.opacity = (hurtFlash * 0.7).toFixed(2);
+  breathEl.textContent = (breath < BREATH_MAX - 0.05) ? '🫧'.repeat(Math.ceil(breath / BREATH_MAX * 10)) : '';
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
