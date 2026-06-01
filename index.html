@@ -184,6 +184,18 @@ function treeAt(wx, wz) {
   // まばらに木を生やす（決定論的）
   return hash2(wx*1.7+11, wz*1.7+7) > 0.985;
 }
+// 開始/復活地点：水面より上の固体地面を (8,8) 付近からリング状に探す
+function findSpawn() {
+  for (let r = 0; r <= 80; r++) {
+    for (let a = 0; a < Math.max(1, r*4); a++) {
+      const ang = a / Math.max(1, r*4) * Math.PI * 2;
+      const x = Math.round(Math.cos(ang) * r) + 8, z = Math.round(Math.sin(ang) * r) + 8;
+      const h = heightAt(x, z);
+      if (h > WATER_LEVEL) return { x: x + 0.5, y: h + 2, z: z + 0.5 }; // 陸地（水面より上）
+    }
+  }
+  return { x: 8.5, y: heightAt(8, 8) + 2, z: 8.5 };
+}
 
 // ===================================================================
 // ブロックデータ（チャンク単位でキャッシュ。編集もここに保持）
@@ -627,7 +639,7 @@ function updateChunks() {
 const PW = 0.3, PH = 1.8, EYE = 1.62; // 横半幅・身長・目の高さ
 const REACH = 1.9;                     // 手の届く距離（プレイヤー中心から。≒目の前1マスだけ）
 const player = {
-  pos: new THREE.Vector3(8, heightAt(8,8)+3, 8),
+  pos: (() => { const s = findSpawn(); return new THREE.Vector3(s.x, s.y, s.z); })(),
   vel: new THREE.Vector3(),
   yaw: 0, pitch: 0, onGround: false,
 };
@@ -675,14 +687,15 @@ function updatePlayer(dt) {
   player.vel.x = move.x;
   player.vel.z = move.z;
 
-  // 水中判定（腰のあたりが水）
-  const inWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.8), Math.floor(player.pos.z)) === B.water;
-  // 重力とジャンプ（水中は浮力で重力弱め＋スペースで浮上）
-  if (inWater) {
+  // 水中判定：頭が水中なら「潜水」、頭が出ていれば水面上＝通常重力
+  const headInWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + PH - 0.1), Math.floor(player.pos.z)) === B.water;
+  if (headInWater) {
+    // 潜水中：浮力で重力弱め＋スペースで浮上。頭が水面から出れば通常重力に戻る＝水面より上には飛び続けない
     player.vel.y -= 8 * dt;
     if (player.vel.y < -4) player.vel.y = -4;       // 沈下速度を制限
     if (keys['Space']) player.vel.y = 4;            // 泳いで浮上
   } else {
+    // 水面上・陸上：通常重力＋接地時のみジャンプ
     player.vel.y -= 26 * dt;
     if (keys['Space'] && player.onGround) { player.vel.y = 8.6; player.onGround = false; window.playSFX && window.playSFX('jump'); }
   }
@@ -694,7 +707,7 @@ function updatePlayer(dt) {
   player.pos.z += player.vel.z * dt; collideAxis('z');
 
   // 奈落に落ちたら復帰
-  if (player.pos.y < -30) { player.pos.set(8, heightAt(8,8)+3, 8); player.vel.set(0,0,0); }
+  if (player.pos.y < -30) { const s = findSpawn(); player.pos.set(s.x, s.y, s.z); player.vel.set(0,0,0); }
 
   // カメラ：一人称＝目の位置 / 三人称＝視線の後方へ引く
   camera.rotation.y = player.yaw;
@@ -794,7 +807,7 @@ function damage(amount, cause) {
 window.damagePlayer = (a) => damage(a, 'external'); // 敵モブからの被ダメージ用の口（後接続）
 
 function respawn() {
-  player.pos.set(8, heightAt(8,8) + 3, 8);
+  const s = findSpawn(); player.pos.set(s.x, s.y, s.z);
   player.vel.set(0, 0, 0);
   hp = MAX_HP; breath = BREATH_MAX; hunger = MAX_HUNGER;
   fallPeakY = player.pos.y; prevOnGround = true;
@@ -1218,7 +1231,7 @@ const MOB_DESPAWN = 75;              // この距離を超えたら消す
 let mobSpawnTimer = 2;
 
 function groundY(x, z) {
-  return Math.max(heightAt(Math.floor(x), Math.floor(z)), WATER_LEVEL) + 1; // 水面より下に埋めない
+  return heightAt(Math.floor(x), Math.floor(z)) + 1; // 固体地表の上面に吸着（水面は接地面にしない）
 }
 function spawnMob(type, x, z) {
   const def = MOB_DEFS.find(d => d.type === type);
