@@ -735,6 +735,7 @@ function buildDiag() {
     : `失敗：${g.error}`;
   return [
     '=== VOXEL WORLD 診断 ===',
+    `プロトコル   : ${location.protocol}${location.protocol === 'file:' ? '（※file:ではGLB読込不可。HTTPサーバー/Pagesで開く）' : ''}`,
     `チャンクmesh : 総${meshes.size} / 描画あり${nonNull}`,
     `player.glb   : ${glbStr}`,
     `アバター反映 : ${playerAvatar ? '有' : '無'}（表示=${playerAvatar && playerAvatar.visible ? 'ON' : 'OFF'}）`,
