@@ -61,7 +61,7 @@
   <div class="ops">
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動　/　<kbd>Space</kbd> ジャンプ　/　<kbd>Shift</kbd> ダッシュ<br>
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
-    <kbd>1</kbd>〜<kbd>6</kbd> 置くブロックを選ぶ　/　<kbd>Esc</kbd> 一時停止
+    <kbd>1</kbd>〜<kbd>6</kbd> 置くブロックを選ぶ　/　<kbd>G</kbd> 天候切替（晴れ/雨/雪）　/　<kbd>Esc</kbd> 一時停止
   </div>
   <div class="start">クリックして開始</div>
 </div>
@@ -297,27 +297,94 @@ scene.add(sun); scene.add(sun.target);
 const ambient = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambient);
 
-// 昼夜サイクル（空の色・太陽の向き/強さ・環境光を時間で変化させる）
-let dayTime = 0.30;        // 0..1（0=深夜 / 0.25=日の出 / 0.5=正午 / 0.75=日没）
-const DAY_LENGTH = 120;    // 1日の長さ（秒）
-const SKY_DAY    = new THREE.Color(0x87ceeb);
-const SKY_NIGHT  = new THREE.Color(0x0a1226);
-const SKY_SUNSET = new THREE.Color(0xff8a4a);
+// ===== 軸1: 時間帯サイクル（空の色・太陽の向き/強さ・環境光をキーフレーム補間）=====
+let dayTime = 0.30;        // 0..1（0/1=深夜 / 0.25=朝方 / 0.33=朝 / 0.5=正午 / 0.75=夕方）
+const DAY_LENGTH = 120;    // 1日の長さ（秒）※あとで調整できるよう定数化
+// 朝方→朝→昼→夕方→夜→（朝方へループ）の5段階を連続補間するキーフレーム
+//   sky=空/フォグ色, sun=太陽光色, si=太陽光の強さ, amb=環境光の強さ（夜は月明かりの下限）
+const KF = [
+  { t:0.00, sky:0x0a1226, sun:0x33406e, si:0.00, amb:0.20 }, // 夜
+  { t:0.20, sky:0x0a1226, sun:0x33406e, si:0.00, amb:0.20 }, // 夜明け前
+  { t:0.25, sky:0xd98fae, sun:0xff8a4a, si:0.35, amb:0.34 }, // 朝方（薄紫〜オレンジ）
+  { t:0.33, sky:0x9fd2ec, sun:0xffe2b0, si:0.85, amb:0.50 }, // 朝（明るい水色）
+  { t:0.50, sky:0x87ceeb, sun:0xffffff, si:1.10, amb:0.62 }, // 昼（澄んだ青・光最強）
+  { t:0.68, sky:0x8fc9e0, sun:0xfff0d0, si:0.95, amb:0.55 }, // 昼下がり
+  { t:0.75, sky:0xff7a48, sun:0xff5a30, si:0.45, amb:0.38 }, // 夕方（橙〜赤）
+  { t:0.82, sky:0x3a2747, sun:0x5a3a6a, si:0.10, amb:0.26 }, // 日没後（赤紫）
+  { t:0.88, sky:0x0a1226, sun:0x33406e, si:0.00, amb:0.20 }, // 夜
+  { t:1.00, sky:0x0a1226, sun:0x33406e, si:0.00, amb:0.20 }, // ループ端（先頭と一致）
+].map(k => ({ t:k.t, sky:new THREE.Color(k.sky), sun:new THREE.Color(k.sun), si:k.si, amb:k.amb }));
+
+const WHITE = new THREE.Color(0xffffff);
 const _sky = new THREE.Color(), _sun = new THREE.Color();
 function updateSky(dt) {
   dayTime = (dayTime + dt / DAY_LENGTH) % 1;
-  const elev = Math.sin(dayTime * Math.PI*2 - Math.PI/2);          // -1(夜)..1(正午)
-  const day  = THREE.MathUtils.clamp(elev * 1.5 + 0.35, 0, 1);     // 明るさ係数
-  const horizon = THREE.MathUtils.clamp(1 - Math.abs(elev)/0.35, 0, 1); // 地平線付近=夕焼け
-  // 空の色：夜→昼 を補間し、地平線付近で夕焼け色を混ぜる
-  _sky.copy(SKY_NIGHT).lerp(SKY_DAY, day).lerp(SKY_SUNSET, horizon * 0.6);
+  // 現在時刻を挟む2キーフレームを線形補間
+  let i = 0; while (i < KF.length-1 && dayTime >= KF[i+1].t) i++;
+  const a = KF[i], b = KF[Math.min(i+1, KF.length-1)];
+  const f = b.t > a.t ? (dayTime - a.t) / (b.t - a.t) : 0;
+  _sky.copy(a.sky).lerp(b.sky, f);
+  _sun.copy(a.sun).lerp(b.sun, f);
+  let si = a.si + (b.si - a.si) * f;
+  let amb = a.amb + (b.amb - a.amb) * f;
+  // ===== 軸2: 天候を時間帯の「上に重ねる」（乗算で暗く/白く。時間帯ロジックは壊さない）=====
+  if (weather === 'rain')      { _sky.multiplyScalar(0.7); si *= 0.55; amb *= 0.85; }
+  else if (weather === 'snow') { _sky.lerp(WHITE, 0.18);   amb *= 0.95; }
   scene.background.copy(_sky);
   scene.fog.color.copy(_sky);
-  // 太陽（方向のみ意味を持つ。位置はプレイヤーに依らない固定方向）
-  sun.position.set(Math.cos(dayTime*Math.PI*2)*80, elev*100, Math.sin(dayTime*Math.PI*2)*80);
-  sun.intensity = day * 1.1;
-  sun.color.copy(_sun.copy(SKY_DAY).lerp(SKY_SUNSET, horizon * 0.7));
-  ambient.intensity = 0.22 + day * 0.5;
+  // 太陽（方向のみ意味を持つ。時間帯に連動して角度が変わる）
+  const elev = Math.sin(dayTime * Math.PI*2 - Math.PI/2);
+  sun.position.set(Math.cos(dayTime*Math.PI*2)*80, Math.max(elev, -0.2)*100, Math.sin(dayTime*Math.PI*2)*80);
+  sun.color.copy(_sun);
+  sun.intensity = si;
+  ambient.intensity = amb;
+}
+
+// ===== 軸2: 天候（パーティクル）=====
+let weather = 'clear'; // 'clear' | 'rain' | 'snow'（雷は後回し）
+function makeField(count, color, size, opacity) {
+  const g = new THREE.BufferGeometry();
+  const pos = new Float32Array(count*3);
+  const spd = new Float32Array(count); // 落下速度の個体差
+  for (let i=0;i<count;i++) {
+    pos[i*3]   = Math.random()*40 - 20;
+    pos[i*3+1] = Math.random()*30;
+    pos[i*3+2] = Math.random()*40 - 20;
+    spd[i] = 0.6 + Math.random()*0.6;
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const m = new THREE.PointsMaterial({ color, size, transparent:true, opacity, depthWrite:false, sizeAttenuation:true, fog:false });
+  const p = new THREE.Points(g, m);
+  p.visible = false; p.frustumCulled = false;
+  scene.add(p);
+  return { points:p, pos, spd, count };
+}
+const rainField = makeField(2000, 0x9fb8ff, 0.12, 0.55);
+const snowField = makeField(1200, 0xffffff, 0.20, 0.90);
+function setWeather(w) {
+  weather = w;
+  rainField.points.visible = (w === 'rain');
+  snowField.points.visible = (w === 'snow');
+}
+window.setWeather = setWeather; // コンソールからも手動切替可
+function updateField(f, dt, baseSpeed, sway) {
+  if (!f.points.visible) return;
+  const a = f.pos;
+  for (let i=0;i<f.count;i++) {
+    a[i*3+1] -= baseSpeed * f.spd[i] * dt;
+    if (sway) a[i*3] += Math.sin(performance.now()*0.001 + i) * sway;
+    if (a[i*3+1] < 0) { // 下に抜けたら上から再投入
+      a[i*3+1] = 30;
+      a[i*3]   = Math.random()*40 - 20;
+      a[i*3+2] = Math.random()*40 - 20;
+    }
+  }
+  f.points.geometry.attributes.position.needsUpdate = true;
+  f.points.position.set(player.pos.x, player.pos.y - 2, player.pos.z); // 箱をプレイヤー追従
+}
+function updateParticles(dt) {
+  updateField(rainField, dt, 28, 0);     // 雨：速く落下
+  updateField(snowField, dt, 3, 0.012);  // 雪：ゆっくり舞う
 }
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
@@ -536,6 +603,10 @@ document.addEventListener('keydown', (e) => {
     const n = parseInt(e.code.slice(5)) - 1;
     if (n >= 0 && n < HOTBAR.length) { selBlock = HOTBAR[n]; updateHotbar(); }
   }
+  if (e.code === 'KeyG') { // 天候を手動切替（デバッグ用）：晴れ→雨→雪→…
+    const order = ['clear','rain','snow'];
+    setWeather(order[(order.indexOf(weather) + 1) % order.length]);
+  }
   if (e.code === 'Space') e.preventDefault();
 });
 document.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -613,15 +684,18 @@ function loop(now) {
 
   if (document.pointerLockElement === canvas) updatePlayer(dt);
   updateSky(dt);
+  updateParticles(dt);
   updateChunks();
   renderer.render(scene, camera);
 
   // 時刻表示（dayTime 0.5 を正午=12:00 として24時間換算）
   const hh = Math.floor(((dayTime + 0.5) % 1) * 24);
   const mm = Math.floor((((dayTime + 0.5) % 1) * 24 % 1) * 60);
+  const WNAME = { clear:'晴れ', rain:'雨', snow:'雪' };
   hud.innerHTML =
     `XYZ: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>` +
-    `時刻: ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}　読込チャンク: ${meshes.size}`;
+    `時刻: ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}　読込チャンク: ${meshes.size}<br>` +
+    `天候: ${WNAME[weather]}（Gキーで切替）`;
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
