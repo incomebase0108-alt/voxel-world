@@ -514,6 +514,7 @@ function updateChunks() {
 // プレイヤー（移動・重力・当たり判定）
 // ===================================================================
 const PW = 0.3, PH = 1.8, EYE = 1.62; // 横半幅・身長・目の高さ
+const REACH = 1.9;                     // 手の届く距離（プレイヤー中心から。≒目の前1マスだけ）
 const player = {
   pos: new THREE.Vector3(8, heightAt(8,8)+3, 8),
   vel: new THREE.Vector3(),
@@ -620,13 +621,19 @@ function overlapsPlayer(x, y, z) {
          y >= Math.floor(player.pos.y)    && y <= Math.floor(player.pos.y+PH);
 }
 
+// 対象ブロックが手の届く範囲か（プレイヤー中心からの距離で判定＝目の前1マスだけ）
+function inReach(cell) {
+  const cx = player.pos.x, cy = player.pos.y + PH*0.5, cz = player.pos.z;
+  const dx = (cell.x+0.5) - cx, dy = (cell.y+0.5) - cy, dz = (cell.z+0.5) - cz;
+  return dx*dx + dy*dy + dz*dz <= REACH*REACH;
+}
 function breakBlock() {
   const r = raycastVoxel();
-  if (r.hit) setBlock(r.hit.x, r.hit.y, r.hit.z, B.air);
+  if (r.hit && inReach(r.hit)) setBlock(r.hit.x, r.hit.y, r.hit.z, B.air);
 }
 function placeBlock() {
   const r = raycastVoxel();
-  if (!r.hit || !r.prev) return;
+  if (!r.hit || !r.prev || !inReach(r.hit)) return; // 届かない遠くのブロックには置けない
   const p = r.prev;
   // 自分に重なる位置は、接地中のみ不可（埋まり防止）。
   // ジャンプ中（空中）は足元設置を許可＝ピラー積み（ジャンプしながら下に置いて登る）が可能
