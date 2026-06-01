@@ -114,6 +114,7 @@ const SWATCH = {
 const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand, B.snow];
 const counts = {};          // ブロック種別ごとの所持数（破壊で増え、設置で減る）
 HOTBAR.forEach(b => counts[b] = 0);
+const itemCounts = { meat:0, egg:0, coin:0, apple:0 }; // ドロップ品の所持数（早期宣言＝ロード時に参照するため）
 
 // 立方体の6面（外向き法線・四隅・明るさ）
 // shade で上面を明るく・底面を暗くして簡易ライティング風にする
@@ -279,6 +280,7 @@ function saveWorld() {
       player: { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch },
       hp: hp,
       counts: counts,
+      itemCounts: itemCounts,
     }));
     flashSaved();
   } catch (e) { console.warn('[voxel] セーブ失敗', e); }
@@ -295,6 +297,7 @@ function loadWorld() {
     }
     if (typeof obj.hp === 'number') hp = obj.hp;
     if (obj.counts) for (const k in obj.counts) if (counts[k] !== undefined) counts[k] = obj.counts[k];
+    if (obj.itemCounts) for (const k in obj.itemCounts) if (itemCounts[k] !== undefined) itemCounts[k] = obj.itemCounts[k];
     return true;
   } catch (e) { console.warn('[voxel] ロード失敗', e); return false; }
 }
@@ -869,7 +872,7 @@ document.addEventListener('mousemove', (e) => {
 });
 canvas.addEventListener('mousedown', (e) => {
   if (document.pointerLockElement !== canvas) return;
-  if (e.button === 0) breakBlock();
+  if (e.button === 0) { if (!attackMob()) breakBlock(); } // モブが前方にいれば攻撃、なければ破壊
   else if (e.button === 2) placeBlock();
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -924,6 +927,12 @@ function buildInventory() {
         + `<div style="width:40px;height:40px;margin:0 auto 4px;border-radius:6px;background:${SWATCH[b]};border:1px solid rgba(0,0,0,.3);"></div>`
         + `<div style="font-size:13px;">${NAMES[b]}</div>`
         + `<div style="font-size:12px;opacity:.85;">所持 ${counts[b]||0}</div></div>`).join('')
+    + `</div>`
+    + `<div style="font-size:14px;margin:14px 0 6px;">アイテム（モブのドロップ品）</div>`
+    + `<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">`
+    + ITEM_DEFS.map(it => `<div style="width:86px;padding:8px;border:2px solid rgba(255,255,255,.3);border-radius:8px;">`
+        + `<div style="font-size:13px;">${ITEM_NAMES[it]}</div>`
+        + `<div style="font-size:12px;opacity:.85;">所持 ${itemCounts[it]||0}</div></div>`).join('')
     + `</div></div>`;
   invEl.querySelectorAll('.inv-item').forEach(el =>
     el.addEventListener('click', () => { selBlock = parseInt(el.dataset.b); updateHotbar(); buildInventory(); }));
@@ -1006,6 +1015,7 @@ function buildDiag() {
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
     `モブ         : ${mobs.length}体（敵${mobs.filter(m=>m.hostile).length} / テンプレ${Object.keys(mobTemplates).length}種）`,
+    `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
   ].join('\n');
 }
 window.diag = () => { const s = buildDiag(); console.log(s); return s; }; // コンソールから diag()
@@ -1094,6 +1104,7 @@ MOB_DEFS.forEach(def => gltfLoader.load(def.file,
   undefined, () => {}));
 
 const mobs = [];
+const MOB_HP = { cow:6, sheep:6, chicken:4, slime:4, zombie:10 }; // モブの体力
 const MOB_CAP = 10;                  // 同時存在の上限（負荷管理）
 const MOB_SPAWN_MIN = 18, MOB_SPAWN_MAX = 40; // プレイヤーから湧く距離
 const MOB_DESPAWN = 75;              // この距離を超えたら消す
@@ -1119,7 +1130,7 @@ function spawnMob(type, x, z) {
     aIdle.play();
   }
   mobs.push({ def, obj, mixer, aIdle, aWalk, aAttack, cur: aIdle,
-    hostile: def.hostile, state:'idle', timer: 1+Math.random()*3, vx:0, vz:0, atkCd:0 });
+    hostile: def.hostile, hp: MOB_HP[type] || 5, state:'idle', timer: 1+Math.random()*3, vx:0, vz:0, atkCd:0 });
 }
 function setMobAnim(m, name) {
   if (!m.mixer) return;
@@ -1187,6 +1198,66 @@ function updateMobs(dt) {
 }
 
 // ===================================================================
+// ⑦ 戦闘（プレイヤー→モブ攻撃）とドロップ・アイテム入手
+// ===================================================================
+const ITEM_DEFS = ['meat','egg','coin','apple'];
+const itemTemplates = {};
+ITEM_DEFS.forEach(n => gltfLoader.load(`models/item_${n}.glb`, g => { itemTemplates[n] = g.scene; }, undefined, () => {}));
+const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご' };
+const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin' };
+const drops = []; // 地面に落ちたアイテム { obj, item, t, life }
+const ATTACK_REACH = 3.2, ATTACK_DMG = 4;
+
+function spawnDrop(item, x, y, z) {
+  if (!item) return;
+  const tpl = itemTemplates[item];
+  if (!tpl) { itemCounts[item] = (itemCounts[item]||0) + 1; scheduleSave(); return; } // テンプレ無ければ即入手
+  const obj = tpl.clone(true);
+  obj.scale.setScalar(0.6);
+  obj.position.set(x, y + 0.4, z);
+  scene.add(obj);
+  drops.push({ obj, item, t: Math.random()*Math.PI*2, life: 120 });
+}
+function updateDrops(dt) {
+  for (let i = drops.length-1; i >= 0; i--) {
+    const d = drops[i];
+    d.t += dt*2; d.obj.rotation.y += dt*1.5; d.obj.position.y += Math.sin(d.t)*0.003; // 回転＋ふわふわ
+    d.life -= dt;
+    const dx = player.pos.x-d.obj.position.x, dy = (player.pos.y+0.8)-d.obj.position.y, dz = player.pos.z-d.obj.position.z;
+    if (dx*dx+dy*dy+dz*dz < 1.7*1.7) { // 近づくと拾う
+      itemCounts[d.item] = (itemCounts[d.item]||0) + 1;
+      scene.remove(d.obj); drops.splice(i,1); scheduleSave(); continue;
+    }
+    if (d.life <= 0) { scene.remove(d.obj); drops.splice(i,1); } // 時間切れで消滅
+  }
+}
+// 視線の先・近接のモブを攻撃。命中したら true（左クリックでブロック破壊より優先）
+function attackMob() {
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+  const ox = player.pos.x, oy = player.pos.y + EYE, oz = player.pos.z;
+  let best = -1, bestD = ATTACK_REACH;
+  for (let i = 0; i < mobs.length; i++) {
+    const p = mobs[i].obj.position;
+    const vx = p.x-ox, vy = (p.y+0.6)-oy, vz = p.z-oz;
+    const d = Math.hypot(vx, vy, vz);
+    if (d > ATTACK_REACH) continue;
+    if ((vx*dir.x + vy*dir.y + vz*dir.z) / (d||1) < 0.5) continue; // 視線から外れている
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  if (best < 0) return false;
+  const m = mobs[best];
+  m.hp -= ATTACK_DMG;
+  // ノックバック
+  const kx = m.obj.position.x-ox, kz = m.obj.position.z-oz, kl = Math.hypot(kx,kz)||1;
+  m.obj.position.x += kx/kl*0.4; m.obj.position.z += kz/kl*0.4;
+  if (m.hp <= 0) { // 撃破→ドロップ
+    spawnDrop(MOB_DROP[m.def.type], m.obj.position.x, m.obj.position.y, m.obj.position.z);
+    scene.remove(m.obj); mobs.splice(best, 1);
+  }
+  return true;
+}
+
+// ===================================================================
 // メインループ
 // ===================================================================
 let last = performance.now();
@@ -1194,7 +1265,7 @@ function loop(now) {
   let dt = (now - last) / 1000; last = now;
   dt = Math.min(dt, 0.05); // タブ復帰時などの暴れ防止
 
-  if (document.pointerLockElement === canvas) { updatePlayer(dt); updateHealth(dt); updateMobs(dt); }
+  if (document.pointerLockElement === canvas) { updatePlayer(dt); updateHealth(dt); updateMobs(dt); updateDrops(dt); }
   stepWeatherAuto(dt);
   updateSky(dt);
   updateParticles(dt);
