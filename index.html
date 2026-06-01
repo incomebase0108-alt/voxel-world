@@ -592,7 +592,8 @@ function updatePlayer(dt) {
 // ブロックの選択（視線の先のボクセルをDDAで探す）
 // ===================================================================
 function raycastVoxel(maxDist = 6) {
-  const o = camera.position.clone();
+  // 原点は常にプレイヤーの目の位置（三人称でもカメラ後方からではなく頭から判定する）
+  const o = new THREE.Vector3(player.pos.x, player.pos.y + EYE, player.pos.z);
   const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
   let x = Math.floor(o.x), y = Math.floor(o.y), z = Math.floor(o.z);
   const step = [Math.sign(dir.x)||1, Math.sign(dir.y)||1, Math.sign(dir.z)||1];
