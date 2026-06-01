@@ -63,7 +63,7 @@
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動　/　<kbd>Space</kbd> ジャンプ　/　<kbd>Shift</kbd> ダッシュ<br>
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
     <kbd>1</kbd>〜<kbd>6</kbd> ブロック選択　/　<kbd>E</kbd> インベントリ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断<br>
-    壊して入手 → 置いて消費（所持0は置けない）
+    壊して入手 → 置いて消費（所持0は置けない）　/　左クリックで前方のモブを攻撃　/　<kbd>Q</kbd> 食べる
   </div>
   <div class="start">クリックして開始</div>
 </div>
@@ -279,6 +279,7 @@ function saveWorld() {
       edits: [...edits],
       player: { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch },
       hp: hp,
+      hunger: hunger,
       counts: counts,
       itemCounts: itemCounts,
     }));
@@ -296,6 +297,7 @@ function loadWorld() {
       player.yaw = obj.player.yaw; player.pitch = obj.player.pitch;
     }
     if (typeof obj.hp === 'number') hp = obj.hp;
+    if (typeof obj.hunger === 'number') hunger = obj.hunger;
     if (obj.counts) for (const k in obj.counts) if (counts[k] !== undefined) counts[k] = obj.counts[k];
     if (obj.itemCounts) for (const k in obj.itemCounts) if (itemCounts[k] !== undefined) itemCounts[k] = obj.itemCounts[k];
     return true;
@@ -725,8 +727,15 @@ const REGEN_INTERVAL = 1.5;   // 1回復あたりの間隔（秒）
 const BREATH_MAX = 10;        // 息が続く秒数
 const DROWN_INTERVAL = 1;     // 溺れダメージの間隔（秒）
 const WATER_ID = 7;           // 水ブロック（水バイオーム実装後に有効化＝それまで溺れは作動しない）
+const MAX_HUNGER = 20;        // 最大空腹度
+const HUNGER_DECAY = 0.05;    // 空腹の毎秒減少（待機時）
+const STARVE_INTERVAL = 2;    // 空腹0でのダメージ間隔（秒）
+const REGEN_HUNGER_MIN = 6;   // この空腹度を下回ると自然回復しない
+const FOOD = { meat:8, apple:5 }; // 食料の空腹回復量
 
 let hp = MAX_HP;
+let hunger = MAX_HUNGER;
+let starveAccum = 0;
 let gameTime = 0;             // 経過秒（回復タイミング判定用）
 let lastDamageTime = -999;
 let regenAccum = 0;
@@ -735,6 +744,15 @@ let drownAccum = 0;
 let hurtFlash = 0;            // 被ダメージ時の赤フラッシュ（0..1、減衰）
 let fallPeakY = 0;           // 落下開始の最高到達点
 let prevOnGround = true;
+
+function eatFood() {
+  if (hunger >= MAX_HUNGER) return;
+  const item = itemCounts.meat > 0 ? 'meat' : itemCounts.apple > 0 ? 'apple' : null;
+  if (!item) return;
+  itemCounts[item]--;
+  hunger = Math.min(MAX_HUNGER, hunger + FOOD[item]);
+  scheduleSave();
+}
 
 function damage(amount, cause) {
   if (amount <= 0 || hp <= 0) return;
@@ -751,7 +769,7 @@ window.damagePlayer = (a) => damage(a, 'external'); // 敵モブからの被ダ�
 function respawn() {
   player.pos.set(8, heightAt(8,8) + 3, 8);
   player.vel.set(0, 0, 0);
-  hp = MAX_HP; breath = BREATH_MAX;
+  hp = MAX_HP; breath = BREATH_MAX; hunger = MAX_HUNGER;
   fallPeakY = player.pos.y; prevOnGround = true;
   scheduleSave();
 }
@@ -778,15 +796,32 @@ function updateHealth(dt) {
     drownAccum = 0;
   }
 
-  // --- 自然回復（一定時間ダメージを受けていなければ）---
-  if (hp > 0 && hp < MAX_HP && gameTime - lastDamageTime >= REGEN_DELAY) {
+  // --- 空腹（時間で減少。移動・ダッシュで多め）---
+  let decay = HUNGER_DECAY;
+  if (player.vel.x !== 0 || player.vel.z !== 0) decay += 0.04;
+  if (keys['ShiftLeft'] || keys['ShiftRight']) decay += 0.12;
+  hunger = Math.max(0, hunger - decay * dt);
+  if (hunger <= 0) { // 空腹0で微ダメージ
+    starveAccum += dt;
+    if (starveAccum >= STARVE_INTERVAL) { starveAccum = 0; if (hp > 2) damage(1, 'starve'); }
+  } else starveAccum = 0;
+
+  // --- 自然回復（一定時間ダメージ無し＋空腹が一定以上のときだけ）---
+  if (hp > 0 && hp < MAX_HP && hunger >= REGEN_HUNGER_MIN && gameTime - lastDamageTime >= REGEN_DELAY) {
     regenAccum += dt;
-    if (regenAccum >= REGEN_INTERVAL) { regenAccum = 0; hp = Math.min(MAX_HP, hp + 1); scheduleSave(); }
+    if (regenAccum >= REGEN_INTERVAL) { regenAccum = 0; hp = Math.min(MAX_HP, hp + 1); hunger = Math.max(0, hunger - 0.5); scheduleSave(); }
   }
 
   hurtFlash = Math.max(0, hurtFlash - dt * 3); // 赤フラッシュ減衰
 }
 
+// HUD用の空腹列（1アイコン=2、満腹🍖 半分🍗 空🤍）
+function hungerHTML() {
+  const full = Math.floor(hunger / 2), half = hunger % 2 >= 1;
+  let s = '';
+  for (let i = 0; i < MAX_HUNGER/2; i++) s += (i < full) ? '🍖' : (i === full && half) ? '🍗' : '🤍';
+  return s;
+}
 // HUD用のハート列（1ハート=2HP、半分はピンクで表現）
 function heartsHTML() {
   const full = Math.floor(hp / 2), half = hp % 2;
@@ -890,6 +925,7 @@ document.addEventListener('keydown', (e) => {
     weatherTimer = 25 + Math.random()*35; // 手動切替時は自動遷移を先送り
   }
   if (e.code === 'KeyJ') autoWeather = !autoWeather; // 自動天候 on/off
+  if (e.code === 'KeyQ') eatFood(); // 食べる（肉→りんごの順に消費）
   if (e.code === 'KeyE') { invOpen ? closeInventory() : openInventory(); } // インベントリ開閉
   if (e.code === 'Escape' && invOpen) closeInventory();
   if (e.code === 'Space') e.preventDefault();
@@ -960,9 +996,14 @@ const hpEl = document.createElement('div');
 hpEl.style.cssText = 'position:fixed;left:50%;bottom:72px;transform:translateX(-50%);z-index:10;'
   + 'font-size:18px;letter-spacing:1px;text-shadow:0 0 3px #000;user-select:none;';
 document.body.appendChild(hpEl);
+// 空腹列（体力の少し上）
+const hungerEl = document.createElement('div');
+hungerEl.style.cssText = 'position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:10;'
+  + 'font-size:16px;letter-spacing:1px;text-shadow:0 0 3px #000;user-select:none;';
+document.body.appendChild(hungerEl);
 // 息ゲージ（水中のときだけ表示）
 const breathEl = document.createElement('div');
-breathEl.style.cssText = 'position:fixed;left:50%;bottom:98px;transform:translateX(-50%);z-index:10;'
+breathEl.style.cssText = 'position:fixed;left:50%;bottom:116px;transform:translateX(-50%);z-index:10;'
   + 'font-size:16px;text-shadow:0 0 3px #000;user-select:none;';
 document.body.appendChild(breathEl);
 // 被ダメージ時の赤フラッシュ（画面全体）
@@ -1010,7 +1051,7 @@ function buildDiag() {
     `視点         : ${thirdPerson ? '三人称' : '一人称'}`,
     `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
-    `HP / 息      : ${hp}/${MAX_HP} / ${breath.toFixed(1)}`,
+    `HP / 空腹 / 息 : ${hp}/${MAX_HP} / ${hunger.toFixed(1)}/${MAX_HUNGER} / ${breath.toFixed(1)}`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
@@ -1284,8 +1325,9 @@ function loop(now) {
     `天候: ${WNAME[weather]}${autoWeather ? '(自動)' : ''}（G切替/J自動）　H:診断`;
   if (diagVisible) diagEl.textContent = buildDiag();
 
-  // 体力・息・被ダメージ表示
+  // 体力・空腹・息・被ダメージ表示
   hpEl.innerHTML = heartsHTML();
+  hungerEl.innerHTML = hungerHTML();
   hurtEl.style.opacity = (hurtFlash * 0.7).toFixed(2);
   breathEl.textContent = (breath < BREATH_MAX - 0.05) ? '🫧'.repeat(Math.ceil(breath / BREATH_MAX * 10)) : '';
   requestAnimationFrame(loop);
