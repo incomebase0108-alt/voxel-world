@@ -11,6 +11,11 @@ bpy.ops.import_scene.gltf(filepath=glb)
 # アニメ一覧
 acts = [a.name for a in bpy.data.actions]
 print("[voxel] animations in GLB:", acts)
+
+# 静止(基準)ポーズで描画するためアニメ評価を外す（NLA重なりで歪まないように）
+for o in list(bpy.context.scene.objects):
+    if o.animation_data:
+        o.animation_data_clear()
 zs=[]
 for o in bpy.context.scene.objects:
     if o.type=='MESH':
