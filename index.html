@@ -68,6 +68,9 @@
   <div class="start">クリックして開始</div>
 </div>
 
+<!-- サウンド土台（合成音・本体と疎結合。未読込でも本体は動く） -->
+<script src="sound.js"></script>
+
 <!-- Three.js を CDN から読み込み（ufo-flight と同じ ESM 方式） -->
 <script type="importmap">
 { "imports": {
@@ -679,7 +682,7 @@ function updatePlayer(dt) {
     if (keys['Space']) player.vel.y = 4;            // 泳いで浮上
   } else {
     player.vel.y -= 26 * dt;
-    if (keys['Space'] && player.onGround) { player.vel.y = 8.6; player.onGround = false; }
+    if (keys['Space'] && player.onGround) { player.vel.y = 8.6; player.onGround = false; window.playSFX && window.playSFX('jump'); }
   }
 
   player.onGround = false;
@@ -751,6 +754,7 @@ function eatFood() {
   if (!item) return;
   itemCounts[item]--;
   hunger = Math.min(MAX_HUNGER, hunger + FOOD[item]);
+  window.playSFX && window.playSFX('eat');
   scheduleSave();
 }
 
@@ -875,6 +879,7 @@ function breakBlock() {
   if (r.hit && inReach(r.hit)) {
     const b = getBlock(r.hit.x, r.hit.y, r.hit.z);
     setBlock(r.hit.x, r.hit.y, r.hit.z, B.air);
+    window.playSFX && window.playSFX('break');
     if (b !== B.air && counts[b] !== undefined) { counts[b]++; updateHotbar(); } // 壊したブロックを入手
   }
 }
@@ -887,7 +892,7 @@ function placeBlock() {
   if (overlapsPlayer(p.x, p.y, p.z) && player.onGround) return;
   if (!counts[selBlock] || counts[selBlock] <= 0) return; // 所持していないブロックは置けない
   setBlock(p.x, p.y, p.z, selBlock);
-  counts[selBlock]--; updateHotbar(); // 在庫を消費
+  counts[selBlock]--; updateHotbar(); window.playSFX && window.playSFX('place'); // 在庫を消費
 }
 
 // ===================================================================
@@ -1268,6 +1273,7 @@ function updateDrops(dt) {
     const dx = player.pos.x-d.obj.position.x, dy = (player.pos.y+0.8)-d.obj.position.y, dz = player.pos.z-d.obj.position.z;
     if (dx*dx+dy*dy+dz*dz < 1.7*1.7) { // 近づくと拾う
       itemCounts[d.item] = (itemCounts[d.item]||0) + 1;
+      window.playSFX && window.playSFX('pickup');
       scene.remove(d.obj); drops.splice(i,1); scheduleSave(); continue;
     }
     if (d.life <= 0) { scene.remove(d.obj); drops.splice(i,1); } // 時間切れで消滅
@@ -1289,6 +1295,7 @@ function attackMob() {
   if (best < 0) return false;
   const m = mobs[best];
   m.hp -= ATTACK_DMG;
+  window.playSFX && window.playSFX('attack');
   // ノックバック
   const kx = m.obj.position.x-ox, kz = m.obj.position.z-oz, kl = Math.hypot(kx,kz)||1;
   m.obj.position.x += kx/kl*0.4; m.obj.position.z += kz/kl*0.4;
