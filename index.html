@@ -61,7 +61,7 @@
   <div class="ops">
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動　/　<kbd>Space</kbd> ジャンプ　/　<kbd>Shift</kbd> ダッシュ<br>
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
-    <kbd>1</kbd>〜<kbd>6</kbd> 置くブロックを選ぶ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候切替（晴れ/雨/雪）　/　<kbd>Esc</kbd> 一時停止
+    <kbd>1</kbd>〜<kbd>6</kbd> 置くブロックを選ぶ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候切替　/　<kbd>H</kbd> 診断パネル　/　<kbd>Esc</kbd> 一時停止
   </div>
   <div class="start">クリックして開始</div>
 </div>
@@ -299,7 +299,7 @@ scene.add(ambient);
 
 // ===== 軸1: 時間帯サイクル（空の色・太陽の向き/強さ・環境光をキーフレーム補間）=====
 let dayTime = 0.30;        // 0..1（0/1=深夜 / 0.25=朝方 / 0.33=朝 / 0.5=正午 / 0.75=夕方）
-const DAY_LENGTH = 120;    // 1日の長さ（秒）※あとで調整できるよう定数化
+const DAY_LENGTH = 300;    // 1日の長さ（秒）※あとで調整できるよう定数化（120→300にゆっくり化）
 // 朝方→朝→昼→夕方→夜→（朝方へループ）の5段階を連続補間するキーフレーム
 //   sky=空/フォグ色, sun=太陽光色, si=太陽光の強さ, amb=環境光の強さ（夜は月明かりの下限）
 const KF = [
@@ -669,6 +669,7 @@ document.addEventListener('keydown', (e) => {
     if (n >= 0 && n < HOTBAR.length) { selBlock = HOTBAR[n]; updateHotbar(); }
   }
   if (e.code === 'KeyF') thirdPerson = !thirdPerson; // 一人称⇄三人称
+  if (e.code === 'KeyH') { diagVisible = !diagVisible; diagEl.style.display = diagVisible ? 'block' : 'none'; } // 診断パネル
   if (e.code === 'KeyG') { // 天候を手動切替（デバッグ用）：晴れ→雨→雪→…
     const order = ['clear','rain','snow'];
     setWeather(order[(order.indexOf(weather) + 1) % order.length]);
@@ -710,6 +711,47 @@ function flashSaved() {
 loadWorld();
 
 // ===================================================================
+// 診断モード（目視に依存せずシーン状態をテキストで確認する）
+//   ・Hキーで画面に診断パネルをトグル表示
+//   ・コンソールで diag() を実行すると同じ内容を出力（コピペで共有できる）
+// ===================================================================
+const diag = { glb: { tried:false, ok:false, error:null, vertices:0, meshes:0 } };
+const diagEl = document.createElement('pre');
+diagEl.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:30;margin:0;padding:10px;'
+  + 'background:rgba(0,0,0,.72);color:#9effa0;font:12px/1.5 monospace;border-radius:6px;'
+  + 'white-space:pre;display:none;pointer-events:none;max-width:90vw;';
+document.body.appendChild(diagEl);
+let diagVisible = false;
+function buildDiag() {
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+  let lc = 0; const ls = [];
+  scene.traverse(o => { if (o.isLight) { lc++; ls.push(`${o.type}=${o.intensity.toFixed(2)}`); } });
+  let nonNull = 0; for (const m of meshes.values()) if (m) nonNull++;
+  const hh = Math.floor(((dayTime + 0.5) % 1) * 24);
+  const mm = Math.floor((((dayTime + 0.5) % 1) * 24 % 1) * 60);
+  const g = diag.glb;
+  const glbStr = !g.tried ? '読込中…'
+    : g.ok ? `OK（頂点${g.vertices} / メッシュ${g.meshes}）`
+    : `失敗：${g.error}`;
+  return [
+    '=== VOXEL WORLD 診断 ===',
+    `チャンクmesh : 総${meshes.size} / 描画あり${nonNull}`,
+    `player.glb   : ${glbStr}`,
+    `アバター反映 : ${playerAvatar ? '有' : '無'}（表示=${playerAvatar && playerAvatar.visible ? 'ON' : 'OFF'}）`,
+    `ライト       : ${lc}個 [${ls.join(', ')}]`,
+    `背景色       : #${scene.background.getHexString()}`,
+    `カメラ位置   : ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}`,
+    `カメラ向き   : ${dir.x.toFixed(2)}, ${dir.y.toFixed(2)}, ${dir.z.toFixed(2)}`,
+    `視点         : ${thirdPerson ? '三人称' : '一人称'}`,
+    `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
+    `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
+  ].join('\n');
+}
+window.diag = () => { const s = buildDiag(); console.log(s); return s; }; // コンソールから diag()
+// 起動から少し待ってシーンが組み上がった頃に1回、自動でコンソールへ出力
+setTimeout(() => window.diag(), 3000);
+
+// ===================================================================
 // GLB キャラ読み込み口（4号機の成果物をここから差し込む）
 //   models/ に .glb を置いて push すれば、このゲームに即反映される
 // ===================================================================
@@ -740,10 +782,17 @@ gltfLoader.load('models/player.glb',
     playerAvatar = gltf.scene;
     playerAvatar.visible = false; // 一人称では非表示。Fキーで三人称にすると見える
     scene.add(playerAvatar);
-    console.log('[voxel] アバター読込:', 'models/player.glb');
+    // 診断用：頂点数・メッシュ数を集計
+    let v = 0, mc = 0;
+    playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
+    diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc };
+    console.log(`[voxel] アバター読込 OK：頂点${v} / メッシュ${mc}`);
   },
   undefined,
-  () => { /* 未配置なら何もしない */ }
+  (err) => {
+    diag.glb = { tried:true, ok:false, error:String((err && err.message) || err || 'load error'), vertices:0, meshes:0 };
+    console.warn('[voxel] アバター読込 失敗（未配置なら無視可）:', err);
+  }
 );
 
 // ===================================================================
@@ -768,7 +817,8 @@ function loop(now) {
   hud.innerHTML =
     `XYZ: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>` +
     `時刻: ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}　読込チャンク: ${meshes.size}<br>` +
-    `天候: ${WNAME[weather]}（Gキーで切替）`;
+    `天候: ${WNAME[weather]}（Gキーで切替）　H:診断`;
+  if (diagVisible) diagEl.textContent = buildDiag();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
