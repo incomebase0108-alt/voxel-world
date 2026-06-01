@@ -1049,6 +1049,7 @@ function buildDiag() {
     `カメラ位置   : ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}`,
     `カメラ向き   : ${dir.x.toFixed(2)}, ${dir.y.toFixed(2)}, ${dir.z.toFixed(2)}`,
     `視点         : ${thirdPerson ? '三人称' : '一人称'}`,
+    `アバター向き : ${(avatarYaw*180/Math.PI).toFixed(0)}°`,
     `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
     `HP / 空腹 / 息 : ${hp}/${MAX_HP} / ${hunger.toFixed(1)}/${MAX_HUNGER} / ${breath.toFixed(1)}`,
