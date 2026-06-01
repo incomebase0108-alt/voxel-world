@@ -68,11 +68,15 @@
 
 <!-- Three.js を CDN から読み込み（ufo-flight と同じ ESM 方式） -->
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
 </script>
 
 <script type="module">
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ===================================================================
 // 定数まわり
@@ -486,6 +490,37 @@ function updateHotbar() {
 }
 updateHotbar();
 const hud = document.getElementById('hud');
+
+// ===================================================================
+// GLB キャラ読み込み口（4号機の成果物をここから差し込む）
+//   models/ に .glb を置いて push すれば、このゲームに即反映される
+// ===================================================================
+const gltfLoader = new GLTFLoader();
+
+// GLB をワールドに配置。失敗（404＝まだ未配置）は静かに無視する
+//   url: ファイルパス, pos: ブロック座標, opts: { yaw(ラジアン), scale }
+function loadCharacter(url, pos, opts = {}) {
+  gltfLoader.load(url,
+    (gltf) => {
+      const model = gltf.scene;
+      model.position.set(pos.x, pos.y, pos.z);
+      if (opts.yaw)   model.rotation.y = opts.yaw;
+      if (opts.scale) model.scale.setScalar(opts.scale);
+      scene.add(model);
+      console.log('[voxel] モデル読込成功:', url);
+    },
+    undefined,
+    () => { /* まだ models/ に GLB が無い間は無視（4号機の push 待ち） */ }
+  );
+}
+
+// 動作確認用ショーケース：スポーン地点のそばに player.glb があれば立たせる
+{
+  const sx = 11, sz = 8;
+  loadCharacter('models/player.glb',
+    { x: sx + 0.5, y: heightAt(sx, sz) + 1, z: sz + 0.5 },
+    { yaw: Math.PI });
+}
 
 // ===================================================================
 // メインループ
