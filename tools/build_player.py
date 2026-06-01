@@ -191,12 +191,21 @@ bpy.ops.object.join()
 hero = bpy.context.active_object
 hero.name = "Player"
 
-# subsurf でカクつき除去（ブロック調回避）
+# subsurf でカクつき除去（ブロック調回避）。
+# 軽量化方針（司令塔承認）: subsurf を 1 に抑え、decimate で頂点を間引いて
+# Web配信向けに 2MB 以下へ。顔/髪/筋肉のシルエットは保持。
 sub = hero.modifiers.new("Subsurf", 'SUBSURF')
-sub.levels = 2
-sub.render_levels = 2
+sub.levels = 1
+sub.render_levels = 1
 bpy.ops.object.shade_smooth()
 bpy.ops.object.modifier_apply(modifier=sub.name)
+
+# decimate（collapse）で三角形を間引く。0.45 でも丸みのシルエットは十分残る。
+dec = hero.modifiers.new("Decimate", 'DECIMATE')
+dec.decimate_type = 'COLLAPSE'
+dec.ratio = 0.45
+bpy.ops.object.modifier_apply(modifier=dec.name)
+bpy.ops.object.shade_smooth()
 
 # ----------------------------------------------------------------------
 # 9. 原点を足元中心(0,0,0)へ。正面 = +Y。
