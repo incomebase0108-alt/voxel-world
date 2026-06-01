@@ -61,7 +61,7 @@
   <div class="ops">
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動　/　<kbd>Space</kbd> ジャンプ　/　<kbd>Shift</kbd> ダッシュ<br>
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
-    <kbd>1</kbd>〜<kbd>6</kbd> 置くブロックを選ぶ　/　<kbd>G</kbd> 天候切替（晴れ/雨/雪）　/　<kbd>Esc</kbd> 一時停止
+    <kbd>1</kbd>〜<kbd>6</kbd> 置くブロックを選ぶ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候切替（晴れ/雨/雪）　/　<kbd>Esc</kbd> 一時停止
   </div>
   <div class="start">クリックして開始</div>
 </div>
@@ -387,6 +387,51 @@ function updateParticles(dt) {
   updateField(snowField, dt, 3, 0.012);  // 雪：ゆっくり舞う
 }
 
+// ===== 雲（時間帯・天候の上に乗せる上層レイヤー）=====
+function cloudTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(64,64,6, 64,64,64);
+  g.addColorStop(0,   'rgba(255,255,255,0.95)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.5)');
+  g.addColorStop(1,   'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+function makeClouds() {
+  const mat = new THREE.MeshBasicMaterial({
+    map: cloudTexture(), transparent:true, opacity:0.5, depthWrite:false,
+    color:0xffffff, fog:false, side:THREE.DoubleSide,
+  });
+  const group = new THREE.Group();
+  const N = 38, range = 200;
+  for (let i=0;i<N;i++) {
+    const s = 24 + Math.random()*46;                  // 雲の大きさ（平らな白い塊）
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(s, s), mat);
+    m.rotation.x = -Math.PI/2;                          // 水平に寝かせる
+    m.position.set(Math.random()*range*2-range, 62 + Math.random()*22, Math.random()*range*2-range);
+    group.add(m);
+  }
+  scene.add(group);
+  return { group, mat, range };
+}
+const clouds = makeClouds();
+function updateClouds(dt) {
+  clouds.group.position.set(player.pos.x, 0, player.pos.z); // 水平にプレイヤー追従
+  const wind = 4;
+  for (const m of clouds.group.children) {
+    m.position.x += wind * dt;
+    if (m.position.x > clouds.range) m.position.x -= clouds.range * 2; // 端で巻き戻し
+  }
+  // 色は時間帯の太陽光色に追従（朝夕=色づく / 夜=暗い）。_sun は updateSky で更新済み
+  clouds.mat.color.copy(_sun);
+  // 天候連動：雨雪で厚く暗く、晴れは少なめ（薄め）
+  let op = 0.5;
+  if (weather === 'rain')      { clouds.mat.color.multiplyScalar(0.6); op = 0.9; }
+  else if (weather === 'snow') { op = 0.85; }
+  clouds.mat.opacity = op;
+}
+
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
 camera.rotation.order = 'YXZ';
 
@@ -476,6 +521,7 @@ const player = {
 };
 const keys = {};
 let selBlock = B.grass;
+let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
 
 function collideAxis(axis) {
   const minX = Math.floor(player.pos.x-PW), maxX = Math.floor(player.pos.x+PW);
@@ -528,9 +574,17 @@ function updatePlayer(dt) {
   // 奈落に落ちたら復帰
   if (player.pos.y < -30) { player.pos.set(8, heightAt(8,8)+3, 8); player.vel.set(0,0,0); }
 
-  camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
+  // カメラ：一人称＝目の位置 / 三人称＝視線の後方へ引く
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
+  camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
+  if (thirdPerson) { camera.translateZ(4.5); camera.position.y += 0.3; } // ローカル+Z=後方
+  // アバター（三人称時のみ表示）をプレイヤーに追従させる
+  if (playerAvatar) {
+    playerAvatar.position.set(player.pos.x, player.pos.y, player.pos.z);
+    playerAvatar.rotation.y = player.yaw;
+    playerAvatar.visible = thirdPerson;
+  }
 }
 
 // ===================================================================
@@ -572,8 +626,12 @@ function breakBlock() {
 }
 function placeBlock() {
   const r = raycastVoxel();
-  if (r.hit && r.prev && !overlapsPlayer(r.prev.x, r.prev.y, r.prev.z))
-    setBlock(r.prev.x, r.prev.y, r.prev.z, selBlock);
+  if (!r.hit || !r.prev) return;
+  const p = r.prev;
+  // 自分に重なる位置は、接地中のみ不可（埋まり防止）。
+  // ジャンプ中（空中）は足元設置を許可＝ピラー積み（ジャンプしながら下に置いて登る）が可能
+  if (overlapsPlayer(p.x, p.y, p.z) && player.onGround) return;
+  setBlock(p.x, p.y, p.z, selBlock);
 }
 
 // ===================================================================
@@ -603,6 +661,7 @@ document.addEventListener('keydown', (e) => {
     const n = parseInt(e.code.slice(5)) - 1;
     if (n >= 0 && n < HOTBAR.length) { selBlock = HOTBAR[n]; updateHotbar(); }
   }
+  if (e.code === 'KeyF') thirdPerson = !thirdPerson; // 一人称⇄三人称
   if (e.code === 'KeyG') { // 天候を手動切替（デバッグ用）：晴れ→雨→雪→…
     const order = ['clear','rain','snow'];
     setWeather(order[(order.indexOf(weather) + 1) % order.length]);
@@ -666,13 +725,19 @@ function loadCharacter(url, pos, opts = {}) {
   );
 }
 
-// 動作確認用ショーケース：スポーン地点のそばに player.glb があれば立たせる
-{
-  const sx = 11, sz = 8;
-  loadCharacter('models/player.glb',
-    { x: sx + 0.5, y: heightAt(sx, sz) + 1, z: sz + 0.5 },
-    { yaw: Math.PI });
-}
+// プレイヤーのアバター：player.glb を本人モデルとして読み込み、三人称時に表示する
+//   （4号機の本番モデルに差し替わると、そのまま自分のキャラとして見える）
+let playerAvatar = null;
+gltfLoader.load('models/player.glb',
+  (gltf) => {
+    playerAvatar = gltf.scene;
+    playerAvatar.visible = false; // 一人称では非表示。Fキーで三人称にすると見える
+    scene.add(playerAvatar);
+    console.log('[voxel] アバター読込:', 'models/player.glb');
+  },
+  undefined,
+  () => { /* 未配置なら何もしない */ }
+);
 
 // ===================================================================
 // メインループ
@@ -685,6 +750,7 @@ function loop(now) {
   if (document.pointerLockElement === canvas) updatePlayer(dt);
   updateSky(dt);
   updateParticles(dt);
+  updateClouds(dt);
   updateChunks();
   renderer.render(scene, camera);
 
