@@ -62,7 +62,7 @@
   <div class="ops">
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動　/　<kbd>Space</kbd> ジャンプ　/　<kbd>Shift</kbd> ダッシュ<br>
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
-    <kbd>1</kbd>〜<kbd>6</kbd> ブロック選択　/　<kbd>E</kbd> インベントリ　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断<br>
+    <kbd>1</kbd>〜<kbd>9</kbd> ブロック選択　/　<kbd>E</kbd> インベントリ・クラフト　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断<br>
     壊して入手 → 置いて消費（所持0は置けない）　/　左クリックで前方のモブを攻撃　/　<kbd>Q</kbd> 食べる　/　<kbd>R</kbd> 馬に乗る/降りる
   </div>
   <div id="charsel"></div>
@@ -95,7 +95,7 @@ const SEA = 14;            // おおよその地表の基準高さ
 const AMP = 22;            // 地形の起伏の大きさ
 
 // ブロック種別（0=空気）。water=7 は溺れ判定の WATER_ID と一致させる
-const B = { air:0, grass:1, dirt:2, stone:3, log:4, leaves:5, sand:6, water:7, snow:8 };
+const B = { air:0, grass:1, dirt:2, stone:3, log:4, leaves:5, sand:6, water:7, snow:8, planks:9, stonebrick:10, glass:11 };
 
 // ブロックの基本色（面ごとに上面・側面・底面を分けられるよう構造化）
 // 値は 0..1 のRGB
@@ -109,13 +109,17 @@ const COLORS = {
   [B.sand]:   { all: rgb(.84,.79,.55) },
   [B.water]:  { all: rgb(.18,.40,.78) },
   [B.snow]:   { top: rgb(.92,.95,.99), side: rgb(.85,.89,.95), bottom: rgb(.50,.38,.26) },
+  [B.planks]: { all: rgb(.72,.55,.33) },
+  [B.stonebrick]: { all: rgb(.55,.55,.58) },
+  [B.glass]:  { all: rgb(.78,.90,.96) },
 };
 // ホットバー表示用の代表色
 const SWATCH = {
   [B.grass]:'#5ba844',[B.dirt]:'#80613f',[B.stone]:'#7d7d85',
-  [B.log]:'#6b4d2b',[B.leaves]:'#398033',[B.sand]:'#d6c98c',[B.snow]:'#eef4f8'
+  [B.log]:'#6b4d2b',[B.leaves]:'#398033',[B.sand]:'#d6c98c',[B.snow]:'#eef4f8',
+  [B.planks]:'#b88c54',[B.stonebrick]:'#8d8d92',[B.glass]:'#c8e6f2'
 };
-const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand, B.snow];
+const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand, B.snow, B.planks, B.stonebrick, B.glass];
 const counts = {};          // ブロック種別ごとの所持数（破壊で増え、設置で減る）
 HOTBAR.forEach(b => counts[b] = 0);
 const itemCounts = { meat:0, egg:0, coin:0, apple:0 }; // ドロップ品の所持数（早期宣言＝ロード時に参照するため）
@@ -529,7 +533,8 @@ const meshes = new Map();       // key -> THREE.Mesh（固体）
 const waterMeshes = new Map();  // key -> THREE.Mesh（水）
 const dirty = new Set();        // 編集等で作り直しが必要なチャンク key
 function markDirty(cx, cz) { if (meshes.has(cx+','+cz)) dirty.add(cx+','+cz); }
-const isOpaque = b => b !== B.air && b !== B.water; // 不透明（水・空気は透過扱い）
+const isOpaque = b => b !== B.air && b !== B.water && b !== B.glass; // 不透明（水・ガラス・空気は透過扱い）
+const isTransparentBlock = b => b === B.water || b === B.glass; // 半透明メッシュで描く
 
 // 固体ブロックのジオメトリ（水は別途）。隣が不透明でない面だけ描く
 function buildGeometry(cx, cz) {
@@ -540,7 +545,7 @@ function buildGeometry(cx, cz) {
     for (let z=0; z<CHUNK; z++)
       for (let x=0; x<CHUNK; x++) {
         const b = d[idx(x,y,z)];
-        if (b === B.air || b === B.water) continue;
+        if (b === B.air || isTransparentBlock(b)) continue; // 空気・半透明ブロック(水/ガラス)は別メッシュ
         const wx = cx*CHUNK+x, wy = y, wz = cz*CHUNK+z;
         for (const f of FACES) {
           if (isOpaque(getBlock(wx+f.dir[0], wy+f.dir[1], wz+f.dir[2]))) continue; // 隣が不透明なら面を描かない
@@ -560,7 +565,7 @@ function buildGeometry(cx, cz) {
   g.setIndex(indices);
   return g;
 }
-// 水のジオメトリ（空気に接する面だけ描く＝水面と露出した側面）
+// 半透明ブロック(水・ガラス)のジオメトリ（空気に接する面だけ描く）
 function buildWaterGeometry(cx, cz) {
   const d = getChunkData(cx, cz);
   const positions = [], colors = [], indices = [];
@@ -568,11 +573,12 @@ function buildWaterGeometry(cx, cz) {
   for (let y=0; y<HEIGHT; y++)
     for (let z=0; z<CHUNK; z++)
       for (let x=0; x<CHUNK; x++) {
-        if (d[idx(x,y,z)] !== B.water) continue;
+        const b = d[idx(x,y,z)];
+        if (!isTransparentBlock(b)) continue;
         const wx = cx*CHUNK+x, wy = y, wz = cz*CHUNK+z;
         for (const f of FACES) {
           if (getBlock(wx+f.dir[0], wy+f.dir[1], wz+f.dir[2]) !== B.air) continue; // 空気に接する面だけ
-          const col = faceColor(B.water, f);
+          const col = faceColor(b, f);
           for (const c of f.corners) {
             positions.push(wx+c[0], wy+c[1], wz+c[2]);
             colors.push(col.r, col.g, col.b);
@@ -982,7 +988,7 @@ addEventListener('resize', () => {
 // UI（ホットバー / HUD）
 // ===================================================================
 const hotbarEl = document.getElementById('hotbar');
-const NAMES = { [B.grass]:'草',[B.dirt]:'土',[B.stone]:'石',[B.log]:'原木',[B.leaves]:'葉',[B.sand]:'砂',[B.water]:'水',[B.snow]:'雪' };
+const NAMES = { [B.grass]:'草',[B.dirt]:'土',[B.stone]:'石',[B.log]:'原木',[B.leaves]:'葉',[B.sand]:'砂',[B.water]:'水',[B.snow]:'雪',[B.planks]:'木材',[B.stonebrick]:'石レンガ',[B.glass]:'ガラス' };
 function updateHotbar() {
   hotbarEl.innerHTML = HOTBAR.map((b,i) =>
     `<div class="slot ${b===selBlock?'active':''}">
@@ -1011,9 +1017,31 @@ function buildInventory() {
     + ITEM_DEFS.map(it => `<div style="width:86px;padding:8px;border:2px solid rgba(255,255,255,.3);border-radius:8px;">`
         + `<div style="font-size:13px;">${ITEM_NAMES[it]}</div>`
         + `<div style="font-size:12px;opacity:.85;">所持 ${itemCounts[it]||0}</div></div>`).join('')
+    + `</div>`
+    + `<div style="font-size:14px;margin:14px 0 6px;">クラフト（資源を変換／クリックで作成）</div>`
+    + `<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">`
+    + RECIPES.map((r,i) => { const ok = (counts[r.in]||0) >= r.cost;
+        return `<button class="craft-item" data-i="${i}" ${ok?'':'disabled'} style="cursor:${ok?'pointer':'not-allowed'};opacity:${ok?1:.45};width:120px;padding:8px;border:2px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(0,0,0,.3);color:#fff;">`
+        + `<div style="font-size:13px;">${NAMES[r.out]} ×${r.n}</div>`
+        + `<div style="font-size:11px;opacity:.85;">${NAMES[r.in]}×${r.cost} → 作る</div></button>`; }).join('')
     + `</div></div>`;
   invEl.querySelectorAll('.inv-item').forEach(el =>
     el.addEventListener('click', () => { selBlock = parseInt(el.dataset.b); updateHotbar(); buildInventory(); }));
+  invEl.querySelectorAll('.craft-item').forEach(el =>
+    el.addEventListener('click', () => craft(RECIPES[parseInt(el.dataset.i)])));
+}
+// クラフト（資源変換）レシピと実行
+const RECIPES = [
+  { out: B.planks,     n: 4, in: B.log,   cost: 1 },
+  { out: B.stonebrick, n: 1, in: B.stone, cost: 1 },
+  { out: B.glass,      n: 1, in: B.sand,  cost: 1 },
+];
+function craft(r) {
+  if (!r || (counts[r.in]||0) < r.cost) return;
+  counts[r.in] -= r.cost;
+  counts[r.out] = (counts[r.out]||0) + r.n;
+  updateHotbar(); buildInventory(); scheduleSave();
+  window.playSFX && window.playSFX('place');
 }
 function openInventory() {
   invOpen = true; buildInventory(); invEl.style.display = 'flex'; overlay.style.display = 'none';
