@@ -162,6 +162,7 @@ function treeAt(wx, wz) {
 // ブロックデータ（チャンク単位でキャッシュ。編集もここに保持）
 // ===================================================================
 const chunks = new Map(); // "cx,cz" -> Uint8Array
+const edits = new Map();   // "wx,wy,wz" -> ブロック種別（プレイヤーの変更だけを記録＝セーブ対象）
 const idx = (x,y,z) => x + z*CHUNK + y*CHUNK*CHUNK;
 
 function generateChunk(cx, cz) {
@@ -206,7 +207,16 @@ function generateChunk(cx, cz) {
 function getChunkData(cx, cz) {
   const key = cx+','+cz;
   let d = chunks.get(key);
-  if (!d) { d = generateChunk(cx, cz); chunks.set(key, d); }
+  if (!d) {
+    d = generateChunk(cx, cz);
+    // 保存済みの編集（プレイヤーの変更）を上書き適用
+    for (const [k, b] of edits) {
+      const [ex, ey, ez] = k.split(',').map(Number);
+      if (Math.floor(ex/CHUNK) === cx && Math.floor(ez/CHUNK) === cz && ey >= 0 && ey < HEIGHT)
+        d[idx(ex - cx*CHUNK, ey, ez - cz*CHUNK)] = b;
+    }
+    chunks.set(key, d);
+  }
   return d;
 }
 function getBlock(wx, wy, wz) {
@@ -220,6 +230,8 @@ function setBlock(wx, wy, wz, b) {
   const cx = Math.floor(wx/CHUNK), cz = Math.floor(wz/CHUNK);
   const lx = wx - cx*CHUNK, lz = wz - cz*CHUNK;
   getChunkData(cx, cz)[idx(lx, wy, lz)] = b;
+  edits.set(`${wx},${wy},${wz}`, b); // 変更を記録（セーブ用）
+  scheduleSave();
   // 影響を受けるチャンクを再メッシュ対象に（境界なら隣も）
   markDirty(cx, cz);
   if (lx === 0)        markDirty(cx-1, cz);
@@ -228,6 +240,33 @@ function setBlock(wx, wy, wz, b) {
   if (lz === CHUNK-1)  markDirty(cx, cz+1);
 }
 const isSolid = b => b !== B.air;
+
+// ---- セーブ／ロード（localStorage に編集差分とプレイヤー位置を保存）----
+const SAVE_KEY = 'voxel_world_save_v1';
+let saveTimer = null;
+function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveWorld, 800); } // 連打をまとめる
+function saveWorld() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      edits: [...edits],
+      player: { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch },
+    }));
+    flashSaved();
+  } catch (e) { console.warn('[voxel] セーブ失敗', e); }
+}
+function loadWorld() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const obj = JSON.parse(raw);
+    for (const [k, b] of (obj.edits || [])) edits.set(k, b);
+    if (obj.player) {
+      player.pos.set(obj.player.x, obj.player.y, obj.player.z);
+      player.yaw = obj.player.yaw; player.pitch = obj.player.pitch;
+    }
+    return true;
+  } catch (e) { console.warn('[voxel] ロード失敗', e); return false; }
+}
 
 // 面の色を決める（grass / log は上面・側面・底面で色を変える）
 function faceColor(b, f) {
@@ -490,6 +529,20 @@ function updateHotbar() {
 }
 updateHotbar();
 const hud = document.getElementById('hud');
+
+// セーブ表示（右上に一瞬だけ出す）
+const saveEl = document.createElement('div');
+saveEl.style.cssText = 'position:fixed;right:12px;top:10px;z-index:10;color:#bff7a0;font-size:12px;text-shadow:0 0 3px #000;';
+document.body.appendChild(saveEl);
+let saveFlashTimer = null;
+function flashSaved() {
+  saveEl.textContent = '💾 自動保存しました';
+  clearTimeout(saveFlashTimer);
+  saveFlashTimer = setTimeout(() => { saveEl.textContent = ''; }, 1200);
+}
+
+// 起動時にセーブデータがあれば復元
+loadWorld();
 
 // ===================================================================
 // GLB キャラ読み込み口（4号機の成果物をここから差し込む）
