@@ -181,6 +181,17 @@ new_action(body,"body_walk")                       # 胴の上下（2回/サイ�
 for f,z in [(1,BZ),(6,BZ+0.02),(11,BZ),(16,BZ+0.02),(21,BZ)]: key_z(body,f,z)
 push(body,"walk")
 
+# --- attack（16f≒0.67s）: 右腕の突き（前方=-Z）＋わずかな前傾。idle/walk と統一名 ---
+new_action(armR,"armR_attack")
+for f,d in [(1,0),(4,32),(9,-85),(13,-18),(16,0)]: key_rx(armR,f,d)  # 溜め→突き→戻り
+push(armR,"attack")
+new_action(armL,"armL_attack")
+for f,d in [(1,0),(9,20),(16,0)]: key_rx(armL,f,d)                   # 反対腕で反動
+push(armL,"attack")
+new_action(body,"body_attack")
+for f,d in [(1,0),(9,-7),(16,0)]: key_rx(body,f,d)                   # 軽い前傾（足元ピボット）
+push(body,"attack")
+
 # ----------------------------------------------------------------------
 # 書き出し（GLB / Y-up / アニメ NLA トラック）
 # ----------------------------------------------------------------------
@@ -197,4 +208,4 @@ for o in (body,armL,armR,legL,legR):
     for v in o.bound_box: zs.append((o.matrix_world@mathutils.Vector(v)).z)
 print("[voxel] export OK ->", out)
 print("[voxel] height(Z) ~= %.2f m (feet %.3f)" % (max(zs), min(zs)))
-print("[voxel] clips: idle / walk")
+print("[voxel] clips: idle / walk / attack")
