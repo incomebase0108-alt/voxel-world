@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 50 ファイル / 5.85 MB
+**合計**: 55 ファイル / 5.92 MB
 
 
 ## プレイヤー
@@ -47,13 +47,18 @@
 | `struct_altar.glb` | 0.0281 | `idle` | 2/2 |
 | `struct_chest.glb` | 0.0134 | `open` | 2/2 |
 | `struct_door.glb` | 0.0124 | —（静物） | 1/1 |
+| `struct_door_double.glb` | 0.0204 | —（静物） | 1/1 |
 | `struct_fence.glb` | 0.0072 | —（静物） | 1/1 |
 | `struct_roof.glb` | 0.0036 | —（静物） | 1/1 |
+| `struct_roof_hip.glb` | 0.0058 | —（静物） | 1/1 |
 | `struct_spawner.glb` | 0.0336 | `idle` | 2/2 |
 | `struct_torch.glb` | 0.0113 | `idle` | 2/2 |
 | `struct_wall.glb` | 0.0079 | —（静物） | 1/1 |
+| `struct_wall_stone.glb` | 0.0214 | —（静物） | 1/1 |
+| `struct_wall_tall.glb` | 0.0097 | —（静物） | 1/1 |
 | `struct_well.glb` | 0.0310 | —（静物） | 1/1 |
 | `struct_window.glb` | 0.0080 | —（静物） | 1/1 |
+| `struct_window_arch.glb` | 0.0137 | —（静物） | 1/1 |
 
 ## アイテム
 

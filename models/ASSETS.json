@@ -14,9 +14,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 50,
-    "size_bytes": 6135192,
-    "size_mb": 5.851
+    "count": 55,
+    "size_bytes": 6209632,
+    "size_mb": 5.922
   },
   "assets": [
     {
@@ -315,6 +315,18 @@
       "error": null
     },
     {
+      "file": "struct_door_double.glb",
+      "name": "struct_door_double",
+      "category": "構造物",
+      "size_bytes": 21416,
+      "size_mb": 0.0204,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
       "file": "struct_fence.glb",
       "name": "struct_fence",
       "category": "構造物",
@@ -332,6 +344,18 @@
       "category": "構造物",
       "size_bytes": 3796,
       "size_mb": 0.0036,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "struct_roof_hip.glb",
+      "name": "struct_roof_hip",
+      "category": "構造物",
+      "size_bytes": 6064,
+      "size_mb": 0.0058,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
@@ -379,6 +403,30 @@
       "error": null
     },
     {
+      "file": "struct_wall_stone.glb",
+      "name": "struct_wall_stone",
+      "category": "構造物",
+      "size_bytes": 22420,
+      "size_mb": 0.0214,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "struct_wall_tall.glb",
+      "name": "struct_wall_tall",
+      "category": "構造物",
+      "size_bytes": 10180,
+      "size_mb": 0.0097,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
       "file": "struct_well.glb",
       "name": "struct_well",
       "category": "構造物",
@@ -396,6 +444,18 @@
       "category": "構造物",
       "size_bytes": 8344,
       "size_mb": 0.008,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "struct_window_arch.glb",
+      "name": "struct_window_arch",
+      "category": "構造物",
+      "size_bytes": 14360,
+      "size_mb": 0.0137,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
