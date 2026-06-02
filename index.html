@@ -163,6 +163,12 @@ const CFG = {
     speedBoss: 1.4, speedHostile: 2.2, speedNeutral: 1.3, speedVillager: 1.0, // 移動速度
     hp: { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30 }, // 種別ごとの体力
   },
+  level: {
+    baseExp: 12, curve: 1.6,    // 次Lvまでの必要EXP = round(baseExp * Lv^curve)
+    hpPerLevel: 2, dmgPerLevel: 0.6, // Lvごとの最大HP増・攻撃力増
+    killDivisor: 2.5, bossBonus: 8, // 討伐EXP = ceil(敵HP/killDivisor)(+ボスは bossBonus)
+    mineCoal: 1, mineIron: 2, mineGold: 3, chestExp: 5, // 採掘・宝箱のEXP
+  },
 };
 // 重要な数値が壊れた入力で NaN/負になっても暴走しないようクランプ
 function sanitizeCFG() {
@@ -544,6 +550,7 @@ function serializeWorld() {
     chunkEdits: editsToChunkDiff(),                                   // 地形改変（チャンク差分）
     player: { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch },
     hp, hunger, breath,                                               // プレイヤー状態
+    level: playerLevel, exp: playerExp,                               // レベル/経験値
     counts, itemCounts,                                               // インベントリ
     playerModel: currentPlayerFile,                                   // 選択アバター
     equip: { weapon: currentWeapon, owned: [...ownedWeapons], armor: { ...equip.armor }, shield: equip.shield, ownedShield }, // 装備
@@ -598,7 +605,9 @@ function loadWorld(slot = currentSlot) {
       player.pos.set(obj.player.x, obj.player.y, obj.player.z);
       player.yaw = num(obj.player.yaw, 0); player.pitch = num(obj.player.pitch, 0);
     }
-    hp = Math.max(0, Math.min(P.maxHp, num(obj.hp, P.maxHp)));
+    if (Number.isFinite(obj.level) && obj.level >= 1) playerLevel = Math.floor(obj.level); // Lvを先に復元（実効HP上限に影響）
+    if (Number.isFinite(obj.exp) && obj.exp >= 0) playerExp = obj.exp;
+    hp = Math.max(0, Math.min(maxHpEff(), num(obj.hp, maxHpEff())));
     hunger = Math.max(0, Math.min(P.maxHunger, num(obj.hunger, P.maxHunger)));
     breath = Math.max(0, Math.min(P.breathMax, num(obj.breath, P.breathMax)));
     if (obj.counts) for (const k in obj.counts) if (counts[k] !== undefined && Number.isFinite(obj.counts[k])) counts[k] = Math.max(0, obj.counts[k]|0);
@@ -652,7 +661,8 @@ window.VoxelGame = {
   deleteSlot: (n) => { deleteSlot(n); return true; },
   // 3号機UI向け：毎フレーム呼ばれる軽量スナップショット（実体は全てランタイムで解決）
   state: () => ({
-    hp, maxHp: P.maxHp, hunger, maxHunger: P.maxHunger, breath, maxBreath: P.breathMax,
+    hp, maxHp: maxHpEff(), hunger, maxHunger: P.maxHunger, breath, maxBreath: P.breathMax,
+    level: playerLevel, exp: Math.round(playerExp), expToNext: expToNext(playerLevel),
     inWater: breath < P.breathMax, selBlock,
     hotbar: HOTBAR.map(b => ({ block:b, name:NAMES[b], swatch:SWATCH[b], count:counts[b]||0, active:b===selBlock })),
     items:  ITEM_DEFS.map(k => ({ key:k, name:ITEM_NAMES[k], count:itemCounts[k]||0 })),
@@ -1177,7 +1187,25 @@ function toggleRide() {
 const WATER_ID = 7;           // 水ブロックID（バランス値ではなく固定）
 const P = CFG.player;         // 健康系の短縮参照（CFG.player への生参照＝書き換え即反映）
 
-let hp = P.maxHp;
+let playerLevel = 1, playerExp = 0; // レベルアップ（loadWorld前に宣言＝セーブ復元可）
+const maxHpEff = () => P.maxHp + (playerLevel - 1) * CFG.level.hpPerLevel; // Lv補正後の実効最大HP
+const expToNext = (lv) => Math.round(CFG.level.baseExp * Math.pow(lv, CFG.level.curve));
+function emitLevel() { /* state() 経由で3号機が読むので個別通知は最小。必要時に拡張 */ }
+function levelUp() {
+  playerLevel++;
+  hp = maxHpEff();                 // レベルアップ報酬：全回復＋上限UP
+  window.playSFX && window.playSFX('levelup');
+  if (typeof window.onLevelUp === 'function') { try { window.onLevelUp(playerLevel); } catch (e) {} }
+  if (typeof toast === 'function') toast(`レベルアップ！ Lv${playerLevel}`);
+}
+function gainExp(amount) {
+  if (!(amount > 0)) return;
+  playerExp += amount;
+  let guard = 0;
+  while (playerExp >= expToNext(playerLevel) && guard++ < 50) { playerExp -= expToNext(playerLevel); levelUp(); }
+  scheduleSave();
+}
+let hp = maxHpEff();
 let hunger = P.maxHunger;
 let starveAccum = 0;
 let gameTime = 0;             // 経過秒（回復タイミング判定用）
@@ -1223,7 +1251,7 @@ window.damagePlayer = (a) => damage(a, 'external'); // 敵モブからの被ダ�
 function respawn() {
   const s = findSpawn(); player.pos.set(s.x, s.y, s.z);
   player.vel.set(0, 0, 0);
-  hp = P.maxHp; breath = P.breathMax; hunger = P.maxHunger;
+  hp = maxHpEff(); breath = P.breathMax; hunger = P.maxHunger;
   fallPeakY = player.pos.y; prevOnGround = true;
   scheduleSave();
 }
@@ -1270,9 +1298,9 @@ function updateHealth(dt) {
   } else starveAccum = 0;
 
   // --- 自然回復（一定時間ダメージ無し＋空腹が一定以上のときだけ）---
-  if (hp > 0 && hp < P.maxHp && hunger >= P.regenHungerMin && gameTime - lastDamageTime >= P.regenDelay) {
+  if (hp > 0 && hp < maxHpEff() && hunger >= P.regenHungerMin && gameTime - lastDamageTime >= P.regenDelay) {
     regenAccum += dt;
-    if (regenAccum >= P.regenInterval) { regenAccum = 0; hp = Math.min(P.maxHp, hp + 1); hunger = Math.max(0, hunger - 0.5); scheduleSave(); }
+    if (regenAccum >= P.regenInterval) { regenAccum = 0; hp = Math.min(maxHpEff(), hp + 1); hunger = Math.max(0, hunger - 0.5); scheduleSave(); }
   }
 
   hurtFlash = Math.max(0, hurtFlash - dt * 3); // 赤フラッシュ減衰
@@ -1289,7 +1317,7 @@ function hungerHTML() {
 function heartsHTML() {
   const full = Math.floor(hp / 2), half = hp % 2;
   let s = '';
-  for (let i = 0; i < P.maxHp/2; i++) s += (i < full) ? '❤️' : (i === full && half) ? '💗' : '🤍';
+  for (let i = 0; i < maxHpEff()/2; i++) s += (i < full) ? '❤️' : (i === full && half) ? '💗' : '🤍';
   return s;
 }
 
@@ -1342,7 +1370,7 @@ function breakBlock() {
     if (b === B.spawner) spawners.delete(`${r.hit.x},${r.hit.y},${r.hit.z}`); // スポナー破壊で停止
     window.playSFX && window.playSFX('break');
     const mat = ORE_MAT[b];
-    if (mat) { itemCounts[mat] = (itemCounts[mat]||0) + 1; window.playSFX && window.playSFX('pickup'); scheduleSave(); } // 鉱石→素材を採掘
+    if (mat) { itemCounts[mat] = (itemCounts[mat]||0) + 1; window.playSFX && window.playSFX('pickup'); gainExp(mat==='gold'?CFG.level.mineGold:mat==='iron'?CFG.level.mineIron:CFG.level.mineCoal); scheduleSave(); } // 鉱石→素材＋採掘EXP
     else if (b !== B.air && counts[b] !== undefined) { counts[b]++; updateHotbar(); } // 壊したブロックを入手
   }
 }
@@ -1363,6 +1391,7 @@ function openChest(x, y, z) {
   if (Math.random() < 0.3) giveBlock(B.glass, 1 + ri(3));
   updateHotbar(); scheduleSave();
   flashLoot(loot);
+  gainExp(CFG.level.chestExp); // 探索報酬EXP
   openChestProp(x, y, z); // 宝箱プロップを開アニメで開く
   // 宝箱から装備品（半分の確率で1点。地面ドロップとして出し、近づくと自動装備）
   if (Math.random() < 0.5) {
@@ -1593,7 +1622,8 @@ function buildDiag() {
     `アバター向き : ${(avatarYaw*180/Math.PI).toFixed(0)}°`,
     `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
-    `HP / 空腹 / 息 : ${hp}/${P.maxHp} / ${hunger.toFixed(1)}/${P.maxHunger} / ${breath.toFixed(1)}`,
+    `HP / 空腹 / 息 : ${hp}/${maxHpEff()} / ${hunger.toFixed(1)}/${P.maxHunger} / ${breath.toFixed(1)}`,
+    `レベル        : Lv${playerLevel}（EXP ${Math.round(playerExp)}/${expToNext(playerLevel)}）攻撃+${((playerLevel-1)*CFG.level.dmgPerLevel).toFixed(1)}`,
     `減少速度(/分) : 空腹 ${hungerRatePerMin.toFixed(1)} / HP ${hpRatePerMin.toFixed(1)}　※正=減少・負=回復`,
     `最後の被ダメ  : ${lastDamageCause}（${(gameTime - lastDamageTime).toFixed(0)}秒前）`,
     `水際判定      : 頭水中${dbgHeadWater?'○':'-'} / 岸ledge${dbgShore>0?dbgShore+'段':'なし'} / ステップアップ${dbgStepUp?'発動中○':'-'}`,
@@ -2451,7 +2481,7 @@ function resolveMeleeHit(isCrit) {
     const d = Math.hypot(vx, vy, vz);
     if (d > reach) continue;
     if ((vx*dir.x + vy*dir.y + vz*dir.z) / (d || 1) < dot) continue; // 扇の外
-    const dmg = w.dmg * (isCrit ? 1.6 : 1) * (1 + comboIndex * 0.05);
+    const dmg = w.dmg * (isCrit ? 1.6 : 1) * (1 + comboIndex * 0.05) + (playerLevel - 1) * CFG.level.dmgPerLevel; // Lv補正
     hitMob(m, dmg, isCrit, currentWeapon, comboIndex, p.x - ox, p.z - oz, w.knock * (isCrit ? 1.6 : 1));
     any = true;
   }
@@ -2479,6 +2509,8 @@ function killMob(m) {
   m.dying = true; m.hp = 0;
   spawnDrop(MOB_DROP[m.def.type], m.obj.position.x, m.obj.position.y, m.obj.position.z);
   maybeDropEquip(m); // 装備品の抽選ドロップ
+  // 討伐EXP（敵の強さ＝最大HP比例、ボスは加算）
+  gainExp(Math.ceil((M.hp[m.def.type] || 5) / CFG.level.killDivisor) + (m.def.role === 'boss' ? CFG.level.bossBonus : 0));
   if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); }
   else m.dieTimer = 0; // dieクリップ無ければ次フレーム除去
 }
@@ -2489,7 +2521,7 @@ function shootPlayerArrow(power) {
   const ox = player.pos.x, oy = player.pos.y + EYE, oz = player.pos.z;
   const speed = 14 + power * 16;
   const isCrit = power >= 0.99;
-  const dmg = w.dmg * (0.5 + power * 0.8);
+  const dmg = w.dmg * (0.5 + power * 0.8) + (playerLevel - 1) * CFG.level.dmgPerLevel; // Lv補正
   shootArrowEx(ox + dir.x, oy + dir.y, oz + dir.z, dir.x, dir.y, dir.z, speed, true, dmg, isCrit);
   emitPlayerAttack('bow', isCrit, 0);
   playAvatarAttack();
