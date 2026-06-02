@@ -89,6 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
+const BUILD = '2026-06-03d'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1816,7 +1817,7 @@ function buildDiag() {
     : g.ok ? `OK（頂点${g.vertices} / メッシュ${g.meshes}）`
     : `失敗：${g.error}`;
   return [
-    '=== VOXEL WORLD 診断 ===',
+    `=== VOXEL WORLD 診断（build ${BUILD}）===`,
     `FPS          : ${fpsEMA.toFixed(0)}　保存スロット: ${currentSlot}/${MAX_SLOTS}`,
     `経路探索負荷 : ${pathCallsPerSec}回/秒（ノード計${pathNodesPerSec}/秒）`,
     `プロトコル   : ${location.protocol}${location.protocol === 'file:' ? '（※file:ではGLB読込不可。HTTPサーバー/Pagesで開く）' : ''}`,
@@ -1836,6 +1837,7 @@ function buildDiag() {
     `減少速度(/分) : 空腹 ${hungerRatePerMin.toFixed(1)} / HP ${hpRatePerMin.toFixed(1)}　※正=減少・負=回復`,
     `最後の被ダメ  : ${lastDamageCause}（${(gameTime - lastDamageTime).toFixed(0)}秒前）`,
     `水際判定      : 頭水中${dbgHeadWater?'○':'-'} / 岸ledge${dbgShore>0?dbgShore+'段':'なし'} / ステップアップ${dbgStepUp?'発動中○':'-'}`,
+    `水中判定実値  : 頭blk[y${Math.floor(player.pos.y+PH-0.1)}]=${NAMES[getBlock(Math.floor(player.pos.x),Math.floor(player.pos.y+PH-0.1),Math.floor(player.pos.z))]||'空気'} / 足blk[y${Math.floor(player.pos.y+0.2)}]=${NAMES[getBlock(Math.floor(player.pos.x),Math.floor(player.pos.y+0.2),Math.floor(player.pos.z))]||'空気'} / 接地${player.onGround?'○':'-'}（水なら水中判定が正しい・空気なら別要因/キャッシュ疑い）`,
     `BGMシーン     : ${musicScene||'-'}（近接敵${dbgNearEnemies} / 水中${dbgMusicWater?'○':'-'} / combat保持${combatHold.toFixed(1)}s）`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
@@ -2350,6 +2352,7 @@ function updateMobs(dt) {
     }
     const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z;
     const dist = Math.hypot(dx, dz) || 0.0001;
+    const dy = Math.abs(m.obj.position.y - player.pos.y); // 垂直距離。地下/上空に詰まった敵の「見えない攻撃」を遮断する
     if (dist > M.despawn) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
     // ④ 朝＝地上の敵性は陽光で消滅（地下の敵は生存＝洞窟は常時湧き）。プレイヤーから離れた個体のみ
     if (m.hostile && isDay() && dist > 18) {
@@ -2387,8 +2390,8 @@ function updateMobs(dt) {
         if (m.atkCd <= 0) { m.atkCd = C.arrowCd; shootArrow(m.obj.position.x, m.obj.position.y+1.2, m.obj.position.z, player.pos.x, player.pos.y+0.9, player.pos.z); }
       }
     } else if (role === 'boss' && dist < 26) {
-      // ゴーレム：遅い接近（経路探索）＋強攻撃(heavy)
-      if (dist > 2.2) { const h = chaseHeading(m, dt); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; }
+      // ゴーレム：遅い接近（経路探索）＋強攻撃(heavy)。高低差が大きい時は攻撃せず接近を試みる（不可視攻撃の遮断）
+      if (dist > 2.2 || dy > 2.5) { const h = chaseHeading(m, dt); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; }
       else {
         m.obj.rotation.y = Math.atan2(-dx, -dz);
         m.atkCd -= dt; animName = 'attack';
@@ -2399,7 +2402,7 @@ function updateMobs(dt) {
         }
       }
     } else if (role === 'melee' && dist < 20) {
-      if (dist > 1.4) { const h = chaseHeading(m, dt); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; } // 経路探索で追跡
+      if (dist > 1.4 || dy > 2.5) { const h = chaseHeading(m, dt); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; } // 経路探索で追跡（高低差大なら接近優先＝不可視攻撃を遮断）
       else { m.obj.rotation.y = Math.atan2(-dx, -dz); animName = 'attack'; m.atkCd -= dt; if (m.atkCd <= 0) { m.atkCd = C.meleeCd; damage(C.meleeDmg, 'mob'); } }
     } else if (role === 'neutral' && dist < 5 && !m.home) {
       dhx = -dx/dist; dhz = -dz/dist; moving = true; animName = 'walk'; // 動物はプレイヤーから逃げる（住人は逃げない）
@@ -2988,7 +2991,9 @@ function updateCombatMusic(dt) {
   // 近接敵数は毎フレーム数える（ヒステリシスを正確に）
   let near = 0;
   for (const m of mobs) {
-    if (m.hostile && !m.dying && Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z) < COMBAT_RADIUS) near++;
+    if (m.hostile && !m.dying
+        && Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z) < COMBAT_RADIUS
+        && Math.abs(m.obj.position.y - player.pos.y) < 4) near++; // 高低差4超（地下/上空）の敵は戦闘BGMに数えない
   }
   dbgNearEnemies = near;
   if (near > 0) combatHold = COMBAT_HOLD; else combatHold = Math.max(0, combatHold - dt); // 0体になったら数秒で解除
