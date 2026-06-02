@@ -160,6 +160,8 @@ def build_npc(name, cfg):
     def kz(o,f,z):o.location.z=z;o.keyframe_insert('location',index=2,frame=f)
     def krx(o,f,d):o.rotation_euler[0]=math.radians(d);o.keyframe_insert('rotation_euler',index=0,frame=f)
     BZ=body.location.z
+    # 【重要】全クリップの frame1 を中立(0 / BZ)に揃える。glTFのノード基準姿勢は
+    #   export時フレーム(=1)のNLA評価結果になるため、frame1中立＝立ち姿restが正しく出る。
     new_action(body,"body_idle")
     for f,z in [(1,BZ),(30,BZ+0.012*s),(60,BZ)]: kz(body,f,z)
     push(body,"idle")
@@ -168,22 +170,50 @@ def build_npc(name, cfg):
         for f,d in [(1,0),(30,5*sgn),(60,0)]: krx(a,f,d)
         push(a,"idle")
     LA=20.0; AA=14.0
+    # walk: frame1=0 から一往復して0へ戻る（中立始点で循環）
     new_action(legL,"LegL_walk")
-    for f,p in [(1,1),(16,-1),(32,1)]: krx(legL,f,p*LA)
+    for f,d in [(1,0),(8,LA),(16,0),(24,-LA),(32,0)]: krx(legL,f,d)
     push(legL,"walk")
     new_action(legR,"LegR_walk")
-    for f,p in [(1,-1),(16,1),(32,-1)]: krx(legR,f,p*LA)
+    for f,d in [(1,0),(8,-LA),(16,0),(24,LA),(32,0)]: krx(legR,f,d)
     push(legR,"walk")
     new_action(armL,"ArmL_walk")
-    for f,p in [(1,-1),(16,1),(32,-1)]: krx(armL,f,p*AA)
+    for f,d in [(1,0),(8,-AA),(16,0),(24,AA),(32,0)]: krx(armL,f,d)
     push(armL,"walk")
     new_action(armR,"ArmR_walk")
-    for f,p in [(1,1),(16,-1),(32,1)]: krx(armR,f,p*AA)
+    for f,d in [(1,0),(8,AA),(16,0),(24,-AA),(32,0)]: krx(armR,f,d)
     push(armR,"walk")
     new_action(body,"body_walk")
     for f,z in [(1,BZ),(8,BZ+0.018*s),(16,BZ),(24,BZ+0.018*s),(32,BZ)]: kz(body,f,z)
     push(body,"walk")
+    # ---- 生活AI用の追加クリップ（sit/work/talk・クリップ名統一・全てframe1中立）----
+    # sit: 中立→脚を前へ＋胴を下げる（座り込み・以降保持）
+    for lg in (legL,legR):
+        new_action(lg,lg.name+"_sit")
+        for f,d in [(1,0),(15,74),(40,75)]: krx(lg,f,d)
+        push(lg,"sit")
+    new_action(body,"body_sit")
+    for f,z in [(1,BZ),(15,BZ-0.42*s),(40,BZ-0.42*s)]: kz(body,f,z)
+    push(body,"sit")
+    # work: 右腕の振り下ろし反復（鍛冶/耕作）＋胴の微上下。frame1=0で循環
+    new_action(armR,"ArmR_work")
+    for f,d in [(1,0),(8,-55),(16,0),(24,-55),(32,0)]: krx(armR,f,d)
+    push(armR,"work")
+    new_action(body,"body_work")
+    for f,z in [(1,BZ),(8,BZ-0.012*s),(16,BZ),(24,BZ-0.012*s),(32,BZ)]: kz(body,f,z)
+    push(body,"work")
+    # talk: 両腕で身振り＋胴の軽い揺れ。frame1=0
+    new_action(armR,"ArmR_talk")
+    for f,d in [(1,0),(20,-24),(40,0)]: krx(armR,f,d)
+    push(armR,"talk")
+    new_action(armL,"ArmL_talk")
+    for f,d in [(1,0),(25,20),(50,0)]: krx(armL,f,d)
+    push(armL,"talk")
+    new_action(body,"body_talk")
+    for f,z in [(1,BZ),(30,BZ+0.008*s),(60,BZ)]: kz(body,f,z)
+    push(body,"talk")
 
+    scene.frame_set(1)   # rest=frame1（全クリップ中立）でノード基準姿勢を確定
     out=os.path.join(models,name+".glb")
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.export_scene.gltf(filepath=out,export_format='GLB',use_selection=True,export_yup=True,

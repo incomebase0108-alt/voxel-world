@@ -15,8 +15,8 @@
   },
   "totals": {
     "count": 72,
-    "size_bytes": 8100444,
-    "size_mb": 7.725
+    "size_bytes": 8153416,
+    "size_mb": 7.776
   },
   "assets": [
     {
@@ -261,11 +261,14 @@
       "file": "npc_baker.glb",
       "name": "npc_baker",
       "category": "NPC",
-      "size_bytes": 208088,
-      "size_mb": 0.1984,
+      "size_bytes": 214556,
+      "size_mb": 0.2046,
       "clips": [
         "idle",
-        "walk"
+        "walk",
+        "sit",
+        "work",
+        "talk"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -276,11 +279,14 @@
       "file": "npc_blacksmith.glb",
       "name": "npc_blacksmith",
       "category": "NPC",
-      "size_bytes": 223296,
-      "size_mb": 0.213,
+      "size_bytes": 229476,
+      "size_mb": 0.2188,
       "clips": [
         "idle",
-        "walk"
+        "walk",
+        "sit",
+        "work",
+        "talk"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -291,11 +297,14 @@
       "file": "npc_child.glb",
       "name": "npc_child",
       "category": "NPC",
-      "size_bytes": 201260,
-      "size_mb": 0.1919,
+      "size_bytes": 207632,
+      "size_mb": 0.198,
       "clips": [
         "idle",
-        "walk"
+        "walk",
+        "sit",
+        "work",
+        "talk"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -306,11 +315,14 @@
       "file": "npc_elder.glb",
       "name": "npc_elder",
       "category": "NPC",
-      "size_bytes": 233544,
-      "size_mb": 0.2227,
+      "size_bytes": 240460,
+      "size_mb": 0.2293,
       "clips": [
         "idle",
-        "walk"
+        "walk",
+        "sit",
+        "work",
+        "talk"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -321,11 +333,14 @@
       "file": "npc_farmer.glb",
       "name": "npc_farmer",
       "category": "NPC",
-      "size_bytes": 217328,
-      "size_mb": 0.2073,
+      "size_bytes": 223604,
+      "size_mb": 0.2132,
       "clips": [
         "idle",
-        "walk"
+        "walk",
+        "sit",
+        "work",
+        "talk"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -336,11 +351,14 @@
       "file": "npc_guard.glb",
       "name": "npc_guard",
       "category": "NPC",
-      "size_bytes": 235476,
-      "size_mb": 0.2246,
+      "size_bytes": 241784,
+      "size_mb": 0.2306,
       "clips": [
         "idle",
-        "walk"
+        "walk",
+        "sit",
+        "work",
+        "talk"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -351,11 +369,14 @@
       "file": "npc_merchant.glb",
       "name": "npc_merchant",
       "category": "NPC",
-      "size_bytes": 219876,
-      "size_mb": 0.2097,
+      "size_bytes": 224784,
+      "size_mb": 0.2144,
       "clips": [
         "idle",
-        "walk"
+        "walk",
+        "sit",
+        "work",
+        "talk"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -366,13 +387,14 @@
       "file": "npc_villager.glb",
       "name": "npc_villager",
       "category": "NPC",
-      "size_bytes": 218428,
-      "size_mb": 0.2083,
+      "size_bytes": 221472,
+      "size_mb": 0.2112,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk",
+        "sit",
+        "work",
+        "talk"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -383,11 +405,14 @@
       "file": "npc_woman.glb",
       "name": "npc_woman",
       "category": "NPC",
-      "size_bytes": 205024,
-      "size_mb": 0.1955,
+      "size_bytes": 211524,
+      "size_mb": 0.2017,
       "clips": [
         "idle",
-        "walk"
+        "walk",
+        "sit",
+        "work",
+        "talk"
       ],
       "meshes": 5,
       "nodes": 5,
