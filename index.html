@@ -432,6 +432,13 @@ function buildVillage(ox, oz, gx, gz, sw) {
   villages.set(gx+','+gz, { x: ox, z: oz, gh: heightAt(ox, oz) });
   addProp(ox + 3, heightAt(ox+3, oz) + 1, oz, 'well');     // 村の中心近くに井戸
   addProp(ox - 4, heightAt(ox-4, oz) + 1, oz, 'torch');    // 広場の松明
+  // 町小物（生活感＋夜間照明）。足元は各地点の地表に合わせる
+  const tp = (dx, dz, kind, ry) => addProp(ox+dx, heightAt(ox+dx, oz+dz) + 1, oz+dz, kind, ry || 0);
+  tp(-2, 1, 'prop_stall');    tp(2, 1, 'prop_bench');
+  tp(-3, -3, 'prop_lamp');    tp(4, -2, 'prop_lamp');    tp(0, 5, 'prop_lamp'); // 街灯（Emission＝夜間照明）
+  tp(5, 3, 'prop_brazier');   // 篝火
+  tp(-5, 2, 'prop_cart');     tp(-1, -4, 'prop_barrel'); tp(3, 4, 'prop_crate');
+  tp(1, 3, 'prop_laundry');   tp(-2, 4, 'prop_sign');
   const layout = [[0,0], [-8,-2], [7,-3], [-3,8], [6,7]];
   const n = 2 + (hashi(gx, gz) % (layout.length - 1)); // 家2〜5軒
   for (let i = 0; i < n; i++) {
@@ -2354,7 +2361,8 @@ STRUCT_DEFS.forEach(k => gltfLoader.load(`models/struct_${k}.glb`,
   g => { structTemplates[k] = { scene: g.scene, animations: g.animations || [] }; },
   undefined, () => {}));
 // 砦・船のプロップGLB（4号機）。kind に同名で登録（fort_tower/ship_wreck 等）。読込失敗は無視
-['fort_tower','fort_gate','fort_flag','fort_wall','fort_battlement','ship_rowboat','ship_sailboat','ship_wreck']
+['fort_tower','fort_gate','fort_flag','fort_wall','fort_battlement','ship_rowboat','ship_sailboat','ship_wreck',
+ 'prop_stall','prop_bench','prop_lamp','prop_brazier','prop_cart','prop_barrel','prop_crate','prop_sign','prop_laundry']
   .forEach(k => gltfLoader.load(`models/${k}.glb`,
     g => { structTemplates[k] = { scene: g.scene, animations: g.animations || [] }; },
     undefined, () => {}));
