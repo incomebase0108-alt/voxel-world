@@ -266,6 +266,12 @@ function caveNoise(wx, wy, wz) {
 function isCave(wx, wy, wz) {
   return Math.abs(caveNoise(wx, wy, wz) - 0.5) < 0.052; // トンネル状の連結空洞
 }
+// 大空洞：低周波ノイズで広い開けた空間をまれに作る（トンネルと連結して探索の見ごたえを出す）
+function isBigCavern(wx, wy, wz) {
+  const n = (valueNoise(wx*0.024 + 200, wz*0.024 + 200) + valueNoise((wx+wz)*0.02 + 90, wy*0.05 + 50)) * 0.5;
+  return n > 0.70;
+}
+const LAKE_DEPTH = 6; // この深さ以下の空洞は地下湖（水）で満たす
 // 鉱石：深さで出し分け（決定論）。深いほど良い鉱石が出る＝採掘で素材→クラフト/装備の鉱脈
 function oreAt(wx, wy, wz) {
   const r = hash2(wx*3.1 + wy*5.7 + 13, wz*3.1 - wy*2.3 + 29); // 0..1 の擬似乱数(vein状に散布)
@@ -324,9 +330,13 @@ function generateChunk(cx, cz) {
       else if (y >= h-3) b = sub;
       else               b = B.stone;
       // ② 洞窟：地表3層と最下層は残し、内部の石をトンネル状に掘る。残った石には鉱石を散布
-      if (b === B.stone) {
-        if (y > 2 && y < h-4 && isCave(wx, y, wz)) b = B.air;
-        else { const ore = oreAt(wx, y, wz); if (ore) b = ore; }
+      if (b === B.stone && y > 2 && y < h-4) {
+        const big = isBigCavern(wx, y, wz);
+        if (isCave(wx, y, wz) || big) {
+          b = (big && y <= LAKE_DEPTH) ? B.water : B.air; // 大空洞の底だけ地下湖。トンネルは浸水させない
+        } else { const ore = oreAt(wx, y, wz); if (ore) b = ore; }
+      } else if (b === B.stone) {
+        const ore = oreAt(wx, y, wz); if (ore) b = ore; // 浅層/最下層付近の鉱石
       }
       data[idx(x,y,z)] = b;
     }
