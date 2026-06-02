@@ -16,12 +16,18 @@ for blk in (bpy.data.meshes,bpy.data.materials,bpy.data.objects,bpy.data.actions
         except Exception: pass
 scene=bpy.context.scene; scene.render.fps=24
 
-def mat(n,rgb,r=0.7,me=0.0):
+def mat(n,rgb,r=0.7,me=0.0,emis=None):
     m=bpy.data.materials.new(n); m.use_nodes=True; b=m.node_tree.nodes.get("Principled BSDF")
-    b.inputs["Base Color"].default_value=(*rgb,1.0); b.inputs["Roughness"].default_value=r; b.inputs["Metallic"].default_value=me; return m
-M_SKIN=mat("ZSkin",(0.46,0.56,0.40)); M_CLOTH=mat("ZCloth",(0.20,0.26,0.23),0.8)
-M_EYE=mat("ZEye",(1.0,0.86,0.18),0.2); M_HAIR=mat("ZHair",(0.14,0.13,0.10)); M_MOUTH=mat("ZMouth",(0.10,0.06,0.06))
-M_DARK=mat("ZDark",(0.12,0.16,0.14),0.85)
+    b.inputs["Base Color"].default_value=(*rgb,1.0); b.inputs["Roughness"].default_value=r; b.inputs["Metallic"].default_value=me
+    if emis is not None:
+        b.inputs["Emission Color"].default_value=(*emis,1.0); b.inputs["Emission Strength"].default_value=4.0
+    return m
+M_SKIN=mat("ZSkin",(0.44,0.54,0.38)); M_SKIN2=mat("ZSkin2",(0.36,0.45,0.30),0.75)   # 病的な緑・斑
+M_CLOTH=mat("ZCloth",(0.20,0.26,0.23),0.8)
+M_EYE=mat("ZEye",(1.0,0.88,0.20),0.2,emis=(1.0,0.85,0.15))   # 光る目
+M_HAIR=mat("ZHair",(0.14,0.13,0.10)); M_MOUTH=mat("ZMouth",(0.10,0.06,0.06))
+M_DARK=mat("ZDark",(0.12,0.16,0.14),0.85); M_BONE=mat("ZBone",(0.82,0.80,0.70),0.6)
+M_WOUND=mat("ZWound",(0.30,0.10,0.10),0.7); M_SOCKET=mat("ZSocket",(0.05,0.07,0.05),0.5)
 
 def sphere(g,n,loc,s,m,segs=18,rings=12):
     bpy.ops.mesh.primitive_uv_sphere_add(segments=segs,ring_count=rings,location=loc)
@@ -34,32 +40,47 @@ def cube(g,n,loc,s,m,rot=(0,0,0)):
     o=bpy.context.active_object;o.name=n;o.scale=s;o.rotation_euler=rot;o.data.materials.append(m);g.append(o);return o
 
 BODY=[];ARML=[];ARMR=[];LEGL=[];LEGR=[]
-# 胴（破れた服）。やや猫背に見せるため上部をわずかに前傾配置
-cube(BODY,"Torso",(0,0.02,1.16),(0.28,0.17,0.30),M_CLOTH)
-sphere(BODY,"Chest",(0,-0.12,1.30),(0.24,0.10,0.16),M_CLOTH)
-sphere(BODY,"ShoulderL",(0.27,0.02,1.42),(0.10,0.11,0.10),M_CLOTH)
-sphere(BODY,"ShoulderR",(-0.27,0.02,1.42),(0.10,0.11,0.10),M_CLOTH)
-# 破れ（裾の暗いギザ）
-for i,x in enumerate((-0.18,-0.06,0.06,0.18)):
-    cube(BODY,"Rag%d"%i,(x,0.0,0.86),(0.05,0.16,0.06),M_DARK,rot=(math.radians(12),0,0))
-# 首・頭（前傾）
-cyl(BODY,"Neck",(0,0.04,1.54),0.08,0.12,M_SKIN)
-sphere(BODY,"Head",(0,0.06,1.70),(0.135,0.15,0.16),M_SKIN,segs=24,rings=16)
-sphere(BODY,"Jaw",(0,0.05,1.62),(0.11,0.11,0.09),M_SKIN)
+# 胴（破れた服・猫背）。左右非対称(片肩上がり)で不気味さ
+cube(BODY,"Torso",(0,0.02,1.16),(0.27,0.16,0.30),M_CLOTH)
+sphere(BODY,"Chest",(0,-0.12,1.30),(0.23,0.10,0.16),M_CLOTH)
+sphere(BODY,"ShoulderL",(0.27,0.02,1.46),(0.10,0.11,0.10),M_CLOTH)   # 片肩上がり
+sphere(BODY,"ShoulderR",(-0.26,0.02,1.40),(0.095,0.10,0.10),M_CLOTH)
+# 露出した肋骨（破れた胸元から）＋腹の傷
+for i,zz in enumerate((1.24,1.16,1.08)):
+    cube(BODY,"Rib%d"%i,(-0.04,-0.16,zz),(0.16-0.01*i,0.02,0.018),M_BONE,rot=(0,0,math.radians(6)))
+cube(BODY,"Wound",(0.10,-0.15,1.10),(0.06,0.03,0.07),M_WOUND)        # 腹の傷口
+sphere(BODY,"SkinPatch",(-0.14,-0.10,1.20),(0.07,0.04,0.08),M_SKIN2) # 変色した肌
+# 破れ（裾の暗いギザ・長め＆非対称）
+for i,(x,h) in enumerate([(-0.20,0.20),(-0.07,0.14),(0.06,0.22),(0.19,0.13)]):
+    cube(BODY,"Rag%d"%i,(x,0.0,0.92-h*0.5),(0.05,0.16,h*0.5),M_DARK,rot=(math.radians(10+i*4),0,0))
+# 首・頭（前傾・やや傾ける）
+cyl(BODY,"Neck",(0,0.04,1.54),0.075,0.12,M_SKIN)
+sphere(BODY,"Head",(0.02,0.06,1.70),(0.135,0.15,0.16),M_SKIN,segs=24,rings=16,)
+sphere(BODY,"Jaw",(0.02,0.07,1.60),(0.10,0.11,0.07),M_SKIN)          # 下がった顎
 FY=0.14
-sphere(BODY,"EyeL",(0.055,FY+0.04,1.72),(0.03,0.022,0.032),M_EYE,segs=12,rings=10)
-sphere(BODY,"EyeR",(-0.055,FY+0.04,1.72),(0.03,0.022,0.032),M_EYE,segs=12,rings=10)
-cube(BODY,"BrowL",(0.055,FY+0.03,1.76),(0.04,0.02,0.01),M_HAIR)
-cube(BODY,"BrowR",(-0.055,FY+0.03,1.76),(0.04,0.02,0.01),M_HAIR)
-cube(BODY,"Mouth",(0,FY+0.05,1.61),(0.05,0.02,0.025),M_MOUTH)  # 開いた口
-sphere(BODY,"Hair",(0,0.02,1.77),(0.15,0.155,0.12),M_HAIR,segs=20,rings=14)
+# 落ち窪んだ眼窩（暗い）＋その奥に光る目
+sphere(BODY,"SocketL",(0.06,FY+0.02,1.72),(0.045,0.04,0.045),M_SOCKET,segs=12,rings=10)
+sphere(BODY,"SocketR",(-0.05,FY+0.02,1.71),(0.045,0.04,0.045),M_SOCKET,segs=12,rings=10)
+sphere(BODY,"EyeL",(0.06,FY+0.05,1.72),(0.025,0.02,0.026),M_EYE,segs=10,rings=8)
+sphere(BODY,"EyeR",(-0.05,FY+0.05,1.71),(0.025,0.02,0.026),M_EYE,segs=10,rings=8)
+cube(BODY,"BrowL",(0.06,FY+0.04,1.77),(0.045,0.02,0.012),M_HAIR,rot=(0,0,math.radians(-8)))
+cube(BODY,"BrowR",(-0.05,FY+0.04,1.76),(0.045,0.02,0.012),M_HAIR,rot=(0,0,math.radians(10)))
+cube(BODY,"Mouth",(0.02,FY+0.05,1.585),(0.06,0.025,0.035),M_MOUTH)   # 開いた口（大きめ）
+for i,x in enumerate((-0.03,0.0,0.03)):                              # 覗く歯
+    cube(BODY,"Tooth%d"%i,(0.02+x,FY+0.06,1.60),(0.01,0.012,0.012),M_BONE)
+sphere(BODY,"Hair",(0.02,0.02,1.77),(0.15,0.155,0.11),M_HAIR,segs=20,rings=14)
 
-# 腕（肩ピボット z=1.42）。後で前方へ倒してジオメトリに焼く＝突き出し姿勢
+# 腕（肩ピボット z=1.42）。突き出し姿勢＋鉤爪
 def arm(g,s):
     x=0.32*s
-    cyl(g,"Upper",(x,0,1.28),0.08,0.32,M_SKIN,rot=(0,math.radians(6*s),0))
-    cyl(g,"Fore",(x+0.02*s,0,0.96),0.07,0.32,M_SKIN,rot=(0,math.radians(8*s),0))
-    sphere(g,"Hand",(x+0.03*s,0,0.78),(0.075,0.06,0.085),M_SKIN)
+    cyl(g,"Upper",(x,0,1.28),0.078,0.32,M_SKIN,rot=(0,math.radians(6*s),0))
+    cyl(g,"Fore",(x+0.02*s,0,0.96),0.066,0.32,M_SKIN2,rot=(0,math.radians(8*s),0))
+    if s>0: cube(g,"BoneOut",(x+0.04*s,0,0.84),(0.02,0.02,0.10),M_BONE)  # 折れて突き出た骨(左腕)
+    sphere(g,"Hand",(x+0.03*s,0,0.78),(0.072,0.06,0.08),M_SKIN)
+    for j,cx in enumerate((-0.04,0.0,0.04)):                              # 鉤爪
+        cone_loc=(x+0.03*s+cx*0.6, 0.06, 0.72)
+        bpy.ops.mesh.primitive_cone_add(vertices=6,radius1=0.014,radius2=0.0,depth=0.07,location=cone_loc,rotation=(math.radians(80),0,0))
+        o=bpy.context.active_object;o.name="Claw%d"%j;o.data.materials.append(M_BONE);g.append(o)
 arm(ARML,1); arm(ARMR,-1)
 # 脚（股関節 z=0.84）
 def leg(g,s):
@@ -127,13 +148,13 @@ for f,z in [(1,BZ),(8,BZ+0.015),(16,BZ),(24,BZ+0.015),(32,BZ)]: kz(body,f,z)
 push(body,"walk")
 for lg,sgn in [(legL,1),(legR,-1)]:
     new_action(lg,lg.name+"_walk")
-    for f,p in [(1,1),(16,-1),(32,1)]: krx(lg,f,sgn*p*14)
+    for f,d in [(1,0),(8,sgn*14),(16,0),(24,-sgn*14),(32,0)]: krx(lg,f,d)
     push(lg,"walk")
 for a,sgn in [(armL,1),(armR,-1)]:
     new_action(a,a.name+"_walk")
-    for f,p in [(1,1),(16,-1),(32,1)]: krx(a,f,sgn*p*6)
+    for f,d in [(1,0),(8,sgn*6),(16,0),(24,-sgn*6),(32,0)]: krx(a,f,d)
     push(a,"walk")
-# attack: 両腕を振り下ろす（前方へ）＋胴前傾
+# attack: 両腕を振り下ろす（前方へ）＋胴前傾（frame1=0）
 new_action(body,"body_attack")
 for f,d in [(1,0),(8,-12),(16,0)]: krx(body,f,d)
 push(body,"attack")
@@ -141,6 +162,7 @@ for a in (armL,armR):
     new_action(a,a.name+"_attack")
     for f,d in [(1,0),(5,28),(9,-35),(16,0)]: krx(a,f,d)  # 振り上げ→振り下ろし
     push(a,"attack")
+scene.frame_set(1)
 
 repo=os.path.abspath(os.path.join(os.path.dirname(__file__),".."));models=os.path.join(repo,"models");os.makedirs(models,exist_ok=True)
 out=os.path.join(models,"mob_zombie.glb")

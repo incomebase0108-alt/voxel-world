@@ -15,8 +15,8 @@
   },
   "totals": {
     "count": 76,
-    "size_bytes": 10067000,
-    "size_mb": 9.601
+    "size_bytes": 10137088,
+    "size_mb": 9.667
   },
   "assets": [
     {
@@ -205,18 +205,16 @@
       "file": "mob_skeleton.glb",
       "name": "mob_skeleton",
       "category": "モブ",
-      "size_bytes": 285984,
-      "size_mb": 0.2727,
+      "size_bytes": 310544,
+      "size_mb": 0.2962,
       "clips": [
-        "attack",
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk",
+        "attack"
       ],
       "meshes": 5,
       "nodes": 5,
-      "materials": 4,
+      "materials": 8,
       "error": null
     },
     {
@@ -241,18 +239,16 @@
       "file": "mob_zombie.glb",
       "name": "mob_zombie",
       "category": "モブ",
-      "size_bytes": 244656,
-      "size_mb": 0.2333,
+      "size_bytes": 290184,
+      "size_mb": 0.2767,
       "clips": [
-        "attack",
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk",
+        "attack"
       ],
       "meshes": 5,
       "nodes": 5,
-      "materials": 6,
+      "materials": 10,
       "error": null
     },
     {

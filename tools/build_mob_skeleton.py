@@ -15,11 +15,17 @@ for blk in (bpy.data.meshes,bpy.data.materials,bpy.data.objects,bpy.data.actions
         except Exception: pass
 scene=bpy.context.scene; scene.render.fps=24
 
-def mat(n,rgb,r=0.6,me=0.0):
+def mat(n,rgb,r=0.6,me=0.0,emis=None,es=4.0):
     m=bpy.data.materials.new(n);m.use_nodes=True;b=m.node_tree.nodes.get("Principled BSDF")
-    b.inputs["Base Color"].default_value=(*rgb,1.0);b.inputs["Roughness"].default_value=r;b.inputs["Metallic"].default_value=me;return m
-M_BONE=mat("Bone",(0.90,0.89,0.82),0.55); M_SOCKET=mat("Socket",(0.04,0.05,0.05),0.4)
+    b.inputs["Base Color"].default_value=(*rgb,1.0);b.inputs["Roughness"].default_value=r;b.inputs["Metallic"].default_value=me
+    if emis is not None:
+        b.inputs["Emission Color"].default_value=(*emis,1.0); b.inputs["Emission Strength"].default_value=es
+    return m
+M_BONE=mat("Bone",(0.90,0.89,0.82),0.55); M_BONE2=mat("Bone2",(0.78,0.76,0.66),0.6)
+M_SOCKET=mat("Socket",(0.03,0.04,0.04),0.4)
+M_GLOW=mat("Glow",(0.4,0.95,1.0),0.2,emis=(0.3,0.9,1.0),es=6.0)   # 眼窩の冷たい光
 M_BOW=mat("Bow",(0.35,0.22,0.10),0.6); M_STRING=mat("Str",(0.85,0.85,0.80),0.5)
+M_CLOAK=mat("Cloak",(0.16,0.17,0.20),0.85); M_CLOAK2=mat("Cloak2",(0.10,0.11,0.13),0.9)
 
 def sphere(g,n,loc,s,m,segs=16,rings=10):
     bpy.ops.mesh.primitive_uv_sphere_add(segments=segs,ring_count=rings,location=loc)
@@ -40,16 +46,26 @@ for i,z in enumerate((1.06,1.16,1.26,1.36)):   # 肋骨リング
 sphere(BODY,"ShoulderL",(0.20,0,1.42),(0.06,0.07,0.06),M_BONE)
 sphere(BODY,"ShoulderR",(-0.20,0,1.42),(0.06,0.07,0.06),M_BONE)
 cyl(BODY,"Collar",(0,0,1.42),0.18,0.022,M_BONE,verts=12,rot=(0,math.radians(90),0))
-# 首・頭蓋
+# ボロ外套（肩〜背、ラグ裾・シルエットに陰）
+cube(BODY,"Cloak",(0,0.14,1.20),(0.26,0.04,0.34),M_CLOAK,rot=(math.radians(-6),0,0))
+cube(BODY,"CloakLow",(0,0.18,0.86),(0.22,0.04,0.22),M_CLOAK2,rot=(math.radians(-14),0,0))
+for i,x in enumerate((-0.18,-0.06,0.06,0.18)):
+    cube(BODY,"CloakRag%d"%i,(x,0.18,0.70),(0.045,0.03,0.12),M_CLOAK2,rot=(math.radians(-16),0,0))
+# 首・頭蓋（鋭い造形）
 cyl(BODY,"Neck",(0,0,1.52),0.04,0.08,M_BONE)
-sphere(BODY,"Skull",(0,0.01,1.64),(0.115,0.13,0.13),M_BONE,segs=22,rings=16)
-sphere(BODY,"Jaw",(0,0.03,1.57),(0.09,0.08,0.06),M_BONE)
+sphere(BODY,"Skull",(0,0.01,1.64),(0.115,0.135,0.135),M_BONE,segs=22,rings=16)
+cube(BODY,"BrowRidge",(0,0.10,1.69),(0.115,0.04,0.03),M_BONE2)        # 眉骨の張り出し
+sphere(BODY,"CheekL",(0.07,0.07,1.61),(0.04,0.05,0.05),M_BONE2,segs=10,rings=8)  # 頬骨
+sphere(BODY,"CheekR",(-0.07,0.07,1.61),(0.04,0.05,0.05),M_BONE2,segs=10,rings=8)
+cube(BODY,"Jaw",(0,0.06,1.55),(0.085,0.09,0.05),M_BONE2)              # 角ばった顎
 FY=0.10
-sphere(BODY,"SocketL",(0.05,FY+0.02,1.66),(0.035,0.03,0.035),M_SOCKET,segs=12,rings=10)
-sphere(BODY,"SocketR",(-0.05,FY+0.02,1.66),(0.035,0.03,0.035),M_SOCKET,segs=12,rings=10)
-cube(BODY,"NoseHole",(0,FY+0.04,1.61),(0.015,0.02,0.02),M_SOCKET)
+sphere(BODY,"SocketL",(0.05,FY+0.01,1.655),(0.042,0.04,0.042),M_SOCKET,segs=12,rings=10)
+sphere(BODY,"SocketR",(-0.05,FY+0.01,1.655),(0.042,0.04,0.042),M_SOCKET,segs=12,rings=10)
+sphere(BODY,"GlowL",(0.05,FY+0.035,1.655),(0.022,0.02,0.022),M_GLOW,segs=10,rings=8)  # 冷光の眼
+sphere(BODY,"GlowR",(-0.05,FY+0.035,1.655),(0.022,0.02,0.022),M_GLOW,segs=10,rings=8)
+cube(BODY,"NoseHole",(0,FY+0.04,1.61),(0.015,0.025,0.025),M_SOCKET)
 for i,x in enumerate((-0.03,0.0,0.03)):  # 歯
-    cube(BODY,"Tooth%d"%i,(x,FY+0.03,1.55),(0.012,0.012,0.012),M_BONE)
+    cube(BODY,"Tooth%d"%i,(x,FY+0.03,1.55),(0.012,0.014,0.012),M_BONE)
 
 # 腕（肩 z=1.42）。細い骨。左手に弓。
 def arm(g,s,with_bow=False):
@@ -129,10 +145,10 @@ for f,z in [(1,BZ),(8,BZ+0.018),(16,BZ),(24,BZ+0.018),(32,BZ)]: kz(body,f,z)
 push(body,"walk")
 for lg,sgn in [(legL,1),(legR,-1)]:
     new_action(lg,lg.name+"_walk")
-    for f,p in [(1,1),(16,-1),(32,1)]: krx(lg,f,sgn*p*18)
+    for f,d in [(1,0),(8,sgn*18),(16,0),(24,-sgn*18),(32,0)]: krx(lg,f,d)
     push(lg,"walk")
 new_action(armR,"armR_walk")
-for f,p in [(1,1),(16,-1),(32,1)]: krx(armR,f,p*8)
+for f,d in [(1,0),(8,8),(16,0),(24,-8),(32,0)]: krx(armR,f,d)
 push(armR,"walk")
 # attack: 弓を引く（右腕を後方へ引く→放つ）。左腕(弓)は構え保持。
 new_action(armR,"armR_attack")
@@ -141,6 +157,7 @@ push(armR,"attack")
 new_action(body,"body_attack")
 for f,d in [(1,0),(10,4),(20,0)]: kry(body,f,d)                    # わずかに身構え
 push(body,"attack")
+scene.frame_set(1)
 
 repo=os.path.abspath(os.path.join(os.path.dirname(__file__),".."));models=os.path.join(repo,"models");os.makedirs(models,exist_ok=True)
 out=os.path.join(models,"mob_skeleton.glb")
