@@ -1,0 +1,506 @@
+{
+  "convention": {
+    "up": "Y-up",
+    "front": "glTF -Z (Blenderでは+Y面で造形)",
+    "scale": "1ブロック≒1m",
+    "origin": {
+      "player/mob/npc/struct": "足元中心 z=0",
+      "item_(消費)": "形状中心",
+      "item_(装備:sword/pickaxe/axe)": "柄の最下端（握り基部）",
+      "item_bow": "握り中央",
+      "item_(装備:shield/armor)": "形状中心"
+    },
+    "clip_naming": "idle / walk（敵性=+attack, ボス=+heavy）。構造物は idle ＋ 固有(chest:open 等)。",
+    "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
+  },
+  "totals": {
+    "count": 35,
+    "size_bytes": 5634492,
+    "size_mb": 5.373
+  },
+  "assets": [
+    {
+      "file": "player.glb",
+      "name": "player",
+      "category": "プレイヤー",
+      "size_bytes": 693876,
+      "size_mb": 0.6617,
+      "clips": [
+        "idle",
+        "walk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 7,
+      "error": null
+    },
+    {
+      "file": "player_azure.glb",
+      "name": "player_azure",
+      "category": "プレイヤー",
+      "size_bytes": 694116,
+      "size_mb": 0.662,
+      "clips": [
+        "idle",
+        "walk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 7,
+      "error": null
+    },
+    {
+      "file": "player_crimson.glb",
+      "name": "player_crimson",
+      "category": "プレイヤー",
+      "size_bytes": 694104,
+      "size_mb": 0.6619,
+      "clips": [
+        "idle",
+        "walk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 7,
+      "error": null
+    },
+    {
+      "file": "player_emerald.glb",
+      "name": "player_emerald",
+      "category": "プレイヤー",
+      "size_bytes": 694056,
+      "size_mb": 0.6619,
+      "clips": [
+        "idle",
+        "walk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 7,
+      "error": null
+    },
+    {
+      "file": "player_gold.glb",
+      "name": "player_gold",
+      "category": "プレイヤー",
+      "size_bytes": 693928,
+      "size_mb": 0.6618,
+      "clips": [
+        "idle",
+        "walk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 7,
+      "error": null
+    },
+    {
+      "file": "mob_chicken.glb",
+      "name": "mob_chicken",
+      "category": "モブ",
+      "size_bytes": 109732,
+      "size_mb": 0.1046,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 7,
+      "nodes": 7,
+      "materials": 5,
+      "error": null
+    },
+    {
+      "file": "mob_cow.glb",
+      "name": "mob_cow",
+      "category": "モブ",
+      "size_bytes": 257616,
+      "size_mb": 0.2457,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 26,
+      "nodes": 26,
+      "materials": 8,
+      "error": null
+    },
+    {
+      "file": "mob_golem.glb",
+      "name": "mob_golem",
+      "category": "モブ",
+      "size_bytes": 180200,
+      "size_mb": 0.1719,
+      "clips": [
+        "idle",
+        "walk",
+        "attack",
+        "heavy"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "mob_horse.glb",
+      "name": "mob_horse",
+      "category": "モブ",
+      "size_bytes": 163632,
+      "size_mb": 0.1561,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 6,
+      "nodes": 6,
+      "materials": 6,
+      "error": null
+    },
+    {
+      "file": "mob_pig.glb",
+      "name": "mob_pig",
+      "category": "モブ",
+      "size_bytes": 113600,
+      "size_mb": 0.1083,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 7,
+      "nodes": 7,
+      "materials": 5,
+      "error": null
+    },
+    {
+      "file": "mob_sheep.glb",
+      "name": "mob_sheep",
+      "category": "モブ",
+      "size_bytes": 208808,
+      "size_mb": 0.1991,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 7,
+      "nodes": 7,
+      "materials": 5,
+      "error": null
+    },
+    {
+      "file": "mob_skeleton.glb",
+      "name": "mob_skeleton",
+      "category": "モブ",
+      "size_bytes": 282424,
+      "size_mb": 0.2693,
+      "clips": [
+        "idle",
+        "walk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "mob_slime.glb",
+      "name": "mob_slime",
+      "category": "モブ",
+      "size_bytes": 41992,
+      "size_mb": 0.04,
+      "clips": [
+        "idle",
+        "walk",
+        "attack"
+      ],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 5,
+      "error": null
+    },
+    {
+      "file": "mob_zombie.glb",
+      "name": "mob_zombie",
+      "category": "モブ",
+      "size_bytes": 241348,
+      "size_mb": 0.2302,
+      "clips": [
+        "idle",
+        "walk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 6,
+      "error": null
+    },
+    {
+      "file": "npc_villager.glb",
+      "name": "npc_villager",
+      "category": "NPC",
+      "size_bytes": 215164,
+      "size_mb": 0.2052,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 9,
+      "error": null
+    },
+    {
+      "file": "struct_altar.glb",
+      "name": "struct_altar",
+      "category": "構造物",
+      "size_bytes": 29504,
+      "size_mb": 0.0281,
+      "clips": [
+        "idle"
+      ],
+      "meshes": 2,
+      "nodes": 2,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "struct_chest.glb",
+      "name": "struct_chest",
+      "category": "構造物",
+      "size_bytes": 14028,
+      "size_mb": 0.0134,
+      "clips": [
+        "open"
+      ],
+      "meshes": 2,
+      "nodes": 2,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "struct_door.glb",
+      "name": "struct_door",
+      "category": "構造物",
+      "size_bytes": 13008,
+      "size_mb": 0.0124,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "struct_fence.glb",
+      "name": "struct_fence",
+      "category": "構造物",
+      "size_bytes": 7536,
+      "size_mb": 0.0072,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "struct_roof.glb",
+      "name": "struct_roof",
+      "category": "構造物",
+      "size_bytes": 3796,
+      "size_mb": 0.0036,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "struct_spawner.glb",
+      "name": "struct_spawner",
+      "category": "構造物",
+      "size_bytes": 35248,
+      "size_mb": 0.0336,
+      "clips": [
+        "idle"
+      ],
+      "meshes": 2,
+      "nodes": 2,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "struct_torch.glb",
+      "name": "struct_torch",
+      "category": "構造物",
+      "size_bytes": 11892,
+      "size_mb": 0.0113,
+      "clips": [
+        "idle"
+      ],
+      "meshes": 2,
+      "nodes": 2,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "struct_wall.glb",
+      "name": "struct_wall",
+      "category": "構造物",
+      "size_bytes": 8300,
+      "size_mb": 0.0079,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "struct_well.glb",
+      "name": "struct_well",
+      "category": "構造物",
+      "size_bytes": 32556,
+      "size_mb": 0.031,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 7,
+      "error": null
+    },
+    {
+      "file": "struct_window.glb",
+      "name": "struct_window",
+      "category": "構造物",
+      "size_bytes": 8344,
+      "size_mb": 0.008,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "item_apple.glb",
+      "name": "item_apple",
+      "category": "アイテム",
+      "size_bytes": 35020,
+      "size_mb": 0.0334,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "item_coin.glb",
+      "name": "item_coin",
+      "category": "アイテム",
+      "size_bytes": 8648,
+      "size_mb": 0.0082,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "item_egg.glb",
+      "name": "item_egg",
+      "category": "アイテム",
+      "size_bytes": 28668,
+      "size_mb": 0.0273,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 1,
+      "error": null
+    },
+    {
+      "file": "item_meat.glb",
+      "name": "item_meat",
+      "category": "アイテム",
+      "size_bytes": 44044,
+      "size_mb": 0.042,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "item_armor.glb",
+      "name": "item_armor",
+      "category": "装備・道具",
+      "size_bytes": 8468,
+      "size_mb": 0.0081,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "item_axe.glb",
+      "name": "item_axe",
+      "category": "装備・道具",
+      "size_bytes": 8260,
+      "size_mb": 0.0079,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "item_bow.glb",
+      "name": "item_bow",
+      "category": "装備・道具",
+      "size_bytes": 10252,
+      "size_mb": 0.0098,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 5,
+      "error": null
+    },
+    {
+      "file": "item_pickaxe.glb",
+      "name": "item_pickaxe",
+      "category": "装備・道具",
+      "size_bytes": 10764,
+      "size_mb": 0.0103,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "item_shield.glb",
+      "name": "item_shield",
+      "category": "装備・道具",
+      "size_bytes": 17776,
+      "size_mb": 0.017,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "item_sword.glb",
+      "name": "item_sword",
+      "category": "装備・道具",
+      "size_bytes": 13784,
+      "size_mb": 0.0131,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 4,
+      "error": null
+    }
+  ]
+}

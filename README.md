@@ -34,6 +34,8 @@ Three.js 製・HTML 1枚で動作。キャラクターは Blender 製 GLB を差
 ```
 index.html      ... ゲーム本体（エンジン）
 models/         ... Blender 製 GLB を置く（4号機）
+models/ASSETS.md   ... 全アセット索引（ファイル/クリップ/容量・自動生成）
+models/ASSETS.json ... 同・機械可読版（1号機/3号機が参照）
 README.md       ... この文書（兼・作業ブリーフ）
 ```
 
