@@ -10,7 +10,7 @@ import bpy, os, math, mathutils
 V=mathutils.Vector
 repo=os.path.abspath(os.path.join(os.path.dirname(__file__),".."))
 MODELS=os.path.join(repo,"models")
-HAND_R=V((-0.39,-0.02,0.70)); HAND_L=V((0.39,-0.02,0.70))
+HAND_R=V((-0.37,0.0,0.73)); HAND_L=V((0.37,0.0,0.73))   # ヒーロー版player再計測
 
 # 武器ごとの手持ち仕様：(手, 位置=手先からの微調整, 回転euler度)
 # 回転は Blender(Z-up,正面+Y)。剣/ピッケル/斧=握り基部が手・刃/頭が上前方、弓/盾=握り中央/中心。
