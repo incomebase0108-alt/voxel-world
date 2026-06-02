@@ -15,16 +15,16 @@
   },
   "totals": {
     "count": 76,
-    "size_bytes": 8196692,
-    "size_mb": 7.817
+    "size_bytes": 9997724,
+    "size_mb": 9.535
   },
   "assets": [
     {
       "file": "player.glb",
       "name": "player",
       "category": "プレイヤー",
-      "size_bytes": 693876,
-      "size_mb": 0.6617,
+      "size_bytes": 1054144,
+      "size_mb": 1.0053,
       "clips": [
         "idle",
         "walk",
@@ -32,15 +32,15 @@
       ],
       "meshes": 5,
       "nodes": 5,
-      "materials": 7,
+      "materials": 11,
       "error": null
     },
     {
       "file": "player_azure.glb",
       "name": "player_azure",
       "category": "プレイヤー",
-      "size_bytes": 694116,
-      "size_mb": 0.662,
+      "size_bytes": 1054452,
+      "size_mb": 1.0056,
       "clips": [
         "idle",
         "walk",
@@ -48,15 +48,15 @@
       ],
       "meshes": 5,
       "nodes": 5,
-      "materials": 7,
+      "materials": 11,
       "error": null
     },
     {
       "file": "player_crimson.glb",
       "name": "player_crimson",
       "category": "プレイヤー",
-      "size_bytes": 694104,
-      "size_mb": 0.6619,
+      "size_bytes": 1054208,
+      "size_mb": 1.0054,
       "clips": [
         "idle",
         "walk",
@@ -64,15 +64,15 @@
       ],
       "meshes": 5,
       "nodes": 5,
-      "materials": 7,
+      "materials": 11,
       "error": null
     },
     {
       "file": "player_emerald.glb",
       "name": "player_emerald",
       "category": "プレイヤー",
-      "size_bytes": 694056,
-      "size_mb": 0.6619,
+      "size_bytes": 1054004,
+      "size_mb": 1.0052,
       "clips": [
         "idle",
         "walk",
@@ -80,15 +80,15 @@
       ],
       "meshes": 5,
       "nodes": 5,
-      "materials": 7,
+      "materials": 11,
       "error": null
     },
     {
       "file": "player_gold.glb",
       "name": "player_gold",
       "category": "プレイヤー",
-      "size_bytes": 693928,
-      "size_mb": 0.6618,
+      "size_bytes": 1054304,
+      "size_mb": 1.0055,
       "clips": [
         "idle",
         "walk",
@@ -96,7 +96,7 @@
       ],
       "meshes": 5,
       "nodes": 5,
-      "materials": 7,
+      "materials": 11,
       "error": null
     },
     {
