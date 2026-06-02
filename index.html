@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03f'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-03g'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1853,6 +1853,7 @@ function buildDiag() {
     `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
     `最寄り乗れる船: ${nearBoat}`,
     `武器 / 戦闘  : 装備=${WEAPONS[currentWeapon].name}（C/Bで切替）所持[${WEAPON_ORDER.filter(w=>ownedWeapons.has(w)).map(w=>WEAPONS[w].name).join('・')}] / コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'}`,
+    `攻撃の特性   : ${WEAPONS[currentWeapon].ranged?'遠距離(溜め)':'近接'} 威力${WEAPONS[currentWeapon].dmg} 間合${WEAPONS[currentWeapon].reach} 振り${WEAPONS[currentWeapon].swing}s 動作x${WEAPONS[currentWeapon].anim} 止${WEAPONS[currentWeapon].hitstop}s（装備武器で変化）`,
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 住人${mobs.filter(m=>m.home).length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
@@ -1910,9 +1911,10 @@ function playAvatarAnim(moving, swimming) {
 function playAvatarAttack() {
   if (!mixer || !actAttack) return;
   if (curAction) curAction.fadeOut(0.08);
-  actAttack.reset().fadeIn(0.05).play();
+  const scale = WEAPONS[currentWeapon].anim || 1; // 武器別モーション速度（斧=大振り遅い/素手=素早い）
+  actAttack.reset(); actAttack.timeScale = scale; actAttack.fadeIn(0.05).play();
   curAction = null;
-  avatarAttackTimer = (actAttack.getClip().duration || 0.4);
+  avatarAttackTimer = (actAttack.getClip().duration || 0.4) / scale; // 倍率分だけ再生時間も伸縮
 }
 // (C) プレイヤー色選択：5色から選んでアバターを読み込む（選択は保存）
 const PLAYER_SKINS = [
@@ -1928,12 +1930,14 @@ let currentPlayerFile = localStorage.getItem('voxel_player_model') || 'models/pl
 // 武器・装備の状態（loadWorld より前に宣言＝セーブ復元時の参照を可能に）。挙動関数は後述
 // ===================================================================
 // 武器ごとの挙動差：dmg=威力 / reach=間合い / dot=扇の狭さ(小さいほど広い) / swing=振り時間 / knock=ノックバック
+// anim=攻撃モーションの再生倍率（小=大振り/遅い・大=素早い）、hitstop=命中の止め秒（重い武器ほど長い）
+//   → 装備した武器で「振りの速さ・手応え・音・FX」が変わる（剣=標準/斧=大振り重い/素手=素早い）
 const WEAPONS = {
-  fist:    { name:'素手',     dmg:3, reach:2.6, dot:0.45, swing:0.30, knock:0.35, ranged:false },
-  sword:   { name:'剣',       dmg:5, reach:3.3, dot:0.30, swing:0.38, knock:0.5,  ranged:false }, // 範囲広め
-  axe:     { name:'斧',       dmg:9, reach:3.0, dot:0.55, swing:0.72, knock:0.9,  ranged:false }, // 高威力・遅い
-  pickaxe: { name:'ピッケル', dmg:4, reach:2.8, dot:0.40, swing:0.34, knock:0.4,  ranged:false }, // 採掘向き・素手より少し上
-  bow:     { name:'弓',       dmg:7, reach:0,   dot:0,    swing:0.5,  knock:0.25, ranged:true  }, // 遠距離・溜め
+  fist:    { name:'素手',     dmg:3, reach:2.6, dot:0.45, swing:0.30, knock:0.35, ranged:false, anim:1.45, hitstop:0.05 }, // 素早い・軽い
+  sword:   { name:'剣',       dmg:5, reach:3.3, dot:0.30, swing:0.38, knock:0.5,  ranged:false, anim:1.0,  hitstop:0.08 }, // 標準・範囲広め
+  axe:     { name:'斧',       dmg:9, reach:3.0, dot:0.55, swing:0.72, knock:0.9,  ranged:false, anim:0.65, hitstop:0.15 }, // 大振り・遅い・重い
+  pickaxe: { name:'ピッケル', dmg:4, reach:2.8, dot:0.40, swing:0.34, knock:0.4,  ranged:false, anim:1.2,  hitstop:0.06 }, // 採掘向き・素手より少し上
+  bow:     { name:'弓',       dmg:7, reach:0,   dot:0,    swing:0.5,  knock:0.25, ranged:true,  anim:1.0,  hitstop:0.05 }, // 遠距離・溜め
 };
 const WEAPON_ORDER = ['fist','sword','axe','pickaxe','bow'];
 let currentWeapon = 'fist'; // 初期は素手（武器は入手して持ち替え）
@@ -2799,7 +2803,7 @@ window.worldToScreen = (x, y, z) => {
 function onAttackDown() {
   mouseDown = true;
   const w = WEAPONS[currentWeapon];
-  if (w.ranged) { drawTime = 0; return; }
+  if (w.ranged) { drawTime = 0; window.onAttackCharge && window.onAttackCharge('start'); return; } // 弓：溜め開始音（2号機）
   if (swingTimer > 0) { attackBuffered = true; return; } // 振り切るまでバッファ
   startSwing();
 }
@@ -2853,9 +2857,12 @@ function hitMob(m, dmg, isCrit, weapon, combo, kdirx, kdirz, knock) {
   emitCombatHit(m.obj.position.x, m.obj.position.y + 0.9, m.obj.position.z, dmg, isCrit, weapon, m.def.type, killed, combo);
   // 3号機UI：ダメージ数字ポップ＋命中閃光（口が無ければ無害）
   if (window.spawnDamagePopup) window.spawnDamagePopup(m.obj.position.x, m.obj.position.y + 1, m.obj.position.z, dmg, { crit: isCrit });
-  window.playSFX && window.playSFX(isCrit ? 'crit' : 'hit');
+  // 武器別ヒット音（2号機 onAttackHit が sword/axe/bow/fist で分岐）。口が無ければ汎用hitに退避
+  if (typeof window.onAttackHit === 'function') window.onAttackHit(weapon, isCrit);
+  else if (window.playSFX) window.playSFX(isCrit ? 'crit' : 'hit');
   flashMob(m);                                  // ③ 敵を白く光らせる（被弾mobだけマテリアルを遅延クローン）
-  triggerHitstop(isCrit ? 0.12 : 0.08);         // ③ ヒットストップ強化（0.08〜0.12秒）
+  const whs = (WEAPONS[weapon] && WEAPONS[weapon].hitstop) || 0.08; // 武器別ヒットストップ（斧=長い/素手=短い）
+  triggerHitstop(isCrit ? whs + 0.04 : whs);    // ③ ヒットストップ（会心は延長）
   camShake = Math.max(camShake, killed ? 0.6 : isCrit ? 0.5 : 0.18); // ③ 命中の画面シェイク（ui.js未配線でも手応え）
   if (killed) killMob(m);
   else { setMobAnim(m, 'hit'); m.hitStun = 0.22; } // 被弾アニメ＋小硬直
@@ -2987,7 +2994,10 @@ function updateAttack(dt) {
   }
   if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) comboIndex = 0; }
   if (avatarAttackTimer > 0) avatarAttackTimer -= dt;
-  if (WEAPONS[currentWeapon].ranged && mouseDown) drawTime += dt;
+  if (WEAPONS[currentWeapon].ranged && mouseDown) {
+    const was = drawTime; drawTime += dt;
+    if (was < CHARGE_FULL && drawTime >= CHARGE_FULL) window.onAttackCharge && window.onAttackCharge('full'); // 溜め完了音（2号機）
+  }
 }
 // 戦闘BGM：近くに敵がいれば combat、水中は water、それ以外は時間帯。切替時だけ口を叩く
 // BGMシーンは「毎フレーム再評価＋特殊→平常へ自動復帰」の一本ロジック（water/combat 固着の根絶）
