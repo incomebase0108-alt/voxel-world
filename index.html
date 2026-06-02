@@ -95,7 +95,8 @@ const SEA = 14;            // おおよその地表の基準高さ
 const AMP = 22;            // 地形の起伏の大きさ
 
 // ブロック種別（0=空気）。water=7 は溺れ判定の WATER_ID と一致させる
-const B = { air:0, grass:1, dirt:2, stone:3, log:4, leaves:5, sand:6, water:7, snow:8, planks:9, stonebrick:10, glass:11 };
+// chest/spawner は ② 構造物用の機能ブロック（プレイヤーは設置不可・ホットバー外）
+const B = { air:0, grass:1, dirt:2, stone:3, log:4, leaves:5, sand:6, water:7, snow:8, planks:9, stonebrick:10, glass:11, chest:12, spawner:13 };
 
 // ブロックの基本色（面ごとに上面・側面・底面を分けられるよう構造化）
 // 値は 0..1 のRGB
@@ -112,6 +113,8 @@ const COLORS = {
   [B.planks]: { all: rgb(.72,.55,.33) },
   [B.stonebrick]: { all: rgb(.55,.55,.58) },
   [B.glass]:  { all: rgb(.78,.90,.96) },
+  [B.chest]:  { top: rgb(.78,.58,.28), side: rgb(.55,.38,.18), bottom: rgb(.42,.28,.13) }, // 宝箱（蓋が明るい木箱）
+  [B.spawner]:{ all: rgb(.20,.22,.26) },                                                   // スポナー（黒い檻）
 };
 // ホットバー表示用の代表色
 const SWATCH = {
@@ -188,6 +191,16 @@ function treeAt(wx, wz) {
   // まばらに木を生やす（決定論的）
   return hash2(wx*1.7+11, wz*1.7+7) > 0.985;
 }
+// ② 洞窟：2枚の2Dノイズを y で位相シフトして擬似3Dにし、0.5付近の「薄皮」をトンネルとして掘る
+//   バンド幅 CAVE.width で空洞量を、しきい中心からのズレで形状を制御（⑤で集約予定）
+function caveNoise(wx, wy, wz) {
+  const a = valueNoise(wx*0.07 + wy*0.13 + 7,  wz*0.07 - wy*0.05 + 3);
+  const b = valueNoise(wx*0.05 - wy*0.09 + 41, wz*0.06 + wy*0.07 + 71);
+  return (a + b) * 0.5;
+}
+function isCave(wx, wy, wz) {
+  return Math.abs(caveNoise(wx, wy, wz) - 0.5) < 0.052; // トンネル状の連結空洞
+}
 // 開始/復活地点：水面より上の固体地面を (8,8) 付近からリング状に探す
 function findSpawn() {
   for (let r = 0; r <= 80; r++) {
@@ -207,6 +220,9 @@ function findSpawn() {
 const chunks = new Map(); // "cx,cz" -> Uint8Array
 const edits = new Map();   // "wx,wy,wz" -> ブロック種別（プレイヤーの変更だけを記録＝セーブ対象）
 const idx = (x,y,z) => x + z*CHUNK + y*CHUNK*CHUNK;
+// ② 構造物レジストリ（決定論的生成中に発見・登録。実行時の村人/敵スポーンに使う）
+const villages = new Map(); // "gx,gz" -> { x, z, gh }（村の中心）
+const spawners = new Map(); // "wx,wy,wz" -> { x, y, z, cd }（ダンジョンの敵スポナー）
 
 function generateChunk(cx, cz) {
   const data = new Uint8Array(CHUNK*CHUNK*HEIGHT);
@@ -227,6 +243,8 @@ function generateChunk(cx, cz) {
       if (y === h)       b = top;
       else if (y >= h-3) b = sub;
       else               b = B.stone;
+      // ② 洞窟：地表3層と最下層は残し、内部の石をトンネル状に掘る
+      if (b === B.stone && y > 2 && y < h-4 && isCave(wx, y, wz)) b = B.air;
       data[idx(x,y,z)] = b;
     }
     // 窪地を水面まで水で満たす（海・水たまり）
@@ -249,7 +267,86 @@ function generateChunk(cx, cz) {
           stamp(x+lx, ly, z+lz, B.leaves, true);
         }
   }
+  // ② 構造物（村・ダンジョン）。チャンク跨ぎは各チャンクが自分の領域だけ stamp する
+  buildStructures(cx, cz, stamp);
   return data;
+}
+
+// ===================================================================
+// ② 構造物の自動生成（村＝villager配置 / ダンジョン＝敵スポナー＋宝箱）
+//   決定論的：グリッドセルごとに hash で有無・位置を決める。チャンク跨ぎでも
+//   各チャンクが同じ計算をして自分の領域分だけ stamp するので境界が整合する
+// ===================================================================
+const VILLAGE_CELL = 56; // 村の発生間隔（ブロック）
+const DUNGEON_CELL = 64; // ダンジョンの発生間隔（ブロック）
+function buildStructures(cx, cz, stamp) {
+  const margin = 9; // 最大構造物の半径ぶん広げて候補セルを走査
+  const minWX = cx*CHUNK - margin, maxWX = cx*CHUNK + CHUNK + margin;
+  const minWZ = cz*CHUNK - margin, maxWZ = cz*CHUNK + CHUNK + margin;
+  // ワールド座標 (wx,wy,wz) を、このチャンクのローカル stamp へ橋渡し（範囲外は stamp 側で無視）
+  const sw = (wx, wy, wz, b, onlyAir) => stamp(wx - cx*CHUNK, wy, wz - cz*CHUNK, b, onlyAir);
+
+  // --- 村 ---
+  for (let gx = Math.floor(minWX/VILLAGE_CELL); gx <= Math.floor(maxWX/VILLAGE_CELL); gx++)
+    for (let gz = Math.floor(minWZ/VILLAGE_CELL); gz <= Math.floor(maxWZ/VILLAGE_CELL); gz++) {
+      if (hash2(gx*13+1, gz*13+7) > 0.34) continue; // 約1/3のセルに村
+      const ox = gx*VILLAGE_CELL + 8 + Math.floor(hash2(gx+2, gz+5) * (VILLAGE_CELL-16));
+      const oz = gz*VILLAGE_CELL + 8 + Math.floor(hash2(gx+9, gz+3) * (VILLAGE_CELL-16));
+      if (biomeAt(ox, oz) !== 'plains') continue;       // 平原のみ
+      if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue; // 水際は不可
+      buildVillage(ox, oz, gx, gz, sw);
+    }
+  // --- ダンジョン ---
+  for (let gx = Math.floor(minWX/DUNGEON_CELL); gx <= Math.floor(maxWX/DUNGEON_CELL); gx++)
+    for (let gz = Math.floor(minWZ/DUNGEON_CELL); gz <= Math.floor(maxWZ/DUNGEON_CELL); gz++) {
+      if (hash2(gx*29+5, gz*29+11) > 0.28) continue; // 約1/4のセルにダンジョン
+      const ox = gx*DUNGEON_CELL + 10 + Math.floor(hash2(gx+7, gz+1) * (DUNGEON_CELL-20));
+      const oz = gz*DUNGEON_CELL + 10 + Math.floor(hash2(gx+4, gz+8) * (DUNGEON_CELL-20));
+      buildDungeon(ox, oz, sw);
+    }
+}
+// 村：中心の周りに数軒の家を配置し、村人スポーン地点として登録
+function buildVillage(ox, oz, gx, gz, sw) {
+  villages.set(gx+','+gz, { x: ox, z: oz, gh: heightAt(ox, oz) });
+  const layout = [[0,0], [-8,-2], [7,-3], [-3,8], [6,7]];
+  const n = 2 + (hashi(gx, gz) % (layout.length - 1)); // 家2〜5軒
+  for (let i = 0; i < n; i++) {
+    const hx = ox + layout[i][0], hz = oz + layout[i][1];
+    if (biomeAt(hx, hz) !== 'plains' || heightAt(hx, hz) <= WATER_LEVEL) continue;
+    buildHouse(hx, hz, heightAt(hx, hz), sw);
+  }
+}
+// 家：5x5フットプリント・木材壁・四隅原木・中段ガラス窓・正面ドア・平屋根
+function buildHouse(bx, bz, base, sw) {
+  const W = 2;
+  for (let dx=-W; dx<=W; dx++) for (let dz=-W; dz<=W; dz++) {
+    sw(bx+dx, base, bz+dz, B.planks);                 // 床
+    for (let fy=base-1; fy>base-4; fy--) sw(bx+dx, fy, bz+dz, B.planks, true); // 基礎の隙間だけ埋める
+    sw(bx+dx, base+4, bz+dz, B.planks);               // 屋根
+  }
+  for (let yy=1; yy<=3; yy++)
+    for (let dx=-W; dx<=W; dx++) for (let dz=-W; dz<=W; dz++) {
+      const edge = Math.abs(dx)===W || Math.abs(dz)===W;
+      if (!edge) { sw(bx+dx, base+yy, bz+dz, B.air); continue; } // 室内は空洞に
+      const corner = Math.abs(dx)===W && Math.abs(dz)===W;
+      let b = corner ? B.log : (yy===2 ? B.glass : B.planks);   // 角=原木 / 中段=窓 / 他=木材
+      sw(bx+dx, base+yy, bz+dz, b);
+    }
+  // 正面(+x側)にドア開口
+  sw(bx+W, base+1, bz, B.air); sw(bx+W, base+2, bz, B.air);
+}
+// ダンジョン：地下に石レンガの小部屋。中央にスポナー・隅に宝箱
+function buildDungeon(ox, oz, sw) {
+  const surf = heightAt(ox, oz);
+  const fy = surf - 9;          // 床の高さ（地表より十分下）
+  if (fy < 4) return;           // 浅すぎる地形は不可
+  for (let dx=-3; dx<=3; dx++) for (let dz=-3; dz<=3; dz++) for (let dy=0; dy<=4; dy++) {
+    const shell = dx===-3||dx===3||dz===-3||dz===3||dy===0||dy===4;
+    sw(ox+dx, fy+dy, oz+dz, shell ? B.stonebrick : B.air); // 殻=石レンガ / 内部=空洞
+  }
+  sw(ox-2, fy+1, oz-2, B.chest);   // 宝箱
+  sw(ox,   fy+1, oz,   B.spawner); // 敵スポナー
+  spawners.set(`${ox},${fy+1},${oz}`, { x: ox, y: fy+1, z: oz, cd: 0 });
 }
 
 function getChunkData(cx, cz) {
@@ -1026,10 +1123,28 @@ function breakBlock() {
   const r = raycastVoxel();
   if (r.hit && inReach(r.hit)) {
     const b = getBlock(r.hit.x, r.hit.y, r.hit.z);
+    if (b === B.chest) { openChest(r.hit.x, r.hit.y, r.hit.z); return; }   // 宝箱は壊さず開ける
     setBlock(r.hit.x, r.hit.y, r.hit.z, B.air);
+    if (b === B.spawner) spawners.delete(`${r.hit.x},${r.hit.y},${r.hit.z}`); // スポナー破壊で停止
     window.playSFX && window.playSFX('break');
     if (b !== B.air && counts[b] !== undefined) { counts[b]++; updateHotbar(); } // 壊したブロックを入手
   }
+}
+// ② 宝箱を開ける：ランダムな戦利品を入手し、空気にして記録（edits 経由で再取得不可に）
+function openChest(x, y, z) {
+  setBlock(x, y, z, B.air);
+  window.playSFX && window.playSFX('pickup');
+  const ri = (n) => Math.floor(Math.random()*n);
+  const loot = [];
+  const giveBlock = (b, n) => { counts[b] = (counts[b]||0) + n; loot.push(`${NAMES[b]}×${n}`); };
+  const giveItem  = (k, n) => { itemCounts[k] = (itemCounts[k]||0) + n; loot.push(`${ITEM_NAMES[k]}×${n}`); };
+  giveBlock(B.planks, 3 + ri(6));
+  giveBlock(B.stonebrick, 2 + ri(5));
+  if (Math.random() < 0.8) giveItem('coin', 2 + ri(6));
+  if (Math.random() < 0.7) giveItem('apple', 1 + ri(3));
+  if (Math.random() < 0.3) giveBlock(B.glass, 1 + ri(3));
+  updateHotbar(); scheduleSave();
+  flashLoot(loot);
 }
 function placeBlock() {
   const r = raycastVoxel();
@@ -1094,7 +1209,7 @@ addEventListener('resize', () => {
 // UI（ホットバー / HUD）
 // ===================================================================
 const hotbarEl = document.getElementById('hotbar');
-const NAMES = { [B.grass]:'草',[B.dirt]:'土',[B.stone]:'石',[B.log]:'原木',[B.leaves]:'葉',[B.sand]:'砂',[B.water]:'水',[B.snow]:'雪',[B.planks]:'木材',[B.stonebrick]:'石レンガ',[B.glass]:'ガラス' };
+const NAMES = { [B.grass]:'草',[B.dirt]:'土',[B.stone]:'石',[B.log]:'原木',[B.leaves]:'葉',[B.sand]:'砂',[B.water]:'水',[B.snow]:'雪',[B.planks]:'木材',[B.stonebrick]:'石レンガ',[B.glass]:'ガラス',[B.chest]:'宝箱',[B.spawner]:'スポナー' };
 function updateHotbar() {
   hotbarEl.innerHTML = HOTBAR.map((b,i) =>
     `<div class="slot ${b===selBlock?'active':''}">
@@ -1166,6 +1281,19 @@ function flashSaved() {
   clearTimeout(saveFlashTimer);
   saveFlashTimer = setTimeout(() => { saveEl.textContent = ''; }, 1200);
 }
+// ② 宝箱の戦利品トースト（画面中央上に一瞬。UIフレームワークではなくコアの即時フィードバック）
+const lootEl = document.createElement('div');
+lootEl.style.cssText = 'position:fixed;left:50%;top:22%;transform:translateX(-50%);z-index:24;'
+  + 'color:#ffe9a8;font-size:15px;font-weight:bold;text-shadow:0 0 4px #000;text-align:center;'
+  + 'pointer-events:none;opacity:0;transition:opacity .3s;';
+document.body.appendChild(lootEl);
+let lootFlashTimer = null;
+function flashLoot(items) {
+  lootEl.innerHTML = '🧰 宝箱を開けた！<br>' + (items.length ? items.join(' / ') : '空っぽだった…');
+  lootEl.style.opacity = '1';
+  clearTimeout(lootFlashTimer);
+  lootFlashTimer = setTimeout(() => { lootEl.style.opacity = '0'; }, 2600);
+}
 
 // 体力ハート（ホットバーの上）
 const hpEl = document.createElement('div');
@@ -1232,7 +1360,8 @@ function buildDiag() {
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗         : ${ridingMob ? '馬に騎乗中' : '徒歩'}`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
-    `モブ         : ${mobs.length}体（敵${mobs.filter(m=>m.hostile).length} / テンプレ${Object.keys(mobTemplates).length}種 / 矢${arrows.length}）`,
+    `モブ         : ${mobs.length}体（敵${mobs.filter(m=>m.hostile).length} / 村人${mobs.filter(m=>m.def.type==='villager').length} / テンプレ${Object.keys(mobTemplates).length}種 / 矢${arrows.length}）`,
+    `構造物       : 村${villages.size} / スポナー${spawners.size}（発見済み）`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
   ].join('\n');
 }
@@ -1432,15 +1561,24 @@ function updateMobs(dt) {
   if (mobSpawnTimer <= 0) {
     mobSpawnTimer = 2 + Math.random()*2;
     if (mobs.length < MOB_CAP && Object.keys(mobTemplates).length) {
-      const night = Math.sin(dayTime*Math.PI*2 - Math.PI/2) < 0;
-      const pool = MOB_DEFS.filter(d => mobTemplates[d.type] && (!d.hostile || night || Math.random() < 0.25));
-      const def = pool[Math.floor(Math.random()*pool.length)];
-      if (def) {
-        const ang = Math.random()*Math.PI*2, dist = MOB_SPAWN_MIN + Math.random()*(MOB_SPAWN_MAX-MOB_SPAWN_MIN);
-        spawnMob(def.type, player.pos.x + Math.cos(ang)*dist, player.pos.z + Math.sin(ang)*dist);
+      // ② 村が近ければ村人を優先補充（村に住人がいる感じを出す）
+      const vil = nearestVillage(player.pos.x, player.pos.z, 44);
+      const villagerCount = mobs.reduce((a, m) => a + (m.def.type === 'villager' ? 1 : 0), 0);
+      if (vil && villagerCount < 3 && mobTemplates['villager']) {
+        const ang = Math.random()*Math.PI*2, rr = 2 + Math.random()*6;
+        spawnMob('villager', vil.x + Math.cos(ang)*rr, vil.z + Math.sin(ang)*rr);
+      } else {
+        const night = Math.sin(dayTime*Math.PI*2 - Math.PI/2) < 0;
+        const pool = MOB_DEFS.filter(d => mobTemplates[d.type] && (!d.hostile || night || Math.random() < 0.25));
+        const def = pool[Math.floor(Math.random()*pool.length)];
+        if (def) {
+          const ang = Math.random()*Math.PI*2, dist = MOB_SPAWN_MIN + Math.random()*(MOB_SPAWN_MAX-MOB_SPAWN_MIN);
+          spawnMob(def.type, player.pos.x + Math.cos(ang)*dist, player.pos.z + Math.sin(ang)*dist);
+        }
       }
     }
   }
+  updateSpawners(dt); // ② ダンジョンのスポナー稼働
   for (let i = mobs.length-1; i >= 0; i--) {
     const m = mobs[i];
     const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z;
@@ -1488,6 +1626,31 @@ function updateMobs(dt) {
     setMobAnim(m, animName);
     m.obj.position.y = groundY(m.obj.position.x, m.obj.position.z); // 地面に吸着
     if (m.mixer) m.mixer.update(dt);
+  }
+}
+// ② 最寄りの村（半径 maxD 内）を返す
+function nearestVillage(px, pz, maxD) {
+  let best = null, bd = maxD;
+  for (const v of villages.values()) {
+    const d = Math.hypot(v.x - px, v.z - pz);
+    if (d < bd) { bd = d; best = v; }
+  }
+  return best;
+}
+// ② ダンジョンのスポナー：近くにプレイヤーが居ると敵を周期的に湧かせる（昼夜問わず＝地下は暗い）
+function updateSpawners(dt) {
+  if (mobs.length >= MOB_CAP) return;
+  for (const [key, s] of spawners) {
+    // 水平距離＋高さ差で近接判定（地上を歩くだけでは作動しにくく、潜ると作動）
+    const d = Math.hypot(s.x - player.pos.x, s.z - player.pos.z) + Math.abs(s.y - player.pos.y) * 0.6;
+    if (d > 16) continue;
+    if (getBlock(s.x, s.y, s.z) !== B.spawner) { spawners.delete(key); continue; } // 破壊済みなら除去
+    s.cd -= dt;
+    if (s.cd <= 0 && mobs.length < MOB_CAP) {
+      s.cd = 6 + Math.random()*4;
+      const type = Math.random() < 0.6 ? 'zombie' : 'skeleton';
+      if (mobTemplates[type]) spawnMob(type, s.x + (Math.random()*2-1), s.z + (Math.random()*2-1), { y: s.y });
+    }
   }
 }
 
