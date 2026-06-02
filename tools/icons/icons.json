@@ -28,6 +28,26 @@
       "type": "item"
     },
     {
+      "name": "item_coal",
+      "file": "icon_item_coal.png",
+      "type": "item"
+    },
+    {
+      "name": "item_iron",
+      "file": "icon_item_iron.png",
+      "type": "item"
+    },
+    {
+      "name": "item_gold",
+      "file": "icon_item_gold.png",
+      "type": "item"
+    },
+    {
+      "name": "item_gem",
+      "file": "icon_item_gem.png",
+      "type": "item"
+    },
+    {
       "name": "item_sword",
       "file": "icon_item_sword.png",
       "type": "equipment"

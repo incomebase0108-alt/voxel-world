@@ -10,12 +10,14 @@
 
 ## 1. 鉱石ブロック（深さランク・ドロップ・連動）
 
-| ブロック | tier | 出現深度(地表下m・目安) | ore_rgb | drop | クラフト/装備連動 |
-|---|---|---|---|---|---|
-| `ore_coal.glb` | 1 | 0〜30（浅〜中） | (0.10,0.10,0.12) | `coal` | 松明(`struct_torch`)・燃料 |
-| `ore_iron.glb` | 2 | 10〜45（中） | (0.74,0.56,0.42) | `iron_ingot` | 鉄装備一式（`item_sword/pickaxe/axe/armor/shield`） |
-| `ore_gold.glb` | 3 | 20〜55（深） | (0.92,0.75,0.26) metal | `gold` | 装飾(`gold_block`)・高位だが耐久低めの想定 |
-| `ore_gem.glb` | 4 | 35以深（最深・淡発光） | (0.35,0.85,0.95) | `gem` | 最高位の装備強化・宝飾（`amethyst`等） |
+| ブロック | tier | 出現深度(地表下m・目安) | ore_rgb | **ドロップitem(glb)** | 素材名 | クラフト/装備連動 |
+|---|---|---|---|---|---|---|
+| `ore_coal.glb` | 1 | 0〜30（浅〜中） | (0.10,0.10,0.12) | **`item_coal.glb`** | coal | 松明(`struct_torch`)・燃料 |
+| `ore_iron.glb` | 2 | 10〜45（中） | (0.74,0.56,0.42) | **`item_iron.glb`** | iron_ingot | 鉄装備一式（`item_sword/pickaxe/axe/armor/shield`） |
+| `ore_gold.glb` | 3 | 20〜55（深） | (0.92,0.75,0.26) metal | **`item_gold.glb`** | gold | 装飾(`gold_block`)・高位だが耐久低めの想定 |
+| `ore_gem.glb` | 4 | 35以深（最深・淡発光） | (0.35,0.85,0.95) | **`item_gem.glb`** | gem | 最高位の装備強化・宝飾（`amethyst`等） |
+
+**ドロップ形態のglb**：`item_coal/iron/gold/gem.glb`（採掘時に落ちる小物・原点=形状中心・既存 item_* と同規約）。石炭=黒塊／鉄・金=台形インゴット／宝石=カット水晶（淡発光）。`tools/build_ore_items.py`。
 
 - 全ブロック共通 `block_rgb`（石ベース）=(0.50,0.50,0.53), roughness≈0.9。
 - **採掘ランク（推奨）**：tierが高いほど硬く、対応ピッケル以上で採掘可（例：金/宝石は鉄ピッケル以上）。採掘時間は tier に比例。

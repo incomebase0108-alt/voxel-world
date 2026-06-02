@@ -14,9 +14,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 72,
-    "size_bytes": 8153416,
-    "size_mb": 7.776
+    "count": 76,
+    "size_bytes": 8196692,
+    "size_mb": 7.817
   },
   "assets": [
     {
@@ -620,6 +620,18 @@
       "error": null
     },
     {
+      "file": "item_coal.glb",
+      "name": "item_coal",
+      "category": "アイテム",
+      "size_bytes": 24120,
+      "size_mb": 0.023,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
       "file": "item_coin.glb",
       "name": "item_coin",
       "category": "アイテム",
@@ -641,6 +653,42 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 1,
+      "error": null
+    },
+    {
+      "file": "item_gem.glb",
+      "name": "item_gem",
+      "category": "アイテム",
+      "size_bytes": 3740,
+      "size_mb": 0.0036,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "item_gold.glb",
+      "name": "item_gold",
+      "category": "アイテム",
+      "size_bytes": 7708,
+      "size_mb": 0.0074,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "item_iron.glb",
+      "name": "item_iron",
+      "category": "アイテム",
+      "size_bytes": 7708,
+      "size_mb": 0.0074,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
       "error": null
     },
     {

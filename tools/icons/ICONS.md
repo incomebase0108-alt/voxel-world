@@ -11,6 +11,10 @@
 | `item_egg` | `icon_item_egg.png` | item |
 | `item_coin` | `icon_item_coin.png` | item |
 | `item_apple` | `icon_item_apple.png` | item |
+| `item_coal` | `icon_item_coal.png` | item |
+| `item_iron` | `icon_item_iron.png` | item |
+| `item_gold` | `icon_item_gold.png` | item |
+| `item_gem` | `icon_item_gem.png` | item |
 | `item_sword` | `icon_item_sword.png` | equipment |
 | `item_pickaxe` | `icon_item_pickaxe.png` | equipment |
 | `item_axe` | `icon_item_axe.png` | equipment |

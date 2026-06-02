@@ -68,7 +68,7 @@ def icon_from_glb(name, typ):
     MANIFEST.append({"name":name,"file":fn,"type":typ})
 
 # ---- glb実体のあるアイテム＋装備 ----
-CONSUM=["item_meat","item_egg","item_coin","item_apple"]
+CONSUM=["item_meat","item_egg","item_coin","item_apple","item_coal","item_iron","item_gold","item_gem"]
 EQUIP=["item_sword","item_pickaxe","item_axe","item_bow","item_shield","item_armor"]
 for n in CONSUM: icon_from_glb(n,"item")
 for n in EQUIP:  icon_from_glb(n,"equipment")
