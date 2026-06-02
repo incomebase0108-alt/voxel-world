@@ -1583,6 +1583,7 @@ function buildDiag() {
     `減少速度(/分) : 空腹 ${hungerRatePerMin.toFixed(1)} / HP ${hpRatePerMin.toFixed(1)}　※正=減少・負=回復`,
     `最後の被ダメ  : ${lastDamageCause}（${(gameTime - lastDamageTime).toFixed(0)}秒前）`,
     `水際判定      : 頭水中${dbgHeadWater?'○':'-'} / 岸ledge${dbgShore>0?dbgShore+'段':'なし'} / ステップアップ${dbgStepUp?'発動中○':'-'}`,
+    `BGMシーン     : ${musicScene||'-'}（近接敵${dbgNearEnemies} / 水中${dbgMusicWater?'○':'-'} / combat保持${combatHold.toFixed(1)}s）`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗         : ${ridingMob ? '馬に騎乗中' : '徒歩'}`,
@@ -2462,25 +2463,33 @@ function updateAttack(dt) {
   if (WEAPONS[currentWeapon].ranged && mouseDown) drawTime += dt;
 }
 // 戦闘BGM：近くに敵がいれば combat、水中は water、それ以外は時間帯。切替時だけ口を叩く
-let musicScene = '', musicTimer = 0;
+// BGMシーンは「毎フレーム再評価＋特殊→平常へ自動復帰」の一本ロジック（water/combat 固着の根絶）
+//   優先順位：水中 water ＞ 戦闘 combat(ヒステリシス付) ＞ 時間帯 day/night
+let musicScene = '', musicTimer = 0, combatHold = 0, dbgNearEnemies = 0, dbgMusicWater = false;
+const COMBAT_RADIUS = 14;   // この距離内に敵がいれば戦闘
+const COMBAT_HOLD = 4;      // 敵がいなくなってから平常へ戻すまでの猶予秒（チャタリング防止）
 function updateCombatMusic(dt) {
+  // 近接敵数は毎フレーム数える（ヒステリシスを正確に）
+  let near = 0;
+  for (const m of mobs) {
+    if (m.hostile && !m.dying && Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z) < COMBAT_RADIUS) near++;
+  }
+  dbgNearEnemies = near;
+  if (near > 0) combatHold = COMBAT_HOLD; else combatHold = Math.max(0, combatHold - dt); // 0体になったら数秒で解除
   musicTimer -= dt;
   if (musicTimer > 0) return;
-  musicTimer = 0.3;
-  let combat = false;
-  for (const m of mobs) {
-    if (m.hostile && !m.dying && Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z) < 14) { combat = true; break; }
-  }
-  // 水中判定は頭/胴どちらかが水なら water（水際で出た瞬間に day/night へ戻すため胴も見る）
+  musicTimer = 0.25;
   const px = Math.floor(player.pos.x), pz = Math.floor(player.pos.z);
   const inWater = getBlock(px, Math.floor(player.pos.y + PH - 0.1), pz) === B.water
                || getBlock(px, Math.floor(player.pos.y + 0.9), pz) === B.water;
-  const sc = combat ? 'combat' : inWater ? 'water' : isNight() ? 'night' : 'day';
+  dbgMusicWater = inWater;
+  const sc = inWater ? 'water' : combatHold > 0 ? 'combat' : isNight() ? 'night' : 'day';
   if (sc !== musicScene) {
-    // ★成功時のみキャッシュ更新：sound.js 未準備のときは更新せず次フレーム再試行（'water'固着・無音の防止）
+    // ★成功時のみキャッシュ更新：sound.js 未準備なら更新せず次フレーム再試行
     if (typeof window.setMusicScene === 'function') { try { window.setMusicScene(sc); musicScene = sc; } catch (e) {} }
   }
 }
+window.getMusicScene = () => musicScene; // 診断用
 
 // ===================================================================
 // 外部連携の口（2号機の空間オーディオ ③ 用。読み取り専用・副作用なし）
