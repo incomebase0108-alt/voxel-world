@@ -289,40 +289,146 @@ function setBlock(wx, wy, wz, b) {
 }
 const isSolid = b => b !== B.air && b !== B.water; // 水は通り抜け可（当たり判定では非個体）
 
-// ---- セーブ／ロード（localStorage に編集差分とプレイヤー位置を保存）----
-const SAVE_KEY = 'voxel_world_save_v1';
+// ===================================================================
+// ① ワールド保存の本格化（複数スロット・チャンク差分・時刻天候・モブを丸ごと）
+//   ・localStorage にスロット別で保存（既定3スロット）
+//   ・地形改変は「チャンク差分」としてチャンク単位にまとめて格納（コンパクト）
+//   ・プレイヤー状態 / 時刻天候 / モブ一覧 / インベントリを保存
+//   ・旧 v1 セーブ（単一スロット）は初回に自動移行
+//   ・UI（スロット選択画面）は 3号機の領域。ここでは window.VoxelGame に口を出すだけ
+// ===================================================================
+const SAVE_VERSION = 2;
+const SLOT_PREFIX = 'voxel_world_save_v2_s'; // + スロット番号
+const CUR_SLOT_KEY = 'voxel_world_cur_slot_v2';
+const OLD_SAVE_KEY = 'voxel_world_save_v1';  // 旧フォーマット（移行用）
+const MAX_SLOTS = 3;
+let currentSlot = Math.min(MAX_SLOTS, Math.max(1, parseInt(localStorage.getItem(CUR_SLOT_KEY)) || 1));
+const slotKey = (n) => SLOT_PREFIX + n;
+
 let saveTimer = null;
 function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveWorld, 800); } // 連打をまとめる
+
+// 地形改変（edits Map: "wx,wy,wz"->b）を「チャンク差分」へ畳む
+function editsToChunkDiff() {
+  const out = {};
+  for (const [k, b] of edits) {
+    const [wx, wy, wz] = k.split(',').map(Number);
+    const cx = Math.floor(wx/CHUNK), cz = Math.floor(wz/CHUNK);
+    const ck = cx + ',' + cz;
+    (out[ck] || (out[ck] = [])).push([wx - cx*CHUNK, wy, wz - cz*CHUNK, b]);
+  }
+  return out;
+}
+// チャンク差分を edits Map へ展開（読込時）
+function chunkDiffToEdits(diff) {
+  if (!diff) return;
+  for (const ck in diff) {
+    const [cx, cz] = ck.split(',').map(Number);
+    for (const [lx, ly, lz, b] of diff[ck]) edits.set(`${cx*CHUNK+lx},${ly},${cz*CHUNK+lz}`, b);
+  }
+}
+
+// 現在の世界状態を1オブジェクトにまとめる
+function serializeWorld() {
+  return {
+    version: SAVE_VERSION,
+    ts: Date.now(),
+    chunkEdits: editsToChunkDiff(),                                   // 地形改変（チャンク差分）
+    player: { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch },
+    hp, hunger, breath,                                               // プレイヤー状態
+    counts, itemCounts,                                               // インベントリ
+    playerModel: currentPlayerFile,                                   // 選択アバター
+    time: { dayTime, weather, autoWeather, weatherTimer },            // 時刻・天候
+    // モブ（騎乗中の馬も含む。位置/向き/HP/状態を保存し、ロード時に再スポーン）
+    mobs: mobs.map(m => ({
+      t: m.def.type,
+      x: +m.obj.position.x.toFixed(2), y: +m.obj.position.y.toFixed(2), z: +m.obj.position.z.toFixed(2),
+      ry: +m.obj.rotation.y.toFixed(3), hp: m.hp, st: m.state,
+    })),
+  };
+}
 function saveWorld() {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
-      edits: [...edits],
-      player: { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch },
-      hp: hp,
-      hunger: hunger,
-      counts: counts,
-      itemCounts: itemCounts,
-    }));
+    localStorage.setItem(slotKey(currentSlot), JSON.stringify(serializeWorld()));
+    localStorage.setItem(CUR_SLOT_KEY, currentSlot);
     flashSaved();
   } catch (e) { console.warn('[voxel] セーブ失敗', e); }
 }
-function loadWorld() {
+
+let pendingMobLoad = null;  // モブ復元待ち（テンプレ読込が非同期のため遅延）
+let mobsRestored = true;    // false の間 updateMobs が pendingMobLoad を復元
+// 旧 v1 を v2 形式へ移行（初回のみ）。成功すれば v1 形式の obj を返す
+function migrateV1IfNeeded() {
+  const raw = localStorage.getItem(OLD_SAVE_KEY);
+  if (!raw) return null;
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return false;
+    const o = JSON.parse(raw);
+    // v1 の edits は ["wx,wy,wz", b] の配列
+    for (const [k, b] of (o.edits || [])) edits.set(k, b);
+    if (o.player) { player.pos.set(o.player.x, o.player.y, o.player.z); player.yaw = o.player.yaw; player.pitch = o.player.pitch; }
+    if (typeof o.hp === 'number') hp = o.hp;
+    if (typeof o.hunger === 'number') hunger = o.hunger;
+    if (o.counts) for (const k in o.counts) if (counts[k] !== undefined) counts[k] = o.counts[k];
+    if (o.itemCounts) for (const k in o.itemCounts) if (itemCounts[k] !== undefined) itemCounts[k] = o.itemCounts[k];
+    localStorage.removeItem(OLD_SAVE_KEY); // 移行済みなので削除
+    console.log('[voxel] 旧セーブ(v1)をスロット' + currentSlot + 'へ移行');
+    return o;
+  } catch (e) { console.warn('[voxel] v1移行失敗', e); return null; }
+}
+// 指定スロットを現在の世界へ読み込む（起動時に1回。途中切替は switchSlot がページ再読込で行う）
+function loadWorld(slot = currentSlot) {
+  try {
+    const raw = localStorage.getItem(slotKey(slot));
+    if (!raw) return migrateV1IfNeeded() !== null; // v2が無ければ旧v1を移行
     const obj = JSON.parse(raw);
-    for (const [k, b] of (obj.edits || [])) edits.set(k, b);
-    if (obj.player) {
-      player.pos.set(obj.player.x, obj.player.y, obj.player.z);
-      player.yaw = obj.player.yaw; player.pitch = obj.player.pitch;
-    }
+    chunkDiffToEdits(obj.chunkEdits);
+    if (obj.player) { player.pos.set(obj.player.x, obj.player.y, obj.player.z); player.yaw = obj.player.yaw; player.pitch = obj.player.pitch; }
     if (typeof obj.hp === 'number') hp = obj.hp;
     if (typeof obj.hunger === 'number') hunger = obj.hunger;
+    if (typeof obj.breath === 'number') breath = obj.breath;
     if (obj.counts) for (const k in obj.counts) if (counts[k] !== undefined) counts[k] = obj.counts[k];
     if (obj.itemCounts) for (const k in obj.itemCounts) if (itemCounts[k] !== undefined) itemCounts[k] = obj.itemCounts[k];
+    if (obj.playerModel) currentPlayerFile = obj.playerModel;
+    if (obj.time) {
+      if (typeof obj.time.dayTime === 'number') dayTime = obj.time.dayTime;
+      if (typeof obj.time.autoWeather === 'boolean') autoWeather = obj.time.autoWeather;
+      if (typeof obj.time.weatherTimer === 'number') weatherTimer = obj.time.weatherTimer;
+      if (obj.time.weather) setWeather(obj.time.weather); // パーティクル表示も同期
+    }
+    if (obj.mobs && obj.mobs.length) { pendingMobLoad = obj.mobs; mobsRestored = false; } // テンプレ読込後に復元
     return true;
   } catch (e) { console.warn('[voxel] ロード失敗', e); return false; }
 }
+
+// スロット一覧のメタ情報（3号機のスロット選択UI用）
+function listSlots() {
+  const out = [];
+  for (let n = 1; n <= MAX_SLOTS; n++) {
+    const raw = localStorage.getItem(slotKey(n));
+    if (!raw) { out.push({ slot:n, exists:false, current:n===currentSlot }); continue; }
+    let meta = { slot:n, exists:true, current:n===currentSlot };
+    try {
+      const o = JSON.parse(raw);
+      meta.ts = o.ts || 0;
+      meta.editCount = o.chunkEdits ? Object.values(o.chunkEdits).reduce((a, v) => a + v.length, 0) : 0;
+      meta.mobCount = (o.mobs || []).length;
+      meta.hp = o.hp; meta.dayTime = o.time && o.time.dayTime;
+    } catch (e) {}
+    out.push(meta);
+  }
+  return out;
+}
+function deleteSlot(n) { localStorage.removeItem(slotKey(n)); }
+// UI（3号機）から叩くための口。スロット切替・新規・削除はページ再読込で安全に反映
+window.VoxelGame = {
+  save: () => { saveWorld(); return true; },
+  list: () => listSlots(),
+  current: () => currentSlot,
+  maxSlots: MAX_SLOTS,
+  switchSlot: (n) => { saveWorld(); localStorage.setItem(CUR_SLOT_KEY, n); location.reload(); }, // 現状を保存してから切替
+  newWorld: (n) => { deleteSlot(n); localStorage.setItem(CUR_SLOT_KEY, n); location.reload(); },  // そのスロットを初期化して開始
+  deleteSlot: (n) => { deleteSlot(n); return true; },
+};
 
 // 面の色を決める（grass / log は上面・側面・底面で色を変える）
 function faceColor(b, f) {
@@ -1082,8 +1188,7 @@ hurtEl.style.cssText = 'position:fixed;inset:0;z-index:25;pointer-events:none;'
   + 'background:radial-gradient(circle, rgba(180,0,0,0) 40%, rgba(180,0,0,0.6) 100%);opacity:0;';
 document.body.appendChild(hurtEl);
 
-// 起動時にセーブデータがあれば復元
-loadWorld();
+// 起動時のセーブ復元は、currentPlayerFile / mobs 等の宣言後（アバター読込の直前）で行う（下方の loadWorld() 呼び出し）
 
 // ===================================================================
 // 診断モード（目視に依存せずシーン状態をテキストで確認する）
@@ -1181,6 +1286,8 @@ const PLAYER_SKINS = [
   { file:'models/player_gold.glb',    name:'金',   color:'#d4af37' },
 ];
 let currentPlayerFile = localStorage.getItem('voxel_player_model') || 'models/player.glb';
+// 起動時にセーブデータがあれば復元（currentPlayerFile を含む状態をここで確定 → 直後の loadAvatar が反映）
+loadWorld();
 function loadAvatar(file) {
   currentPlayerFile = file;
   try { localStorage.setItem('voxel_player_model', file); } catch (e) {}
@@ -1261,12 +1368,13 @@ let mobSpawnTimer = 2;
 function groundY(x, z) {
   return heightAt(Math.floor(x), Math.floor(z)) + 1; // 固体地表の上面に吸着（水面は接地面にしない）
 }
-function spawnMob(type, x, z) {
+function spawnMob(type, x, z, opts = {}) {
   const def = MOB_DEFS.find(d => d.type === type);
   const tpl = mobTemplates[type];
-  if (!def || !tpl) return;
+  if (!def || !tpl) return null;
   const obj = tpl.scene.clone(true);
-  obj.position.set(x, groundY(x, z), z);
+  obj.position.set(x, (typeof opts.y === 'number') ? opts.y : groundY(x, z), z);
+  if (typeof opts.ry === 'number') obj.rotation.y = opts.ry;
   scene.add(obj);
   let mixer = null, aIdle = null, aWalk = null, aAttack = null, aHeavy = null;
   if (tpl.animations.length) {
@@ -1278,8 +1386,21 @@ function spawnMob(type, x, z) {
     if (byName['heavy'])  aHeavy = mixer.clipAction(byName['heavy']);
     aIdle.play();
   }
-  mobs.push({ def, obj, mixer, aIdle, aWalk, aAttack, aHeavy, cur: aIdle,
-    hostile: def.hostile, hp: MOB_HP[type] || 5, state:'idle', timer: 1+Math.random()*3, vx:0, vz:0, atkCd:0, atkCnt:0 });
+  const mob = { def, obj, mixer, aIdle, aWalk, aAttack, aHeavy, cur: aIdle,
+    hostile: def.hostile, hp: (typeof opts.hp === 'number') ? opts.hp : (MOB_HP[type] || 5),
+    state: opts.state || 'idle', timer: 1+Math.random()*3, vx:0, vz:0, atkCd:0, atkCnt:0 };
+  mobs.push(mob);
+  return mob;
+}
+// セーブされたモブ一覧を復元（テンプレ読込完了後に updateMobs から1回だけ呼ばれる）
+function restorePendingMobs() {
+  if (!pendingMobLoad) { mobsRestored = true; return; }
+  for (const md of pendingMobLoad) {
+    if (!mobTemplates[md.t]) continue; // テンプレ未読込の種別はスキップ（次フレーム再挑戦）
+    spawnMob(md.t, md.x, md.z, { y: md.y, ry: md.ry, hp: md.hp, state: md.st });
+  }
+  pendingMobLoad = null;
+  mobsRestored = true;
 }
 function setMobAnim(m, name) {
   if (!m.mixer) return;
@@ -1301,6 +1422,11 @@ function mobWander(m, dt) {
   }
 }
 function updateMobs(dt) {
+  // セーブされたモブの復元（テンプレ読込が済んだら1回だけ。完了まで自動湧きは待たせる）
+  if (!mobsRestored) {
+    if (Object.keys(mobTemplates).length) restorePendingMobs();
+    return;
+  }
   // 湧き（上限まで、夜は敵性が増える）
   mobSpawnTimer -= dt;
   if (mobSpawnTimer <= 0) {
@@ -1456,11 +1582,18 @@ function attackMob() {
 // メインループ
 // ===================================================================
 let last = performance.now();
+let autoSaveAccum = 0;                // 定期オートセーブの経過秒
+const AUTOSAVE_INTERVAL = 20;         // オートセーブ間隔（秒）
 function loop(now) {
   let dt = (now - last) / 1000; last = now;
   dt = Math.min(dt, 0.05); // タブ復帰時などの暴れ防止
 
-  if (document.pointerLockElement === canvas) { updatePlayer(dt); updateHealth(dt); updateMobs(dt); updateArrows(dt); updateDrops(dt); }
+  if (document.pointerLockElement === canvas) {
+    updatePlayer(dt); updateHealth(dt); updateMobs(dt); updateArrows(dt); updateDrops(dt);
+    // 定期オートセーブ：時刻天候・モブ・位置の進行も一定間隔で残す（編集イベント時の scheduleSave とは別系統）
+    autoSaveAccum += dt;
+    if (autoSaveAccum >= AUTOSAVE_INTERVAL) { autoSaveAccum = 0; saveWorld(); }
+  }
   stepWeatherAuto(dt);
   updateSky(dt);
   updateParticles(dt);
