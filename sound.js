@@ -240,6 +240,8 @@
       const c = ac();
       if (c && bgmScene && SCENES[bgmScene]) {
         const sc = SCENES[bgmScene], node = sceneGain(bgmScene), spb = 60 / sc.tempo / 2; // 8分音符
+        const lvl = sc.level || 1;
+        if (node.gain.value < lvl - 0.02) node.gain.setTargetAtTime(lvl, c.currentTime, 0.25); // アクティブscene gainを必ずlevelへ駆動（stuck/0張り付き防止）
         if (nextNoteT < c.currentTime) nextNoteT = c.currentTime; // 背景化等で遅れたら追従（大量生成・例外を防止）
         let guard = 0; // 暴走ガード
         while (nextNoteT < c.currentTime + 0.2 && guard++ < 64) {
@@ -396,6 +398,19 @@
   window.isMuted         = () => vol.muted;
   window.setSfxGain      = (name, v) => window.SoundSettings.setGain(name, v); // 個別SE倍率
   window.getSfxGain      = (name) => window.SoundSettings.getGain(name);
+
+  // 決定的テスト：bgmBus 経路を直接鳴らす。鳴れば「bgmBus→master→出力」は生きていて
+  // 原因は scene gain（gainで消えている）／鳴らなければ bgmBus 経路が断、と一発で切り分く。
+  window.testBGMBeep = () => {
+    const c = ac(); if (!c) return 'NG: AudioContext無し';
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'square'; o.frequency.value = 440;
+    g.gain.setValueAtTime(0.0001, c.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.3, c.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.6);
+    o.connect(g).connect(bgmBus); o.start(); o.stop(c.currentTime + 0.65); // ★bgmBus直結
+    return 'beep送出: 440Hz/0.6s/gain0.3 を bgmBus 経由で再生（聞こえれば経路OK＝原因はscene gain）';
+  };
 
   // 診断：console で getSoundDiag() を叩けば状態が出る（H診断にも流用可）
   window.getSoundDiag = () => {
