@@ -120,6 +120,35 @@ function updateHotbar(){ if (window.UI_TAKEOVER) return; /* …既存… */ }
 
 ---
 
+## NPC会話／取引UI（1号機のNPC会話実装と接続）
+
+`ui.js` が会話/取引パネルを描画します。core はNPCに話しかけた時に **`window.UI.openTrade(session)`**（または
+`window.UI.open('trade', session)`）を呼ぶだけ。*取引成立は `window.VoxelGame.trade(offerId)` 経由*（在庫増減はcore）。
+
+```js
+// 話しかけたとき
+window.UI.openTrade({
+  npc: '商人トム', job: 'merchant',          // job: merchant/blacksmith/farmer/guard/child/elder/baker/villager（顔絵文字に使用）
+  greeting: 'いらっしゃい！素材があればいい物と交換するよ。',
+  offers: [
+    { id:0, giveName:'コイン', giveIcon:'item_coin', giveCount:5,
+            getName:'りんご', getIcon:'item_apple', getCount:2, canAfford:true },
+    { id:1, giveName:'鉄',    giveIcon:'item_iron', giveCount:3,
+            getName:'剣',     getIcon:'item_sword', getCount:1, canAfford:false },
+  ],
+});
+
+// 取引ボタン押下で ui.js が呼ぶ（core が在庫を増減）。
+// 戻り値に更新後の {offers:[...]} か session を返せば、その場で在庫/可否が再描画されます（省略可）。
+window.VoxelGame.trade = (offerId) => { /* 支払い可なら itemCounts 増減 → 更新session返す */ };
+```
+
+- `giveIcon`/`getIcon` は `tools/icons` のアイコン名（例 `item_coin`・無ければ名前→アイコン→スウォッチに自動退避）。
+- 取引成立音は **2号機 `playSFX('trade')`**（ui.jsが鳴らします・口が無ければ無音）。
+- 口が呼ばれなければ何も出ません（dormant-safe）。Escで閉じる。
+
+---
+
 ## レベルアップ連携（1号機レベルシステムと接続）
 
 - `state()` に **`level` / `exp` / `expToNext`** を入れると、ui.js が*ホットバー上に Lv/EXP バー*を自動表示します（無ければ非表示）。

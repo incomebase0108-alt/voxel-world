@@ -256,6 +256,26 @@
       .ui-tdash .ui-tbtn { width:56px; height:56px; }
       .ui-tdash .ui-tbtn.on { background:rgba(255,170,40,.55); border-color:#ffd54a; }
 
+      /* NPC会話／取引 */
+      .uit-npc { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+      .uit-ava { width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,.12);
+        display:flex; align-items:center; justify-content:center; font-size:22px; flex:0 0 auto; }
+      .uit-name { font-size:17px; font-weight:800; }
+      .uit-job { font-size:11px; opacity:.7; }
+      .uit-say { background:rgba(0,0,0,.28); border-left:3px solid #ffd54a; border-radius:6px;
+        padding:9px 12px; font-size:13px; line-height:1.5; margin:8px 0 4px; }
+      .uit-offer { pointer-events:auto; cursor:pointer; display:flex; align-items:center; gap:10px;
+        border:2px solid rgba(255,255,255,.16); border-radius:10px; padding:9px 12px; margin-bottom:8px;
+        background:rgba(0,0,0,.22); transition:.12s; width:100%; color:#fff; text-align:left; }
+      .uit-offer:hover:not(:disabled) { border-color:#9be86a; background:rgba(60,120,40,.28); transform:translateY(-1px); }
+      .uit-offer:disabled { opacity:.42; cursor:not-allowed; }
+      .uit-side { display:flex; align-items:center; gap:6px; min-width:78px; }
+      .uit-side .ic, .uit-side .sw { width:30px; height:30px; border-radius:6px; flex:0 0 auto; }
+      .uit-side .q { font-size:13px; font-weight:700; }
+      .uit-arrow { font-size:18px; opacity:.8; flex:0 0 auto; }
+      .uit-get { flex:1; justify-content:flex-end; }
+      .uit-none { font-size:13px; opacity:.7; padding:8px 0; }
+
       @media (max-width:640px) {
         #ui-radar { width:96px; height:96px; }
         .ui-slot { width:42px; height:42px; }
@@ -649,6 +669,7 @@
     const p = dom.menuPanel; p.innerHTML = '';
     if (screen === 'settings') renderSettings(p);
     else if (screen === 'slots') renderSlots(p);
+    else if (screen === 'trade') renderTrade(p);
     else renderMenuRoot(p);
   }
   function openMenu(screen) {
@@ -657,6 +678,61 @@
     if (document.pointerLockElement) document.exitPointerLock();
   }
   function closeMenu() { menuOpen = false; dom.menu.classList.remove('open'); }
+
+  // =====================================================================
+  // ★ NPC会話／取引UI（1号機のNPC会話実装と接続）
+  //   ・core が話しかけ時に window.UI.openTrade(session) を呼ぶ（中身はUI側）
+  //   ・取引成立は window.VoxelGame.trade(offerId) 経由（在庫増減はcore）
+  //     → 戻り値に更新後 session/offers があれば即再描画
+  //   ・口/データ不在でも安全（呼ばれなければ何も出ない）
+  //   session = { npc, job, greeting, offers:[
+  //     { id, giveName,giveIcon,giveCount, getName,getIcon,getCount, canAfford } ] }
+  // =====================================================================
+  let tradeSession = null;
+  const JOB_EMOJI = { merchant:'🪙', blacksmith:'🔨', farmer:'🌾', guard:'🛡', child:'🧒', elder:'🧓', baker:'🥖', villager:'🧑' };
+
+  function offerSide(holder, name, icon, count, cls) {
+    const side = el('div', '', holder); side.className = 'uit-side' + (cls ? ' ' + cls : '');
+    fillIcon(side, { name, icon });
+    const q = el('div', '', side); q.className = 'q'; q.textContent = `${name} ×${clampN(count)}`;
+  }
+  function renderTrade(p) {
+    const s = tradeSession || {};
+    const head = el('div', '', p); head.className = 'uiv-head';
+    const npcWrap = el('div', '', head); npcWrap.className = 'uit-npc';
+    const ava = el('div', '', npcWrap); ava.className = 'uit-ava'; ava.textContent = JOB_EMOJI[s.job] || '🧑';
+    const nb = el('div', '', npcWrap);
+    const nm = el('div', '', nb); nm.className = 'uit-name'; nm.textContent = s.npc || '住人';
+    const jb = el('div', '', nb); jb.className = 'uit-job'; jb.textContent = s.job ? `（${s.job}）` : '';
+    const x = el('div', '', head); x.className = 'uiv-x'; x.textContent = '✕ 閉じる（Esc）'; x.addEventListener('click', closeMenu);
+
+    if (s.greeting) { const say = el('div', '', p); say.className = 'uit-say'; say.textContent = s.greeting; }
+
+    el('div', '', p).className = 'uiv-sec'; p.lastChild.textContent = '取引（クリックで交換）';
+    const offers = Array.isArray(s.offers) ? s.offers : [];
+    if (!offers.length) { const n = el('div', '', p); n.className = 'uit-none'; n.textContent = '今は取引できるものがないようだ…'; }
+    offers.forEach((o) => {
+      const btn = el('button', '', p); btn.className = 'uit-offer'; btn.disabled = !o.canAfford;
+      offerSide(btn, o.giveName, o.giveIcon, o.giveCount);          // 渡す（プレイヤー支払い）
+      const ar = el('div', '', btn); ar.className = 'uit-arrow'; ar.textContent = '➡';
+      offerSide(btn, o.getName, o.getIcon, o.getCount, 'uit-get');  // 受け取る
+      btn.title = o.canAfford ? `${o.giveName}×${o.giveCount} を渡して ${o.getName}×${o.getCount} を受け取る` : `${o.giveName}×${o.giveCount} が足りません`;
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        let updated = null;
+        try { const i = window.VoxelGame; if (i && typeof i.trade === 'function') updated = i.trade(o.id); } catch (e) {}
+        try { window.playSFX && window.playSFX('trade'); } catch (e) {}
+        if (updated && (updated.offers || updated.npc)) tradeSession = updated; // 更新セッションがあれば差し替え
+        renderMenu('trade'); // 在庫/可否を反映して再描画
+      });
+    });
+  }
+  function openTrade(session) {
+    tradeSession = session || tradeSession || {};
+    menuOpen = true; renderMenu('trade');
+    dom.menu.classList.add('open');
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
 
   // =====================================================================
   // ④ スマホ向けタッチUI（タッチ端末のみ表示・PC操作は不変）
@@ -1093,11 +1169,13 @@
 
     // UI操作口（1号機はEキー処理から window.UI.toggle('inventory')、Escから open('menu') を呼ぶ＝委譲）
     window.UI = window.UI || {};
-    window.UI.open = (which) => {
+    window.UI.open = (which, data) => {
       window.UI._routed = true;
-      if (which === 'menu' || which === 'settings' || which === 'slots') openMenu(which === 'menu' ? 'menu' : which);
+      if (which === 'trade') openTrade(data);
+      else if (which === 'menu' || which === 'settings' || which === 'slots') openMenu(which === 'menu' ? 'menu' : which);
       else openInv();
     };
+    window.UI.openTrade = (session) => { window.UI._routed = true; openTrade(session); };
     window.UI.close = () => { closeInv(); closeMenu(); };
     window.UI.toggle = (which) => {
       window.UI._routed = true;
