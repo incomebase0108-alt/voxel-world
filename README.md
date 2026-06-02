@@ -39,6 +39,7 @@ models/ASSETS.json ... 同・機械可読版（1号機/3号機が参照）
 models/LAYOUT.md   ... 構造物の配置仕様シート（1号機②自動生成の見本・グリッド座標）
 models/EQUIP_HOLD.md ... 装備の手持ち表示仕様（手アンカー・グリップ角度）
 models/BLOCKS_PROPOSAL.md ... 装飾ブロック案（マテリアル値・エンジン流用）
+models/ORES.md     ... 鉱石ブロック/洞窟装飾の採掘ランク・ドロップ・配置仕様
 tools/icons/       ... インベントリ/ホットバー用アイコン（icons.json/ICONS.md）
 README.md       ... この文書（兼・作業ブリーフ）
 ```

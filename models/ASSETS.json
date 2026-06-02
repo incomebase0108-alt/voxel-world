@@ -14,9 +14,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 35,
-    "size_bytes": 5673380,
-    "size_mb": 5.411
+    "count": 42,
+    "size_bytes": 5858240,
+    "size_mb": 5.587
   },
   "assets": [
     {
@@ -520,6 +520,90 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 4,
+      "error": null
+    },
+    {
+      "file": "cave_pillar.glb",
+      "name": "cave_pillar",
+      "category": "洞窟・鉱石",
+      "size_bytes": 22584,
+      "size_mb": 0.0215,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "cave_stalactite.glb",
+      "name": "cave_stalactite",
+      "category": "洞窟・鉱石",
+      "size_bytes": 11472,
+      "size_mb": 0.0109,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "cave_stalagmite.glb",
+      "name": "cave_stalagmite",
+      "category": "洞窟・鉱石",
+      "size_bytes": 11472,
+      "size_mb": 0.0109,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "ore_coal.glb",
+      "name": "ore_coal",
+      "category": "洞窟・鉱石",
+      "size_bytes": 39292,
+      "size_mb": 0.0375,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "ore_gem.glb",
+      "name": "ore_gem",
+      "category": "洞窟・鉱石",
+      "size_bytes": 27900,
+      "size_mb": 0.0266,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "ore_gold.glb",
+      "name": "ore_gold",
+      "category": "洞窟・鉱石",
+      "size_bytes": 37356,
+      "size_mb": 0.0356,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "ore_iron.glb",
+      "name": "ore_iron",
+      "category": "洞窟・鉱石",
+      "size_bytes": 34784,
+      "size_mb": 0.0332,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
       "error": null
     }
   ]
