@@ -127,6 +127,51 @@ const counts = {};          // ブロック種別ごとの所持数（破壊で�
 HOTBAR.forEach(b => counts[b] = 0);
 const itemCounts = { meat:0, egg:0, coin:0, apple:0 }; // ドロップ品の所持数（早期宣言＝ロード時に参照するため）
 
+// ===================================================================
+// ⑤ (D)バランスの数値基盤：ゲームの体感を決める数値を1か所に集約
+//   コードは常にこの CFG を参照するので、値を書き換えれば即反映される
+//   星野さんはコンソールで window.VoxelBalance.set({ combat:{ meleeDmg:1 } }) のように調整可
+//   （3号機のバランス調整UIもこの口を叩けば作れる）
+// ===================================================================
+const CFG = {
+  time: { dayLength: 300 },                  // 1日の長さ（秒）。大きいほどゆっくり
+  player: {
+    maxHp: 20, maxHunger: 20, breathMax: 10, // 最大HP / 最大空腹 / 息が続く秒
+    fallSafe: 4, fallDmgPerBlock: 1,         // 無傷の落差 / 超過1ブロックのダメージ
+    regenDelay: 5, regenInterval: 1.5, regenHungerMin: 6, // 回復開始までの秒 / 回復間隔 / 回復に要する最低空腹
+    hungerDecay: 0.05, hungerMoveExtra: 0.04, hungerDashExtra: 0.12, // 空腹の毎秒減少（待機/移動/ダッシュ）
+    starveInterval: 2, drownInterval: 1,     // 空腹0/溺れのダメージ間隔（秒）
+    food: { meat: 8, apple: 5 },             // 食料の空腹回復量
+  },
+  combat: {
+    playerReach: 3.2, playerDmg: 4,          // プレイヤーの攻撃間合い / 攻撃力
+    meleeDmg: 2, meleeCd: 1.2,               // 近接敵の攻撃力 / 間隔
+    arrowDmg: 3, arrowCd: 2.0, arrowSpeed: 18, // 矢の威力 / 発射間隔 / 速度
+    golemDmg: 4, golemHeavyDmg: 7, golemCd: 1.6, golemHeavyCd: 2.5, // ボス通常/強攻撃の威力と間隔
+  },
+  mob: {
+    totalCap: 12, hostileCap: 7, neutralCap: 8,        // 同時存在の総/敵性/中立 上限
+    spawnMin: 18, spawnMax: 40, caveMin: 6, caveMax: 18, despawn: 75, // 地上/地下の湧き距離・消滅距離
+    spawnEveryMin: 2, spawnEveryRand: 2,               // 湧き判定の間隔（最小＋ランダム秒）
+    speedBoss: 1.4, speedHostile: 2.2, speedNeutral: 1.3, speedVillager: 1.0, // 移動速度
+    hp: { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30 }, // 種別ごとの体力
+  },
+};
+// 値の一括変更（ネストをディープマージ）。星野さんの体感調整用の口
+function applyBalance(patch) {
+  const merge = (dst, src) => { for (const k in src) {
+    if (src[k] && typeof src[k] === 'object' && !Array.isArray(src[k])) merge(dst[k] || (dst[k] = {}), src[k]);
+    else dst[k] = src[k];
+  } };
+  merge(CFG, patch || {});
+  return CFG;
+}
+window.VoxelBalance = {
+  get: () => CFG,
+  set: (patch) => applyBalance(patch),   // 例: VoxelBalance.set({ player:{ hungerDecay:0 } })
+  reset: () => location.reload(),         // 既定へ戻す（再読込）
+};
+
 // 立方体の6面（外向き法線・四隅・明るさ）
 // shade で上面を明るく・底面を暗くして簡易ライティング風にする
 const FACES = [
@@ -558,7 +603,7 @@ scene.add(ambient);
 
 // ===== 軸1: 時間帯サイクル（空の色・太陽の向き/強さ・環境光をキーフレーム補間）=====
 let dayTime = 0.30;        // 0..1（0/1=深夜 / 0.25=朝方 / 0.33=朝 / 0.5=正午 / 0.75=夕方）
-const DAY_LENGTH = 300;    // 1日の長さ（秒）※あとで調整できるよう定数化（120→300にゆっくり化）
+// 1日の長さは CFG.time.dayLength（⑤で集約）
 // 朝方→朝→昼→夕方→夜→（朝方へループ）の5段階を連続補間するキーフレーム
 //   sky=空/フォグ色, sun=太陽光色, si=太陽光の強さ, amb=環境光の強さ（夜は月明かりの下限）
 const KF = [
@@ -577,7 +622,7 @@ const KF = [
 const WHITE = new THREE.Color(0xffffff);
 const _sky = new THREE.Color(), _sun = new THREE.Color();
 function updateSky(dt) {
-  dayTime = (dayTime + dt / DAY_LENGTH) % 1;
+  dayTime = (dayTime + dt / CFG.time.dayLength) % 1;
   // 現在時刻を挟む2キーフレームを線形補間
   let i = 0; while (i < KF.length-1 && dayTime >= KF[i+1].t) i++;
   const a = KF[i], b = KF[Math.min(i+1, KF.length-1)];
@@ -967,38 +1012,28 @@ function toggleRide() {
 // 体力（HP）とダメージシステム
 //   数値は調整できるよう定数化。落下/溺れ/自然回復/死亡復活を扱う
 // ===================================================================
-const MAX_HP = 20;            // 最大HP（=ハート10個ぶん）
-const FALL_SAFE = 4;          // この落差(ブロック)までは無傷
-const FALL_DMG_PER_BLOCK = 1; // 超過1ブロックあたりのダメージ
-const REGEN_DELAY = 5;        // 最後の被ダメージから回復開始までの秒
-const REGEN_INTERVAL = 1.5;   // 1回復あたりの間隔（秒）
-const BREATH_MAX = 10;        // 息が続く秒数
-const DROWN_INTERVAL = 1;     // 溺れダメージの間隔（秒）
-const WATER_ID = 7;           // 水ブロック（水バイオーム実装後に有効化＝それまで溺れは作動しない）
-const MAX_HUNGER = 20;        // 最大空腹度
-const HUNGER_DECAY = 0.05;    // 空腹の毎秒減少（待機時）
-const STARVE_INTERVAL = 2;    // 空腹0でのダメージ間隔（秒）
-const REGEN_HUNGER_MIN = 6;   // この空腹度を下回ると自然回復しない
-const FOOD = { meat:8, apple:5 }; // 食料の空腹回復量
+// ⑤ HP/空腹/落下/溺れ等の数値は CFG.player に集約（下記は CFG を参照）
+const WATER_ID = 7;           // 水ブロックID（バランス値ではなく固定）
+const P = CFG.player;         // 健康系の短縮参照（CFG.player への生参照＝書き換え即反映）
 
-let hp = MAX_HP;
-let hunger = MAX_HUNGER;
+let hp = P.maxHp;
+let hunger = P.maxHunger;
 let starveAccum = 0;
 let gameTime = 0;             // 経過秒（回復タイミング判定用）
 let lastDamageTime = -999;
 let regenAccum = 0;
-let breath = BREATH_MAX;
+let breath = P.breathMax;
 let drownAccum = 0;
 let hurtFlash = 0;            // 被ダメージ時の赤フラッシュ（0..1、減衰）
 let fallPeakY = 0;           // 落下開始の最高到達点
 let prevOnGround = true;
 
 function eatFood() {
-  if (hunger >= MAX_HUNGER) return;
+  if (hunger >= P.maxHunger) return;
   const item = itemCounts.meat > 0 ? 'meat' : itemCounts.apple > 0 ? 'apple' : null;
   if (!item) return;
   itemCounts[item]--;
-  hunger = Math.min(MAX_HUNGER, hunger + FOOD[item]);
+  hunger = Math.min(P.maxHunger, hunger + P.food[item]);
   window.playSFX && window.playSFX('eat');
   scheduleSave();
 }
@@ -1018,7 +1053,7 @@ window.damagePlayer = (a) => damage(a, 'external'); // 敵モブからの被ダ�
 function respawn() {
   const s = findSpawn(); player.pos.set(s.x, s.y, s.z);
   player.vel.set(0, 0, 0);
-  hp = MAX_HP; breath = BREATH_MAX; hunger = MAX_HUNGER;
+  hp = P.maxHp; breath = P.breathMax; hunger = P.maxHunger;
   fallPeakY = player.pos.y; prevOnGround = true;
   scheduleSave();
 }
@@ -1029,7 +1064,7 @@ function updateHealth(dt) {
   const feetWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.5), Math.floor(player.pos.z)) === B.water;
   if (player.onGround && !prevOnGround && !feetWater) {
     const fall = fallPeakY - player.pos.y;
-    if (fall > FALL_SAFE) damage(Math.floor((fall - FALL_SAFE) * FALL_DMG_PER_BLOCK), 'fall');
+    if (fall > P.fallSafe) damage(Math.floor((fall - P.fallSafe) * P.fallDmgPerBlock), 'fall');
   }
   if (player.onGround || feetWater) fallPeakY = player.pos.y; // 水中・接地で落下蓄積をリセット
   else fallPeakY = Math.max(fallPeakY, player.pos.y);
@@ -1039,26 +1074,26 @@ function updateHealth(dt) {
   const headBlock = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + PH - 0.1), Math.floor(player.pos.z));
   if (headBlock === WATER_ID) {
     breath -= dt;
-    if (breath <= 0) { drownAccum += dt; if (drownAccum >= DROWN_INTERVAL) { drownAccum = 0; damage(1, 'drown'); } }
+    if (breath <= 0) { drownAccum += dt; if (drownAccum >= P.drownInterval) { drownAccum = 0; damage(1, 'drown'); } }
   } else {
-    breath = Math.min(BREATH_MAX, breath + dt * 3); // 水から出たら息は早めに回復
+    breath = Math.min(P.breathMax, breath + dt * 3); // 水から出たら息は早めに回復
     drownAccum = 0;
   }
 
   // --- 空腹（時間で減少。移動・ダッシュで多め）---
-  let decay = HUNGER_DECAY;
-  if (player.vel.x !== 0 || player.vel.z !== 0) decay += 0.04;
-  if (keys['ShiftLeft'] || keys['ShiftRight']) decay += 0.12;
+  let decay = P.hungerDecay;
+  if (player.vel.x !== 0 || player.vel.z !== 0) decay += P.hungerMoveExtra;
+  if (keys['ShiftLeft'] || keys['ShiftRight']) decay += P.hungerDashExtra;
   hunger = Math.max(0, hunger - decay * dt);
   if (hunger <= 0) { // 空腹0で微ダメージ
     starveAccum += dt;
-    if (starveAccum >= STARVE_INTERVAL) { starveAccum = 0; if (hp > 2) damage(1, 'starve'); }
+    if (starveAccum >= P.starveInterval) { starveAccum = 0; if (hp > 2) damage(1, 'starve'); }
   } else starveAccum = 0;
 
   // --- 自然回復（一定時間ダメージ無し＋空腹が一定以上のときだけ）---
-  if (hp > 0 && hp < MAX_HP && hunger >= REGEN_HUNGER_MIN && gameTime - lastDamageTime >= REGEN_DELAY) {
+  if (hp > 0 && hp < P.maxHp && hunger >= P.regenHungerMin && gameTime - lastDamageTime >= P.regenDelay) {
     regenAccum += dt;
-    if (regenAccum >= REGEN_INTERVAL) { regenAccum = 0; hp = Math.min(MAX_HP, hp + 1); hunger = Math.max(0, hunger - 0.5); scheduleSave(); }
+    if (regenAccum >= P.regenInterval) { regenAccum = 0; hp = Math.min(P.maxHp, hp + 1); hunger = Math.max(0, hunger - 0.5); scheduleSave(); }
   }
 
   hurtFlash = Math.max(0, hurtFlash - dt * 3); // 赤フラッシュ減衰
@@ -1068,14 +1103,14 @@ function updateHealth(dt) {
 function hungerHTML() {
   const full = Math.floor(hunger / 2), half = hunger % 2 >= 1;
   let s = '';
-  for (let i = 0; i < MAX_HUNGER/2; i++) s += (i < full) ? '🍖' : (i === full && half) ? '🍗' : '🤍';
+  for (let i = 0; i < P.maxHunger/2; i++) s += (i < full) ? '🍖' : (i === full && half) ? '🍗' : '🤍';
   return s;
 }
 // HUD用のハート列（1ハート=2HP、半分はピンクで表現）
 function heartsHTML() {
   const full = Math.floor(hp / 2), half = hp % 2;
   let s = '';
-  for (let i = 0; i < MAX_HP/2; i++) s += (i < full) ? '❤️' : (i === full && half) ? '💗' : '🤍';
+  for (let i = 0; i < P.maxHp/2; i++) s += (i < full) ? '❤️' : (i === full && half) ? '💗' : '🤍';
   return s;
 }
 
@@ -1355,12 +1390,12 @@ function buildDiag() {
     `アバター向き : ${(avatarYaw*180/Math.PI).toFixed(0)}°`,
     `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
-    `HP / 空腹 / 息 : ${hp}/${MAX_HP} / ${hunger.toFixed(1)}/${MAX_HUNGER} / ${breath.toFixed(1)}`,
+    `HP / 空腹 / 息 : ${hp}/${P.maxHp} / ${hunger.toFixed(1)}/${P.maxHunger} / ${breath.toFixed(1)}`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗         : ${ridingMob ? '馬に騎乗中' : '徒歩'}`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
-    `モブ         : ${mobs.length}/${MOB_CAP}体（敵${mobs.filter(m=>m.hostile).length}/${HOSTILE_CAP} 村人${mobs.filter(m=>m.def.type==='villager').length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
+    `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 村人${mobs.filter(m=>m.def.type==='villager').length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
     `構造物       : 村${villages.size} / スポナー${spawners.size}（発見済み）`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
@@ -1489,13 +1524,9 @@ MOB_DEFS.forEach(def => gltfLoader.load(def.file,
   undefined, () => {}));
 
 const mobs = [];
-const MOB_HP = { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30 }; // モブの体力
-const MOB_CAP = 12;                  // 同時存在の総上限（負荷管理）
-const HOSTILE_CAP = 7;               // ④ 敵性モブの同時上限
-const NEUTRAL_CAP = 8;               // ④ 中立モブの同時上限
-const MOB_SPAWN_MIN = 18, MOB_SPAWN_MAX = 40; // 地上でプレイヤーから湧く距離
-const CAVE_SPAWN_MIN = 6, CAVE_SPAWN_MAX = 18; // 地下で湧く距離（近め）
-const MOB_DESPAWN = 75;              // この距離を超えたら消す
+// ⑤ モブの体力・上限・湧き距離・速度は CFG.mob、戦闘数値は CFG.combat に集約（生参照で即反映）
+const M = CFG.mob;
+const C = CFG.combat;
 let mobSpawnTimer = 2;
 
 function groundY(x, z) {
@@ -1657,7 +1688,7 @@ function spawnMob(type, x, z, opts = {}) {
     aIdle.play();
   }
   const mob = { def, obj, mixer, aIdle, aWalk, aAttack, aHeavy, cur: aIdle,
-    hostile: def.hostile, hp: (typeof opts.hp === 'number') ? opts.hp : (MOB_HP[type] || 5),
+    hostile: def.hostile, hp: (typeof opts.hp === 'number') ? opts.hp : (M.hp[type] || 5),
     state: opts.state || 'idle', timer: 1+Math.random()*3, vx:0, vz:0, atkCd:0, atkCnt:0,
     // ③ ナビ用：希望進路(navx,navz)・経路再計算CD・徘徊方向(wx,wz)・直近の向き(flx,flz)・スタック計測
     navx:0, navz:0, navCd: Math.random()*0.5, wx:0, wz:0, flx:0, flz:0, stuck:0 };
@@ -1706,8 +1737,8 @@ function spawnHostileNear(cave) {
   const type = types[Math.floor(Math.random()*types.length)];
   if (!mobTemplates[type]) return;
   const ang = Math.random()*Math.PI*2;
-  const dist = cave ? CAVE_SPAWN_MIN + Math.random()*(CAVE_SPAWN_MAX-CAVE_SPAWN_MIN)
-                    : MOB_SPAWN_MIN + Math.random()*(MOB_SPAWN_MAX-MOB_SPAWN_MIN);
+  const dist = cave ? M.caveMin + Math.random()*(M.caveMax-M.caveMin)
+                    : M.spawnMin + Math.random()*(M.spawnMax-M.spawnMin);
   const x = player.pos.x + Math.cos(ang)*dist, z = player.pos.z + Math.sin(ang)*dist;
   if (cave) {
     const fy = floorYNear(x, z, player.pos.y);
@@ -1724,7 +1755,7 @@ function spawnNeutralNear() {
   const pool = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && mobTemplates[d.type]);
   if (!pool.length) return;
   const def = pool[Math.floor(Math.random()*pool.length)];
-  const ang = Math.random()*Math.PI*2, dist = MOB_SPAWN_MIN + Math.random()*(MOB_SPAWN_MAX-MOB_SPAWN_MIN);
+  const ang = Math.random()*Math.PI*2, dist = M.spawnMin + Math.random()*(M.spawnMax-M.spawnMin);
   const x = player.pos.x + Math.cos(ang)*dist, z = player.pos.z + Math.sin(ang)*dist;
   if (isWaterColumnSurface(x, z)) return;
   spawnMob(def.type, x, z);
@@ -1732,16 +1763,16 @@ function spawnNeutralNear() {
 function spawnLogic(dt) {
   mobSpawnTimer -= dt;
   if (mobSpawnTimer > 0) return;
-  mobSpawnTimer = 2 + Math.random()*2;
-  if (!Object.keys(mobTemplates).length || mobs.length >= MOB_CAP) return;
+  mobSpawnTimer = M.spawnEveryMin + Math.random()*M.spawnEveryRand;
+  if (!Object.keys(mobTemplates).length || mobs.length >= M.totalCap) return;
   let hostileN = 0, neutralN = 0, villagerN = 0;
   for (const m of mobs) { if (m.hostile) hostileN++; else { neutralN++; if (m.def.type === 'villager') villagerN++; } }
 
   if (playerUnderground()) {                       // 地下＝常時、敵性を近接湧き
-    if (hostileN < HOSTILE_CAP) spawnHostileNear(true);
+    if (hostileN < M.hostileCap) spawnHostileNear(true);
     return;
   }
-  if (isNight() && hostileN < HOSTILE_CAP && Math.random() < 0.8) { // 地上・夜＝敵性湧き
+  if (isNight() && hostileN < M.hostileCap && Math.random() < 0.8) { // 地上・夜＝敵性湧き
     spawnHostileNear(false);
     return;
   }
@@ -1753,7 +1784,7 @@ function spawnLogic(dt) {
     if (!isWaterColumnSurface(x, z)) spawnMob('villager', x, z);
     return;
   }
-  if (neutralN < NEUTRAL_CAP) spawnNeutralNear();
+  if (neutralN < M.neutralCap) spawnNeutralNear();
 }
 function updateMobs(dt) {
   // セーブされたモブの復元（テンプレ読込が済んだら1回だけ。完了まで自動湧きは待たせる）
@@ -1767,7 +1798,7 @@ function updateMobs(dt) {
     const m = mobs[i];
     const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z;
     const dist = Math.hypot(dx, dz) || 0.0001;
-    if (dist > MOB_DESPAWN) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
+    if (dist > M.despawn) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
     // ④ 朝＝地上の敵性は陽光で消滅（地下の敵は生存＝洞窟は常時湧き）。プレイヤーから離れた個体のみ
     if (m.hostile && isDay() && dist > 18) {
       const surf = heightAt(Math.floor(m.obj.position.x), Math.floor(m.obj.position.z));
@@ -1784,7 +1815,7 @@ function updateMobs(dt) {
       else {
         m.obj.rotation.y = Math.atan2(-dx, -dz); animName = 'attack';
         m.atkCd -= dt;
-        if (m.atkCd <= 0) { m.atkCd = 2.0; shootArrow(m.obj.position.x, m.obj.position.y+1.2, m.obj.position.z, player.pos.x, player.pos.y+0.9, player.pos.z); }
+        if (m.atkCd <= 0) { m.atkCd = C.arrowCd; shootArrow(m.obj.position.x, m.obj.position.y+1.2, m.obj.position.z, player.pos.x, player.pos.y+0.9, player.pos.z); }
       }
     } else if (role === 'boss' && dist < 26) {
       // ゴーレム：遅い接近（経路探索）＋強攻撃(heavy)
@@ -1794,13 +1825,13 @@ function updateMobs(dt) {
         m.atkCd -= dt; animName = 'attack';
         if (m.atkCd <= 0) {
           m.atkCnt++;
-          if (m.atkCnt % 3 === 0) { m.atkCd = 2.5; damage(7, 'golem'); animName = 'heavy'; }
-          else { m.atkCd = 1.6; damage(4, 'golem'); }
+          if (m.atkCnt % 3 === 0) { m.atkCd = C.golemHeavyCd; damage(C.golemHeavyDmg, 'golem'); animName = 'heavy'; }
+          else { m.atkCd = C.golemCd; damage(C.golemDmg, 'golem'); }
         }
       }
     } else if (role === 'melee' && dist < 20) {
       if (dist > 1.4) { const h = chaseHeading(m, dt); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; } // 経路探索で追跡
-      else { m.obj.rotation.y = Math.atan2(-dx, -dz); animName = 'attack'; m.atkCd -= dt; if (m.atkCd <= 0) { m.atkCd = 1.2; damage(2, 'mob'); } }
+      else { m.obj.rotation.y = Math.atan2(-dx, -dz); animName = 'attack'; m.atkCd -= dt; if (m.atkCd <= 0) { m.atkCd = C.meleeCd; damage(C.meleeDmg, 'mob'); } }
     } else if (role === 'neutral' && dist < 5) {
       dhx = -dx/dist; dhz = -dz/dist; moving = true; animName = 'walk'; // プレイヤーから逃げる
     } else {
@@ -1809,7 +1840,7 @@ function updateMobs(dt) {
       else { moving = false; animName = 'idle'; }
     }
     if (moving) {
-      const spd = role === 'boss' ? 1.4 : m.hostile ? 2.2 : (m.def.type === 'villager' ? 1.0 : 1.3);
+      const spd = role === 'boss' ? M.speedBoss : m.hostile ? M.speedHostile : (m.def.type === 'villager' ? M.speedVillager : M.speedNeutral);
       const ok = tryMoveMob(m, dhx, dhz, spd, dt);
       if (!ok) { // 行き止まり：経路を引き直し、徘徊中なら一旦停止して向きを変える
         m.stuck += dt; m.navCd = 0; animName = 'idle';
@@ -1833,14 +1864,14 @@ function nearestVillage(px, pz, maxD) {
 }
 // ② ダンジョンのスポナー：近くにプレイヤーが居ると敵を周期的に湧かせる（昼夜問わず＝地下は暗い）
 function updateSpawners(dt) {
-  if (mobs.length >= MOB_CAP) return;
+  if (mobs.length >= M.totalCap) return;
   for (const [key, s] of spawners) {
     // 水平距離＋高さ差で近接判定（地上を歩くだけでは作動しにくく、潜ると作動）
     const d = Math.hypot(s.x - player.pos.x, s.z - player.pos.z) + Math.abs(s.y - player.pos.y) * 0.6;
     if (d > 16) continue;
     if (getBlock(s.x, s.y, s.z) !== B.spawner) { spawners.delete(key); continue; } // 破壊済みなら除去
     s.cd -= dt;
-    if (s.cd <= 0 && mobs.length < MOB_CAP) {
+    if (s.cd <= 0 && mobs.length < M.totalCap) {
       s.cd = 6 + Math.random()*4;
       const type = Math.random() < 0.6 ? 'zombie' : 'skeleton';
       if (mobTemplates[type]) spawnMob(type, s.x + (Math.random()*2-1), s.z + (Math.random()*2-1), { y: s.y });
@@ -1853,7 +1884,7 @@ const arrows = [];
 const arrowGeo = new THREE.BoxGeometry(0.08, 0.08, 0.6);
 const arrowMat = new THREE.MeshBasicMaterial({ color: 0x2b2b2b });
 function shootArrow(fx, fy, fz, tx, ty, tz) {
-  const dx = tx-fx, dy = ty-fy, dz = tz-fz, d = Math.hypot(dx, dy, dz) || 1, spd = 18;
+  const dx = tx-fx, dy = ty-fy, dz = tz-fz, d = Math.hypot(dx, dy, dz) || 1, spd = C.arrowSpeed;
   const obj = new THREE.Mesh(arrowGeo, arrowMat);
   obj.position.set(fx, fy, fz); obj.lookAt(tx, ty, tz);
   scene.add(obj);
@@ -1868,7 +1899,7 @@ function updateArrows(dt) {
     a.life -= dt;
     const px = player.pos.x, py = player.pos.y+0.9, pz = player.pos.z;
     const dd = (a.obj.position.x-px)**2 + (a.obj.position.y-py)**2 + (a.obj.position.z-pz)**2;
-    if (dd < 0.64) { damage(3, 'arrow'); window.playSFX && window.playSFX('hit'); scene.remove(a.obj); arrows.splice(i,1); continue; } // 命中
+    if (dd < 0.64) { damage(C.arrowDmg, 'arrow'); window.playSFX && window.playSFX('hit'); scene.remove(a.obj); arrows.splice(i,1); continue; } // 命中
     if (a.life <= 0 || a.obj.position.y < groundY(a.obj.position.x, a.obj.position.z) - 1) { scene.remove(a.obj); arrows.splice(i,1); } // 期限・着地
   }
 }
@@ -1882,7 +1913,7 @@ ITEM_DEFS.forEach(n => gltfLoader.load(`models/item_${n}.glb`, g => { itemTempla
 const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご' };
 const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin' };
 const drops = []; // 地面に落ちたアイテム { obj, item, t, life }
-const ATTACK_REACH = 3.2, ATTACK_DMG = 4;
+// プレイヤーの攻撃間合い/攻撃力は CFG.combat（C.playerReach / C.playerDmg）
 
 function spawnDrop(item, x, y, z) {
   if (!item) return;
@@ -1912,18 +1943,18 @@ function updateDrops(dt) {
 function attackMob() {
   const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
   const ox = player.pos.x, oy = player.pos.y + EYE, oz = player.pos.z;
-  let best = -1, bestD = ATTACK_REACH;
+  let best = -1, bestD = C.playerReach;
   for (let i = 0; i < mobs.length; i++) {
     const p = mobs[i].obj.position;
     const vx = p.x-ox, vy = (p.y+0.6)-oy, vz = p.z-oz;
     const d = Math.hypot(vx, vy, vz);
-    if (d > ATTACK_REACH) continue;
+    if (d > C.playerReach) continue;
     if ((vx*dir.x + vy*dir.y + vz*dir.z) / (d||1) < 0.5) continue; // 視線から外れている
     if (d < bestD) { bestD = d; best = i; }
   }
   if (best < 0) return false;
   const m = mobs[best];
-  m.hp -= ATTACK_DMG;
+  m.hp -= C.playerDmg;
   window.playSFX && window.playSFX('attack');
   // ノックバック
   const kx = m.obj.position.x-ox, kz = m.obj.position.z-oz, kl = Math.hypot(kx,kz)||1;
@@ -1973,7 +2004,7 @@ function loop(now) {
   hpEl.innerHTML = heartsHTML();
   hungerEl.innerHTML = hungerHTML();
   hurtEl.style.opacity = (hurtFlash * 0.7).toFixed(2);
-  breathEl.textContent = (breath < BREATH_MAX - 0.05) ? '🫧'.repeat(Math.ceil(breath / BREATH_MAX * 10)) : '';
+  breathEl.textContent = (breath < P.breathMax - 0.05) ? '🫧'.repeat(Math.ceil(breath / P.breathMax * 10)) : '';
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
