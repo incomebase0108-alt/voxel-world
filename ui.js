@@ -213,6 +213,33 @@
       .uim-slot .sa button.danger:hover { background:rgba(190,40,40,.4); border-color:#ff7a7a; }
       .uim-mute { display:flex; align-items:center; gap:8px; font-size:13px; margin:6px 0 2px; cursor:pointer; }
 
+      /* ④ スマホ向けタッチUI（タッチ端末のみ表示） */
+      #ui-touch { position:fixed; inset:0; z-index:17; pointer-events:none; display:none; touch-action:none; }
+      #ui-touch.on { display:block; }
+      #ui-look { position:fixed; inset:0; z-index:14; pointer-events:auto; touch-action:none; } /* 視点ドラッグ捕捉（最下層） */
+      #ui-stick { position:fixed; left:22px; bottom:22px; width:128px; height:128px; border-radius:50%;
+        background:radial-gradient(circle, rgba(255,255,255,.10), rgba(0,0,0,.22)); border:2px solid rgba(255,255,255,.22);
+        pointer-events:auto; touch-action:none; }
+      #ui-knob { position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px; border-radius:50%;
+        background:radial-gradient(circle at 40% 35%, #fff, #c9d4e2); box-shadow:0 2px 8px rgba(0,0,0,.5); }
+      .ui-tbtns { position:fixed; right:20px; bottom:24px; display:grid; gap:12px; pointer-events:none;
+        grid-template-columns:repeat(2,72px); grid-template-areas:'place jump' 'attack jump'; }
+      .ui-tbtn { pointer-events:auto; touch-action:none; user-select:none; -webkit-user-select:none;
+        width:72px; height:72px; border-radius:50%; border:2px solid rgba(255,255,255,.3);
+        background:rgba(20,30,48,.5); color:#fff; font-size:12px; font-weight:700; display:flex;
+        flex-direction:column; align-items:center; justify-content:center; gap:2px; backdrop-filter:blur(2px); }
+      .ui-tbtn .e { font-size:22px; line-height:1; }
+      .ui-tbtn.press { transform:scale(.92); background:rgba(70,110,170,.6); border-color:#9bc1ff; }
+      .ui-tbtn.jump { grid-area:jump; width:84px; height:84px; }
+      .ui-tbtn.attack { grid-area:attack; }
+      .ui-tbtn.place { grid-area:place; }
+      .ui-ttop { position:fixed; left:14px; top:14px; display:flex; gap:10px; pointer-events:none; } /* 右上はレーダーのため左上へ */
+      .ui-ttop .ui-tbtn { width:50px; height:50px; }
+      .ui-ttop .ui-tbtn .e { font-size:20px; }
+      .ui-tdash { position:fixed; left:26px; bottom:160px; }
+      .ui-tdash .ui-tbtn { width:56px; height:56px; }
+      .ui-tdash .ui-tbtn.on { background:rgba(255,170,40,.55); border-color:#ffd54a; }
+
       @media (max-width:640px) {
         #ui-radar { width:96px; height:96px; }
         .ui-slot { width:42px; height:42px; }
@@ -604,6 +631,103 @@
   function closeMenu() { menuOpen = false; dom.menu.classList.remove('open'); }
 
   // =====================================================================
+  // ④ スマホ向けタッチUI（タッチ端末のみ表示・PC操作は不変）
+  //   ・移動/ジャンプ/ダッシュ … 合成キー(WASD/Space/Shift)で即動作（コア改修不要）
+  //   ・視点/破壊(攻撃)/設置 … window.VoxelGame.input.{look,primary,secondary} に配線
+  //     （ポインタロックが使えないスマホでは合成マウス不可のため。未提供なら安全に無効）
+  // =====================================================================
+  let touchOn = false, stickId = null, lookId = null, lookLast = null, dashOn = false;
+  const stickVec = { x: 0, z: 0 };
+  const heldKeys = new Set();
+  function isTouchDevice() { return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0); }
+  function synth(code, down) { try { document.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true })); } catch (e) {} }
+  function setKey(code, down) {
+    if (down) { if (!heldKeys.has(code)) { heldKeys.add(code); synth(code, true); } }
+    else { if (heldKeys.has(code)) { heldKeys.delete(code); synth(code, false); } }
+  }
+  const coreInput = () => (window.VoxelGame && window.VoxelGame.input) || null;
+  function inputAct(name, arg) { const i = coreInput(); if (i && typeof i[name] === 'function') { try { i[name](arg); return true; } catch (e) {} } return false; }
+
+  function applyStick() {
+    const i = coreInput();
+    if (i && typeof i.move === 'function') { try { i.move(stickVec.x, stickVec.z); } catch (e) {} return; }
+    setKey('KeyW', stickVec.z < -0.35); setKey('KeyS', stickVec.z > 0.35);
+    setKey('KeyA', stickVec.x < -0.35); setKey('KeyD', stickVec.x > 0.35);
+  }
+
+  function buildTouch() {
+    // 視点ドラッグ捕捉層（最下層・タッチ時のみ表示）。PCでは display:none でクリックを邪魔しない
+    const look = el('div', 'display:none;', document.body); look.id = 'ui-look';
+    const cont = el('div', '', document.body); cont.id = 'ui-touch';
+    const stick = el('div', '', cont); stick.id = 'ui-stick';
+    const knob = el('div', '', stick); knob.id = 'ui-knob';
+    const tbtns = el('div', '', cont); tbtns.className = 'ui-tbtns';
+    const mkBtn = (parent, cls, emoji, label) => {
+      const b = el('div', '', parent); b.className = 'ui-tbtn ' + cls;
+      const e = el('div', '', b); e.className = 'e'; e.textContent = emoji;
+      if (label) { const t = el('div', '', b); t.textContent = label; }
+      return b;
+    };
+    const jump = mkBtn(tbtns, 'jump', '⬆', 'ジャンプ');
+    const attack = mkBtn(tbtns, 'attack', '⚔', '攻撃/破壊');
+    const place = mkBtn(tbtns, 'place', '⛏', '設置');
+    const dashWrap = el('div', '', cont); dashWrap.className = 'ui-tdash';
+    const dash = mkBtn(dashWrap, '', '🏃', 'ダッシュ');
+    const top = el('div', '', cont); top.className = 'ui-ttop';
+    const invBtn = mkBtn(top, '', '🎒');
+    const menuBtn = mkBtn(top, '', '⏸');
+    dom.touch = cont; dom.look = look; dom.stick = stick; dom.knob = knob;
+
+    // --- ジョイスティック ---
+    function moveKnob(e) {
+      const r = stick.getBoundingClientRect();
+      let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      const max = r.width / 2, d = Math.hypot(dx, dy) || 1, cl = Math.min(d, max);
+      dx = dx / d * cl; dy = dy / d * cl;
+      knob.style.transform = `translate(${dx}px,${dy}px)`;
+      stickVec.x = dx / max; stickVec.z = dy / max; applyStick();
+    }
+    stick.addEventListener('pointerdown', (e) => { e.preventDefault(); stickId = e.pointerId; try { stick.setPointerCapture(e.pointerId); } catch (x) {} moveKnob(e); });
+    stick.addEventListener('pointermove', (e) => { if (e.pointerId === stickId) moveKnob(e); });
+    const endStick = (e) => { if (e.pointerId === stickId) { stickId = null; stickVec.x = 0; stickVec.z = 0; knob.style.transform = 'translate(0,0)'; setKey('KeyW', false); setKey('KeyS', false); setKey('KeyA', false); setKey('KeyD', false); applyStick(); } };
+    stick.addEventListener('pointerup', endStick); stick.addEventListener('pointercancel', endStick);
+
+    // --- 視点ドラッグ ---
+    look.addEventListener('pointerdown', (e) => { lookId = e.pointerId; lookLast = { x: e.clientX, y: e.clientY }; });
+    look.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== lookId || !lookLast) return;
+      const dx = e.clientX - lookLast.x, dy = e.clientY - lookLast.y; lookLast = { x: e.clientX, y: e.clientY };
+      inputAct('look', dx); // 1引数版を試しつつ…
+      const i = coreInput(); if (i && typeof i.look === 'function') { try { i.look(dx, dy); } catch (x) {} }
+    });
+    const endLook = (e) => { if (e.pointerId === lookId) { lookId = null; lookLast = null; } };
+    look.addEventListener('pointerup', endLook); look.addEventListener('pointercancel', endLook);
+
+    // --- アクションボタン ---
+    function holdBtn(elm, onDown, onUp) {
+      const d = (e) => { e.preventDefault(); elm.classList.add('press'); onDown && onDown(); };
+      const u = (e) => { e.preventDefault(); elm.classList.remove('press'); onUp && onUp(); };
+      elm.addEventListener('pointerdown', d); elm.addEventListener('pointerup', u);
+      elm.addEventListener('pointercancel', u); elm.addEventListener('pointerleave', u);
+    }
+    function tapBtn(elm, fn) { elm.addEventListener('pointerdown', (e) => { e.preventDefault(); elm.classList.add('press'); }); elm.addEventListener('pointerup', (e) => { e.preventDefault(); elm.classList.remove('press'); fn(); }); }
+    holdBtn(jump, () => setKey('Space', true), () => setKey('Space', false));
+    holdBtn(attack, () => inputAct('primary', true), () => inputAct('primary', false));
+    holdBtn(place, () => inputAct('secondary', true), () => inputAct('secondary', false));
+    tapBtn(dash, () => { dashOn = !dashOn; dash.classList.toggle('on', dashOn); setKey('ShiftLeft', dashOn); });
+    tapBtn(invBtn, () => { window.UI._routed = true; toggleInv(); });
+    tapBtn(menuBtn, () => { window.UI._routed = true; menuOpen ? closeMenu() : openMenu('menu'); });
+  }
+
+  function setTouchMode(on) {
+    touchOn = on;
+    if (!dom.touch) return;
+    dom.touch.classList.toggle('on', on);
+    dom.look.style.display = on ? 'block' : 'none';
+    if (on) dom.hint.style.display = 'none'; // スマホではキーヒントを出さない
+  }
+
+  // =====================================================================
   // レーダーミニマップ（北を上にしたシンプル版・プレイヤー中心）
   // =====================================================================
   const RADAR_RANGE = 44; // 半径（ブロック）
@@ -866,7 +990,10 @@
 
     // --- ② インベントリ（開いている間だけ内容を更新）＋ 操作ヒント ---
     if (invOpen) renderInventory(st);
-    dom.hint.style.display = (coreIntegrated() && !invOpen) ? '' : 'none';
+    dom.hint.style.display = (coreIntegrated() && !invOpen && !touchOn) ? '' : 'none';
+
+    // --- ④ input.move 提供時は傾けっぱなしでも毎フレーム移動を送る ---
+    if (touchOn && stickId !== null) { const i = coreInput(); if (i && typeof i.move === 'function') applyStick(); }
   }
 
   // =====================================================================
@@ -898,6 +1025,16 @@
     window.UI.spawnDamagePopup = spawnDamagePopup;
     window.UI.spawnHitEffect = spawnHitEffect;
     window.UI.settings = () => uiSettings;
+    window.UI.setTouch = (b) => setTouchMode(!!b);
+
+    // タッチUIの構築＋端末判定（PCは非表示・操作不変）
+    buildTouch();
+    setTouchMode(isTouchDevice());
+    // 初回タッチで未判定端末でも有効化（ハイブリッド端末対策）
+    window.addEventListener('touchstart', function onFirstTouch() {
+      if (!touchOn) setTouchMode(true);
+      window.removeEventListener('touchstart', onFirstTouch);
+    }, { passive: true });
 
     // フォールバックのEキー（コアが委譲し始めたら _routed=true で自動停止＝二重起動回避）
     window.addEventListener('keydown', (e) => {

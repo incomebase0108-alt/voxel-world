@@ -147,6 +147,29 @@ window.spawnDamagePopup && window.spawnDamagePopup(player.pos.x, player.pos.y+1.
 
 ---
 
+## ④ スマホ向けタッチ入力の口（1号機）
+
+`ui.js` がタッチ端末でのみ仮想スティック＋ボタンを表示します（PCは非表示・操作不変）。
+
+- *移動 / ジャンプ / ダッシュ* … ui.js が**合成キー(WASD/Space/ShiftLeft)を発火**するので**コア改修なしで即動作**します。
+- *視点 / 破壊(攻撃) / 設置* … ポインタロックが使えないスマホでは合成マウスが効かないため、
+  以下の入力口を `window.VoxelGame.input` に用意してください（未提供ならその操作だけ無効・他は動く）。
+
+```js
+window.VoxelGame.input = {
+  look: (dx, dy) => { player.yaw -= dx * 0.0045; player.pitch = clamp(player.pitch - dy * 0.0045); }, // 視点デルタ(px)
+  primary:   (down) => { /* 押下中フラグ。down時に breakBlock()/attackOrBreak() 相当 */ },
+  secondary: (down) => { /* down時に placeBlock() 相当 */ },
+  // 任意: 提供されれば移動も合成キーでなくこちらを使う（カメラ相対 x,z = -1..1）
+  move: (x, z) => { /* 例: 前後左右の入力ベクトルとして使用 */ },
+};
+```
+
+> `primary`/`secondary` は押しっぱなし対応のため `down=true/false` で来ます（単発なら down=true 時だけ処理）。
+> 提供が無い間も、移動・ジャンプ・ダッシュ・インベントリ(🎒)・メニュー(⏸)ボタンは機能します。
+
+---
+
 ## 2号機（sound.js）との口
 設定画面の音量スライダーは、2号機が公開する音量口に接続予定です。希望IF（どちらでも可）:
 - `window.setMasterVolume(v: 0..1)` / `window.getMasterVolume()` 、または
