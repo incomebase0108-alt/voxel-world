@@ -274,6 +274,11 @@ window.spawnDamagePopup && window.spawnDamagePopup(mob.obj.position.x, mob.obj.p
 window.spawnDamagePopup && window.spawnDamagePopup(player.pos.x, player.pos.y+1.2, player.pos.z, dmg, { self:true });
 ```
 
+### 手応え強化（②）の任意フック
+- *カメラシェイク*：`window.VoxelGame.shake(intensity 0..1)` を用意すると、ui.js は命中/会心/必殺/被弾で*本物のカメラ揺れ*を使います（無い時は HUD を軽く揺らすフォールバック）。一瞬カメラを微小オフセット→減衰で戻すだけでOK。
+- *敵の白フラッシュ*：「敵が白く光る」はメッシュ着色なので*コア側*でお願いします（命中時に対象mobのmaterialを一瞬白へ）。ui.js は命中点の閃光/斬撃線/特大会心数字を担当します。
+- 通常攻撃と必殺技で*演出を別格化*済み：通常=小さな閃光+控えめ、会心=特大数字(40px)+大リング+二重斬撃、必殺=全画面FX(`onUseSkill`)。
+
 > 既存の `window.onPlayerHurt(cause, amount)` も ui.js がフックして赤フラッシュを出します（こちらは据え置きでOK）。
 > `self:true` 付きで `spawnDamagePopup` を呼ぶ場合は赤フラッシュが二重にならないよう、どちらか一方で。
 

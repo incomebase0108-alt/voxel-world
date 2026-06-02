@@ -128,7 +128,8 @@
         font-family: system-ui, sans-serif; white-space:nowrap; will-change:transform,opacity;
         text-shadow:0 1px 2px #000, 0 0 4px #000; letter-spacing:.5px; }
       .ui-pop.dmg  { color:#ffd9a0; font-size:20px; }
-      .ui-pop.crit { color:#ffec5c; font-size:30px; text-shadow:0 0 6px #ff7a00, 0 1px 2px #000; }
+      .ui-pop.crit { color:#ffec5c; font-size:40px; letter-spacing:1px;
+        text-shadow:0 0 10px #ff7a00, 0 0 18px #ff5a00, 0 2px 3px #000; }
       .ui-pop.heal { color:#7cff9b; font-size:18px; }
       .ui-pop.self { color:#ff6b6b; font-size:22px; }
 
@@ -1025,6 +1026,14 @@
   }
   function flashHeal() { healT = 0.7; }
 
+  // 画面シェイク：本命はコアのカメラ揺れ（window.VoxelGame.shake）。無ければ HUD を軽く揺らす。
+  //   通常攻撃ではフォールバックHUD揺れを抑え（うるさいので）、会心/必殺/被弾だけ許可。
+  function impactShake(intensity, allowFallback) {
+    const vg = window.VoxelGame;
+    if (vg && typeof vg.shake === 'function') { try { vg.shake(intensity); return; } catch (e) {} }
+    if (allowFallback) shakeT = Math.max(shakeT, Math.min(0.5, intensity));
+  }
+
   // レベルアップ祝祭演出（1号機 core が window.onLevelUp(level) を呼ぶ）
   function doLevelUp(level) {
     if (!dom) return;
@@ -1048,7 +1057,7 @@
     const kind = SKILL_KINDS.indexOf(opts.kind) >= 0 ? opts.kind : 'nova';
     const color = opts.color || SKILL_COLORS[kind] || '#7ab8ff';
     skillFx.push({ kind, color, life: 0, ttl: 0.9 });
-    skillFlashT = 0.6; shakeT = Math.max(shakeT, 0.5);
+    skillFlashT = 0.6; impactShake(0.55, true);
     if (opts.name && dom.sk1) {
       dom.sk1.textContent = opts.name; dom.sk1.style.color = color;
       dom.sk2.textContent = '必殺技';
@@ -1152,7 +1161,12 @@
 
     // 命中点の閃光も同時に（ヒットの手応え）
     spawnHitEffect(x, y, z, { screen: opts.screen, crit, kind: heal ? 'heal' : 'hit', _resolved: s });
-    if (self) flashDamage(Math.abs(amt)); // プレイヤー被ダメは赤フラッシュと統合
+
+    // 手応え：会心は特大＋強シェイク、通常は控えめ、被弾は赤フラッシュ＋中シェイク
+    if (self) { flashDamage(Math.abs(amt)); impactShake(0.28, true); }
+    else if (heal) { /* 回復はシェイクなし */ }
+    else if (crit) impactShake(0.34, true);
+    else impactShake(0.13 + clamp01(amt / 20) * 0.12, false); // 通常はコアのカメラ揺れがある時だけ
   }
 
   // 命中点の一瞬の閃光／斬撃線
@@ -1205,17 +1219,28 @@
         ctx.beginPath(); ctx.arc(0, 0, lr * 0.7, 0, Math.PI * 2); ctx.stroke();
         ctx.restore(); continue;
       }
-      const r = (h.crit ? 26 : 16) * (0.4 + k * 1.3);
+      const col = h.kind === 'heal' ? '#7cff9b' : (h.crit ? '#ffec5c' : '#fff2cc');
+      // 命中の白い閃光（インパクト）：序盤に強く光る
+      const fa = clamp01(1 - k / 0.4);
+      if (fa > 0) {
+        ctx.globalAlpha = fa * (h.crit ? 0.85 : 0.6);
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(0, 0, (h.crit ? 18 : 10) * (1 - k), 0, Math.PI * 2); ctx.fill();
+      }
+      const r = (h.crit ? 40 : 18) * (0.4 + k * 1.4);
       // 放射状の閃光リング
       ctx.globalAlpha = a * 0.9;
-      ctx.strokeStyle = h.kind === 'heal' ? '#7cff9b' : (h.crit ? '#ffec5c' : '#fff2cc');
-      ctx.lineWidth = h.crit ? 3 : 2;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = h.crit ? 4 : 2;
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
-      // 斬撃線（クロス）
+      // 斬撃線（会心は大きく・二重線）
       ctx.globalAlpha = a;
       ctx.rotate(h.ang);
-      const len = (h.crit ? 22 : 14) * (0.6 + k);
+      const len = (h.crit ? 40 : 15) * (0.6 + k);
+      ctx.lineWidth = h.crit ? 4 : 2; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(len, 0); ctx.stroke();
+      if (h.crit) { ctx.globalAlpha = a * 0.6; ctx.strokeStyle = '#fff';
+        ctx.beginPath(); ctx.moveTo(-len * 0.7, 0); ctx.lineTo(len * 0.7, 0); ctx.stroke(); }
       ctx.restore();
     }
 
