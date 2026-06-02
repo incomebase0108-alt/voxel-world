@@ -1295,8 +1295,15 @@ function updatePlayer(dt) {
     }
     playerAvatar.rotation.y = avatarYaw;
     playerAvatar.visible = thirdPerson;
-    // ⑤ アニメ：移動中=walk / 静止=idle
-    playAvatarAnim(moving);
+    // 水中うつ伏せ：体が水ブロックに浸かっていれば前傾90°に倒す＝泳ぎ姿勢（頭は進行方向＝rotation.y）。
+    //   水面より上に出たら立ち姿勢へ。swimクリップがある時はクリップ再生に任せ前傾しない（二重化回避）。
+    const bodyInWater = !ridingBoat && !ridingMob &&
+      getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.9), Math.floor(player.pos.z)) === B.water;
+    const targetPitch = (bodyInWater && !actSwim) ? -Math.PI/2 : 0;
+    avatarPitch += (targetPitch - avatarPitch) * Math.min(1, dt * 10); // 立ち⇄泳ぎを滑らかに補間
+    playerAvatar.rotation.x = avatarPitch;
+    // ⑤ アニメ：水中=swim(あれば) / 移動中=walk / 静止=idle
+    playAvatarAnim(moving, bodyInWater);
   }
   // (A) 騎乗：馬をプレイヤーの足元へ。アバターは「鞍に座る」高さに（立ちモデルの胴が鞍≈1.42に来るよう足元を約0.55上げる）
   //   ※以前は足元を鞍(1.42)に上げていたため、立ち姿勢のまま馬の2階建ての高さにそびえ立っていた
@@ -1855,11 +1862,12 @@ function loadCharacter(url, pos, opts = {}) {
 //   （4号機の本番モデルに差し替わると、そのまま自分のキャラとして見える）
 let playerAvatar = null;
 // ⑤ アニメ再生土台（クリップが無くてもエラーにならない作り）
-let mixer = null, actIdle = null, actWalk = null, actAttack = null, curAction = null;
+let mixer = null, actIdle = null, actWalk = null, actAttack = null, actSwim = null, curAction = null;
 let avatarAttackTimer = 0; // >0 の間は攻撃モーション再生中（idle/walk へ戻さない）
-function playAvatarAnim(moving) {
+let avatarPitch = 0;       // 三人称アバターの前傾（0=立ち / -PI/2=うつ伏せ＝泳ぎ姿勢）。滑らかに補間
+function playAvatarAnim(moving, swimming) {
   if (!mixer || avatarAttackTimer > 0) return; // 攻撃中は上書きしない
-  const target = moving ? actWalk : actIdle;
+  const target = (swimming && actSwim) ? actSwim : moving ? actWalk : actIdle; // swimクリップがあれば優先（4号機到着で自動）
   if (target && target !== curAction) {
     target.reset().fadeIn(0.2).play();
     if (curAction) curAction.fadeOut(0.2);
@@ -1909,10 +1917,11 @@ function loadAvatar(file) {
   // 既存アバター・ミキサーを破棄
   if (playerAvatar) { scene.remove(playerAvatar); playerAvatar = null; }
   if (mixer) { mixer.stopAllAction(); mixer = null; }
-  actIdle = actWalk = actAttack = curAction = null; avatarAttackTimer = 0;
+  actIdle = actWalk = actAttack = actSwim = curAction = null; avatarAttackTimer = 0;
   gltfLoader.load(file,
     (gltf) => {
       playerAvatar = gltf.scene;
+      playerAvatar.rotation.order = 'YXZ'; // ヨー(向き)→ピッチ(前傾)の順＝うつ伏せ時も頭が進行方向を向く
       playerAvatar.visible = thirdPerson; // 三人称なら即表示
       scene.add(playerAvatar);
       let v = 0, mc = 0;
@@ -1925,6 +1934,7 @@ function loadAvatar(file) {
         actIdle = mixer.clipAction(byName['idle'] || gltf.animations[0]);
         actWalk = mixer.clipAction(byName['walk'] || gltf.animations[1] || (byName['idle'] || gltf.animations[0]));
         if (byName['attack']) { actAttack = mixer.clipAction(byName['attack']); actAttack.loop = THREE.LoopOnce; actAttack.clampWhenFinished = true; } // 攻撃モーション
+        if (byName['swim']) actSwim = mixer.clipAction(byName['swim']); // 泳ぎモーション（4号機。あれば前傾の代わりに再生）
         actIdle.play(); curAction = actIdle;
       }
       console.log(`[voxel] アバター読込 OK(${file})：頂点${v} / clips=[${diag.glb.clips}]`);
