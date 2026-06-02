@@ -125,6 +125,123 @@
   window.onThunderSound = () => window.playSFX('thunder');
   window.onPlayerHurt   = () => window.playSFX('hurt');
 
+  // === ② BGMシステム（合成音・bgmBus経由・状況でレイヤー切替＋クロスフェード）===
+  //   ・コアは window.setMusicScene('day'|'night'|'combat'|'water') を呼ぶだけ
+  //   ・最初のユーザー操作で 'day' を自動開始（startMusic/stopMusic で明示制御も可）
+  //   ・素材は合成音。後で音楽ファイル(loop)再生に差し替え可能
+  const XFADE = 1.8; // シーン間クロスフェード秒
+  const SCENES = {
+    day:    { tempo: 104, scale: [220.00, 246.94, 277.18, 329.63, 369.99], pad: [110.00, 164.81, 220.00], wave: 'triangle', density: 0.55, drums: false },
+    night:  { tempo: 76,  scale: [164.81, 196.00, 220.00, 261.63, 293.66], pad: [82.41, 123.47, 164.81],  wave: 'sine',     density: 0.36, drums: false },
+    combat: { tempo: 148, scale: [146.83, 174.61, 196.00, 220.00, 261.63], pad: [73.42, 110.00, 146.83],  wave: 'sawtooth', density: 0.85, drums: true  },
+    water:  { tempo: 66,  scale: [293.66, 329.63, 392.00, 440.00, 523.25], pad: [98.00, 146.83, 196.00],  wave: 'sine',     density: 0.28, drums: false },
+  };
+  let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false;
+  const sceneNodes = {}; // name -> { gain, pad:[{o}] }
+
+  function sceneGain(name) {
+    if (!sceneNodes[name]) {
+      const g = ac().createGain(); g.gain.value = 0.0001; g.connect(bgmBus);
+      sceneNodes[name] = { gain: g, pad: [] };
+    }
+    return sceneNodes[name];
+  }
+  function startPad(name) {
+    const c = ac(); if (!c) return;
+    const sc = SCENES[name], node = sceneGain(name);
+    sc.pad.forEach((f, i) => {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = name === 'combat' ? 'sawtooth' : 'sine';
+      o.frequency.value = f * (1 + (i - 1) * 0.003); // 微デチューンで厚み
+      g.gain.value = 0.05;
+      o.connect(g).connect(node.gain); o.start();
+      node.pad.push({ o });
+    });
+  }
+  function stopPad(name) {
+    const node = sceneNodes[name]; if (!node) return;
+    node.pad.forEach(({ o }) => { try { o.stop(); } catch (e) {} });
+    node.pad = [];
+  }
+  function bgmNote(freq, dur, dest, gain, wave) {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.type = wave || 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain || 0.07, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(dest); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function kick(dest) {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(50, t + 0.12);
+    g.gain.setValueAtTime(0.16, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g).connect(dest); o.start(t); o.stop(t + 0.18);
+  }
+  function scheduler() {
+    if (!bgmOn) return;
+    const c = ac();
+    if (c && bgmScene && SCENES[bgmScene]) {
+      const sc = SCENES[bgmScene], node = sceneGain(bgmScene), spb = 60 / sc.tempo / 2; // 8分音符
+      while (nextNoteT < c.currentTime + 0.2) {
+        if (Math.random() < sc.density) {
+          const f = sc.scale[(Math.random() * sc.scale.length) | 0] * (Math.random() < 0.3 ? 2 : 1);
+          bgmNote(f, spb * (Math.random() < 0.5 ? 1.6 : 0.9), node.gain, 0.07, sc.wave);
+        }
+        if (sc.drums && beat % 2 === 0) kick(node.gain);
+        nextNoteT += spb; beat++;
+      }
+    }
+    bgmTimer = setTimeout(scheduler, 60);
+  }
+  function fadeSceneGain(name, to) {
+    const c = ac(), g = sceneGain(name).gain;
+    g.cancelScheduledValues(c.currentTime);
+    g.setValueAtTime(Math.max(0.0001, g.value), c.currentTime);
+    g.linearRampToValueAtTime(Math.max(0.0001, to), c.currentTime + XFADE);
+  }
+  function startMusic(scene) {
+    userMusicCtl = true;
+    const c = ac(); if (!c) return;
+    const s = SCENES[scene] ? scene : (bgmScene || 'day');
+    if (!bgmOn) {
+      bgmOn = true; nextNoteT = c.currentTime + 0.1; beat = 0;
+      bgmScene = s; startPad(s); fadeSceneGain(s, 1);
+      scheduler();
+    } else {
+      setMusicScene(s);
+    }
+  }
+  function setMusicScene(name) {
+    if (!SCENES[name] || !ac()) return;
+    if (!bgmOn) { startMusic(name); return; }
+    if (name === bgmScene) return;
+    const prev = bgmScene; bgmScene = name;
+    startPad(name); fadeSceneGain(name, 1);
+    if (prev && sceneNodes[prev]) {
+      fadeSceneGain(prev, 0);
+      setTimeout(() => stopPad(prev), (XFADE + 0.2) * 1000);
+    }
+  }
+  function stopMusic() {
+    userMusicCtl = true; bgmOn = false;
+    if (bgmTimer) { clearTimeout(bgmTimer); bgmTimer = null; }
+    Object.keys(sceneNodes).forEach((n) => { try { stopPad(n); sceneNodes[n].gain.gain.value = 0.0001; } catch (e) {} });
+    bgmScene = null;
+  }
+  window.startMusic = startMusic;
+  window.stopMusic = stopMusic;
+  window.setMusicScene = setMusicScene;
+  // 最初のユーザー操作で自動的に 'day' を開始（コアが明示制御したら抑止）
+  function autoStartMusic() {
+    window.removeEventListener('pointerdown', autoStartMusic);
+    window.removeEventListener('keydown', autoStartMusic);
+    if (!userMusicCtl) startMusic('day');
+  }
+  window.addEventListener('pointerdown', autoStartMusic, { once: true });
+  window.addEventListener('keydown', autoStartMusic, { once: true });
+
   // ④ サウンド設定の受け渡し口（UIは3号機。ここは値とロジックのみ）
   //   get() → {master,sfx,bgm,muted} / set(key,value) / setMuted(bool)
   window.SoundSettings = {
