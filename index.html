@@ -814,6 +814,8 @@ window.VoxelGame = {
   // 必殺技（②）：3号機UI（スキルボタン/技選択）から呼ばれる口。発動演出は core が onUseSkill を呼ぶ
   useSkill:   (id) => useSkill(id),
   equipSkill: (id) => equipSkill(id),
+  // ③ 手応え：本物のカメラ揺れ。ui.js が命中/会心/必殺/被弾で呼ぶ（0..1）。core 側もcrit/撃破/必殺で自発的に呼ぶ
+  shake: (intensity) => { const v = +intensity || 0; camShake = Math.max(camShake, Math.min(1, v)); },
 };
 
 // 面の色を決める（grass / log は上面・側面・底面で色を変える）
@@ -1149,6 +1151,7 @@ const keys = {};
 let selBlock = B.grass;
 let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
 let avatarYaw = 0;       // 三人称アバターの向き（移動方向に追従）
+let camShake = 0;        // カメラシェイク強度（0..1・命中/会心/必殺/被弾で上げ、毎フレーム減衰）
 let ridingMob = null;    // 騎乗中の馬（Rキーで乗降）
 let ridingBoat = null;   // 乗船中の船プロップ（Rキーで乗降。水上を安全に移動＝水の攻略手段）
 let dbgHeadWater = false, dbgShore = 0, dbgStepUp = false; // 診断用：頭が水中か / 水際ledge段数 / 今ステップアップしたか
@@ -1281,6 +1284,14 @@ function updatePlayer(dt) {
   camera.rotation.x = player.pitch;
   camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
   if (thirdPerson) { camera.translateZ(4.5); camera.position.y += 0.3; } // ローカル+Z=後方
+  // ③ 手応え：カメラシェイク（命中/会心/必殺/被弾で上がる camShake をランダム微小オフセットで表現→減衰）
+  if (camShake > 0.001) {
+    const a = camShake * 0.22;
+    camera.position.x += (Math.random()*2-1) * a;
+    camera.position.y += (Math.random()*2-1) * a;
+    camera.position.z += (Math.random()*2-1) * a;
+    camShake = Math.max(0, camShake - dt * 4.5); // 約0.2秒で減衰
+  }
   // アバター（三人称時のみ表示）をプレイヤーに追従させる
   if (playerAvatar) {
     playerAvatar.position.set(player.pos.x, player.pos.y, player.pos.z);
@@ -1413,6 +1424,7 @@ function damage(amount, cause) {
   lastDamageCause = cause || '?';
   regenAccum = 0;
   hurtFlash = 1;
+  camShake = Math.max(camShake, Math.min(0.7, 0.2 + amount * 0.06)); // ③ 被弾の画面シェイク（ダメージ量に応じ）
   if (window.onPlayerHurt) window.onPlayerHurt(cause, amount); // 音は後付け前提のトリガー
   scheduleSave();
   if (hp <= 0) respawn();
@@ -2298,6 +2310,7 @@ function updateMobs(dt) {
   updateSpawners(dt); // ② ダンジョンのスポナー稼働
   for (let i = mobs.length-1; i >= 0; i--) {
     const m = mobs[i];
+    updateMobFlash(m, dt); // ③ 被弾の白フラッシュ減衰（死亡中も継続）
     // 死亡演出中：AIを止めて die クリップを再生し、終わったら除去
     if (m.dying) {
       m.dieTimer -= dt;
@@ -2782,7 +2795,7 @@ function resolveMeleeHit(isCrit) {
     if (d > reach) continue;
     if ((vx*dir.x + vy*dir.y + vz*dir.z) / (d || 1) < dot) continue; // 扇の外
     const dmg = w.dmg * (isCrit ? 1.6 : 1) * (1 + comboIndex * 0.05) + (playerLevel - 1) * CFG.level.dmgPerLevel; // Lv補正
-    hitMob(m, dmg, isCrit, currentWeapon, comboIndex, p.x - ox, p.z - oz, w.knock * (isCrit ? 1.6 : 1));
+    hitMob(m, dmg, isCrit, currentWeapon, comboIndex, p.x - ox, p.z - oz, w.knock * (isCrit ? 2.1 : 1.15)); // ③ ノックバック増（会心は特に大きく）
     any = true;
   }
   if (!any) breakBlock(); // 空振り＝採掘
@@ -2801,9 +2814,35 @@ function hitMob(m, dmg, isCrit, weapon, combo, kdirx, kdirz, knock) {
   // 3号機UI：ダメージ数字ポップ＋命中閃光（口が無ければ無害）
   if (window.spawnDamagePopup) window.spawnDamagePopup(m.obj.position.x, m.obj.position.y + 1, m.obj.position.z, dmg, { crit: isCrit });
   window.playSFX && window.playSFX(isCrit ? 'crit' : 'hit');
-  triggerHitstop(isCrit ? 0.10 : 0.06);
+  flashMob(m);                                  // ③ 敵を白く光らせる（被弾mobだけマテリアルを遅延クローン）
+  triggerHitstop(isCrit ? 0.12 : 0.08);         // ③ ヒットストップ強化（0.08〜0.12秒）
+  camShake = Math.max(camShake, killed ? 0.6 : isCrit ? 0.5 : 0.18); // ③ 命中の画面シェイク（ui.js未配線でも手応え）
   if (killed) killMob(m);
   else { setMobAnim(m, 'hit'); m.hitStun = 0.22; } // 被弾アニメ＋小硬直
+}
+// ③ 敵の白フラッシュ：被弾したmobのマテリアルだけ遅延クローンし emissive を白へ→減衰（共有マテリアル汚染を回避）
+function flashMob(m) {
+  try {
+    if (!m.flashMats) {
+      m.flashMats = [];
+      m.obj.traverse(o => {
+        if (o.isMesh && o.material && o.material.emissive) {
+          const mat = o.material.clone(); o.material = mat;
+          m.flashMats.push({ mat, e: mat.emissive.clone(), ei: (mat.emissiveIntensity != null ? mat.emissiveIntensity : 1) });
+        }
+      });
+    }
+    m.flash = 0.14; // フラッシュ残り秒
+  } catch (e) {}
+}
+function updateMobFlash(m, dt) {
+  if (!m.flash || !m.flashMats) return;
+  m.flash = Math.max(0, m.flash - dt);
+  const k = m.flash / 0.14; // 1→0
+  for (const f of m.flashMats) {
+    f.mat.emissive.setRGB(f.e.r + (1 - f.e.r) * k, f.e.g + (1 - f.e.g) * k, f.e.b + (1 - f.e.b) * k);
+    if (f.mat.emissiveIntensity != null) f.mat.emissiveIntensity = f.ei + 1.2 * k;
+  }
 }
 function killMob(m) {
   m.dying = true; m.hp = 0;
@@ -2871,6 +2910,7 @@ function useSkill(id) {
   skillCd[id] = s.cd;
   if (typeof window.onUseSkill === 'function') { try { window.onUseSkill(id, { name: s.name, kind: s.kind, color: s.color }); } catch (e) {} } // 3号機：全画面FX＋技名バナー＋画面シェイク
   window.playSFX && window.playSFX('skill', { kind: s.kind }); // 2号機：kind別は opts.kind で（未定義でも無音で安全）
+  camShake = Math.max(camShake, s.kind === 'slash' ? 0.85 : s.kind === 'buff' ? 0.3 : 0.6); // ③ 必殺技の画面シェイク
   scheduleSave();
   return true;
 }
