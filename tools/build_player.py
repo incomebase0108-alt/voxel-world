@@ -152,6 +152,7 @@ def krx(o,f,d):o.rotation_euler[0]=math.radians(d);o.keyframe_insert('rotation_e
 BZ=body.location.z
 new_action(body,"body_idle")
 for f,z in [(1,BZ),(24,BZ+0.014),(48,BZ)]: kz(body,f,z)
+for f in (1,48): krx(body,f,0)   # 体回転X=0の保持（見た目不変・退水時に直立へ確実に戻すため）
 push(body,"idle")
 for a,sgn in [(armL,1),(armR,-1)]:
     new_action(a,a.name+"_idle")
@@ -172,6 +173,7 @@ for f,d in [(1,0),(6,AA),(11,0),(16,-AA),(21,0)]: krx(armR,f,d)
 push(armR,"walk")
 new_action(body,"body_walk")
 for f,z in [(1,BZ),(6,BZ+0.02),(11,BZ),(16,BZ+0.02),(21,BZ)]: kz(body,f,z)
+for f in (1,21): krx(body,f,0)   # 体回転X=0の保持（見た目不変・退水時に直立へ確実に戻すため）
 push(body,"walk")
 new_action(armR,"armR_attack")
 for f,d in [(1,0),(4,32),(9,-85),(13,-18),(16,0)]: krx(armR,f,d)
@@ -182,6 +184,23 @@ push(armL,"attack")
 new_action(body,"body_attack")
 for f,d in [(1,0),(9,-7),(16,0)]: krx(body,f,d)
 push(body,"attack")
+
+# ---- swim（水平姿勢のクロール：体前傾水平＋両腕の水かき＋バタ足。frame1=最終で継ぎ目なしループ）----
+# 既存 idle/walk/attack は不変。骨格・ピボットも不変。体ピッチは Body 回転Xで表現（退水時 idle/walk が0へ戻す）。
+SWP=-82.0   # 体ピッチ角(度)：頭は前方+Y・うつ伏せの水平姿勢
+new_action(body,"body_swim")
+for f,d in [(1,SWP),(12,SWP-4),(24,SWP),(36,SWP+4),(48,SWP)]: krx(body,f,d)   # ゆるやかな上下うねり
+push(body,"swim")
+new_action(armL,"ArmL_swim")
+for f,d in [(1,0),(24,180),(48,360)]: krx(armL,f,d)        # 風車状の水かき（1回転/ループ）
+push(armL,"swim")
+new_action(armR,"ArmR_swim")
+for f,d in [(1,180),(24,360),(48,540)]: krx(armR,f,d)      # 半周ずらし＝左右交互のクロール
+push(armR,"swim")
+for lg,sgn in [(legL,1),(legR,-1)]:
+    new_action(lg,lg.name+"_swim")
+    for f,d in [(1,0),(6,sgn*13),(12,0),(18,-sgn*13),(24,0),(30,sgn*13),(36,0),(42,-sgn*13),(48,0)]: krx(lg,f,d)  # バタ足
+    push(lg,"swim")
 scene.frame_set(1)
 
 repo=os.path.abspath(os.path.join(os.path.dirname(__file__),".."))
@@ -192,4 +211,35 @@ bpy.ops.export_scene.gltf(filepath=out,export_format="GLB",use_selection=True,ex
     export_apply=True,export_animations=True,export_animation_mode="NLA_TRACKS",export_optimize_animation_size=True)
 zs=[(o.matrix_world@V(v)).z for o in (body,armL,armR,legL,legR) for v in o.bound_box]
 sz=os.path.getsize(out)
-print("[voxel] export OK -> %s  %.3fMB  H%.2fm  clips: idle/walk/attack"%(out, sz/1048576, max(zs)))
+print("[voxel] export OK -> %s  %.3fMB  H%.2fm  clips: idle/walk/attack/swim"%(out, sz/1048576, max(zs)))
+
+# ---- swim 姿勢の検証プレビュー（NLAで swim のみソロ。--render 時のみ・失敗してもexport完了済み）----
+try:
+    import sys
+    if "--render" in sys.argv:
+        for o in (body,armL,armR,legL,legR):
+            if o.animation_data:
+                for tr in o.animation_data.nla_tracks: tr.mute = (tr.name != "swim")
+        try: scene.render.engine='BLENDER_EEVEE_NEXT'
+        except Exception: scene.render.engine='BLENDER_EEVEE'
+        scene.render.resolution_x=940; scene.render.resolution_y=620
+        world=bpy.data.worlds.new("W"); scene.world=world; world.use_nodes=True
+        world.node_tree.nodes["Background"].inputs[0].default_value=(0.06,0.10,0.16,1)
+        world.node_tree.nodes["Background"].inputs[1].default_value=1.2
+        bpy.ops.object.light_add(type='SUN',location=(3,-4,7)); sun=bpy.context.active_object
+        sun.data.energy=4.2; sun.rotation_euler=(math.radians(55),0,math.radians(30))
+        def shot(name,f,cam_loc,cam_rot):
+            scene.frame_set(f)
+            bpy.ops.object.camera_add(location=cam_loc,rotation=cam_rot)
+            cam=bpy.context.active_object; scene.camera=cam; cam.data.lens=40
+            scene.render.filepath=os.path.join(repo,"tools",name)
+            bpy.ops.render.render(write_still=True)
+            bpy.data.objects.remove(cam,do_unlink=True)
+        # 側面（profile：+Yが右＝進行方向）でうつ伏せ水平姿勢を確認、frame1とframe24
+        shot("hero_player_swim_side1.png",1,(6.5,0.4,1.5),(math.radians(88),0,math.radians(90)))
+        shot("hero_player_swim_side24.png",24,(6.5,0.4,1.5),(math.radians(88),0,math.radians(90)))
+        # 3/4 俯瞰
+        shot("hero_player_swim_3q.png",24,(4.6,3.2,3.4),(math.radians(58),0,math.radians(126)))
+        print("[voxel] swim preview rendered: tools/hero_player_swim_side1/side24/3q.png")
+except Exception as e:
+    print("[voxel] swim preview skipped:", e)

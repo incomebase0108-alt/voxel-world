@@ -7,18 +7,18 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 77 ファイル / 9.98 MB
+**合計**: 77 ファイル / 10.02 MB
 
 
 ## プレイヤー
 
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
-| `player.glb` | 1.0053 | `idle`, `walk`, `attack` | 5/5 |
-| `player_azure.glb` | 1.0056 | `idle`, `walk`, `attack` | 5/5 |
-| `player_crimson.glb` | 1.0054 | `idle`, `walk`, `attack` | 5/5 |
-| `player_emerald.glb` | 1.0052 | `idle`, `walk`, `attack` | 5/5 |
-| `player_gold.glb` | 1.0055 | `idle`, `walk`, `attack` | 5/5 |
+| `player.glb` | 1.0135 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_azure.glb` | 1.0130 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_crimson.glb` | 1.0131 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_emerald.glb` | 1.0139 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_gold.glb` | 1.0128 | `idle`, `walk`, `attack`, `swim` | 5/5 |
 
 ## モブ
 
