@@ -1258,25 +1258,32 @@ function updatePlayer(dt) {
   }
 }
 // 近くの馬に乗る/降りる・船に乗る/降りる（Rキー）
+let dbgRideMsg = '-', dbgRideBoats = 0, dbgRideWrecks = 0; // 診断：R判定の結果と近接船数
 function toggleRide() {
-  if (ridingMob) { ridingMob.ridden = false; ridingMob = null; window.playSFX && window.playSFX('place'); return; }
-  if (ridingBoat) { ridingBoat = null; window.playSFX && window.playSFX('place'); return; } // 下船（船はその場に残る）
+  if (ridingMob) { ridingMob.ridden = false; ridingMob = null; dbgRideMsg = '下馬'; window.playSFX && window.playSFX('place'); return; }
+  if (ridingBoat) { ridingBoat = null; dbgRideMsg = '下船'; window.playSFX && window.playSFX('place'); return; } // 下船（船はその場に残る）
   // 近くの馬
   let best = null, bd = 2.8;
   for (const m of mobs) {
-    if (m.def.type !== 'horse') continue;
+    if (m.def.type !== 'horse' || m.dying) continue;
     const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
     if (d < bd) { bd = d; best = m; }
   }
-  if (best) { ridingMob = best; best.ridden = true; window.playSFX && window.playSFX('jump'); return; }
+  if (best) { ridingMob = best; best.ridden = true; dbgRideMsg = '騎乗'; window.playSFX && window.playSFX('jump'); return; }
   // 近くの船（表示中の rowboat/sailboat プロップ）。乗船中は props 管理から外す（消えないように）
-  let bb = null, bbd = 4.5, bbk = null;
+  let bb = null, bbd = 5.0, bbk = null; dbgRideBoats = 0; dbgRideWrecks = 0;
   for (const [k, p] of props) {
-    if (p.kind !== 'ship_rowboat' && p.kind !== 'ship_sailboat' || !p.obj) continue;
+    if (!p.obj) continue;
     const d = Math.hypot(p.x + 0.5 - player.pos.x, p.z + 0.5 - player.pos.z);
-    if (d < bbd) { bbd = d; bb = p; bbk = k; }
+    if (p.kind === 'ship_rowboat' || p.kind === 'ship_sailboat') {
+      if (d < 8) dbgRideBoats++;
+      if (d < bbd) { bbd = d; bb = p; bbk = k; }
+    } else if (p.kind === 'ship_wreck' && d < 8) dbgRideWrecks++;
   }
-  if (bb) { ridingBoat = bb; props.delete(bbk); window.playSFX && window.playSFX('jump'); }
+  if (bb) { ridingBoat = bb; props.delete(bbk); dbgRideMsg = '乗船'; window.playSFX && window.playSFX('jump'); return; }
+  // 乗れる船が無い：理由を提示（難破船は乗船不可）
+  dbgRideMsg = dbgRideWrecks > 0 ? '難破船は乗れません(帆船/小舟へ)' : '近くに乗れる船/馬なし';
+  if (typeof toast === 'function') toast(dbgRideMsg);
 }
 
 // ===================================================================
@@ -1731,6 +1738,7 @@ function buildDiag() {
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗/乗船    : ${ridingMob ? '馬に騎乗中' : ridingBoat ? `船に乗船中(${ridingBoat.kind}/obj${ridingBoat.obj?'有':'無'})` : '徒歩'}　速度vel: ${player.vel.x.toFixed(1)},${player.vel.z.toFixed(1)}`,
+    `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
     `武器 / 戦闘  : ${WEAPONS[currentWeapon].name}（C切替・所持${[...ownedWeapons].length}）/ コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'} / ヒットストップ${hitstop>0?'発生':'-'}`,
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
@@ -2179,9 +2187,9 @@ function spawnLogic(dt) {
     spawnHostileNear(false);
     return;
   }
-  // 地上＝村が近ければ住人NPCを定住させる（村人＋職業NPCのミックス。home＝村中心）
+  // 地上＝村が近ければ住人NPCを定住（ただし動物=馬等も湧くよう確率で振り分ける）
   const vil = nearestVillage(player.pos.x, player.pos.z, 50);
-  if (vil && residentN < 5) {
+  if (vil && residentN < 5 && Math.random() < 0.6) { // 6割住人/4割は下の動物湧きへ
     const pool = ['villager', ...RESIDENT_TYPES].filter(t => mobTemplates[t]);
     const type = pool[Math.floor(Math.random()*pool.length)];
     if (type) {
@@ -2191,7 +2199,7 @@ function spawnLogic(dt) {
     }
     return;
   }
-  if (neutralN < M.neutralCap) spawnNeutralNear();
+  if (neutralN < M.neutralCap) spawnNeutralNear(); // 牛/羊/豚/鶏/馬（村の近くでも湧く）
 }
 function updateMobs(dt) {
   // セーブされたモブの復元（テンプレ読込が済んだら1回だけ。完了まで自動湧きは待たせる）
