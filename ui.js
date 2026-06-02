@@ -584,10 +584,15 @@
 
   function renderInventory(st) {
     // 差分が無ければ作り直さない（開いている間だけ更新）
+    const eqS = st.equipment || {};
     const sig = JSON.stringify({
       h: (st.hotbar || []).map(x => [x.block, x.count, x.active ? 1 : 0]),
       it: (st.items || []).map(x => [x.key, x.count]),
       r: (st.recipes || []).map(x => x.canCraft ? 1 : 0),
+      eq: [eqS.weapon, (eqS.weapons || []).map(w => [w.id, w.active ? 1 : 0]),
+           eqS.armor && [eqS.armor.head, eqS.armor.body, eqS.armor.legs],
+           eqS.shield ? 1 : 0, eqS.ownedShield ? 1 : 0, eqS.defense],
+      er: (st.equipRecipes || []).map(x => x.canCraft ? 1 : 0),
     });
     if (sig === invSig) return;
     invSig = sig;
@@ -633,6 +638,31 @@
       cell.addEventListener('mouseleave', hideTip);
     });
 
+    // 装備（武器・防具・盾）
+    renderEquip(p, st.equipment || {});
+
+    // 装備クラフト（採掘素材→装備）
+    if ((st.equipRecipes || []).length) {
+      el('div', '', p).className = 'uiv-sec';
+      p.lastChild.textContent = '装備クラフト（素材から武器・防具を作成）';
+      const eg = el('div', '', p); eg.className = 'uiv-craft';
+      (st.equipRecipes || []).forEach((r) => {
+        const btn = el('button', '', eg); btn.className = 'uiv-recipe'; btn.disabled = !r.canCraft;
+        fillIcon(btn, { name: r.name, icon: ('item_' + r.kind) });
+        const rt = el('div', '', btn); rt.className = 'rt';
+        rt.innerHTML = `<b>${r.name}</b><br><span style="opacity:.8">${r.cost} → 作る</span>`;
+        btn.addEventListener('mouseenter', () => buildTip(r.canCraft ? `<b>${r.name}</b> を作成<br>${r.cost} を消費` : `素材不足／既に所持：${r.cost}`));
+        btn.addEventListener('mousemove', moveTip);
+        btn.addEventListener('mouseleave', hideTip);
+        btn.addEventListener('click', () => {
+          if (btn.disabled) return;
+          try { const vg = window.VoxelGame; if (vg && typeof vg.craftEquip === 'function') vg.craftEquip(r.id); } catch (e) {}
+          // クラフト音はコア craftEquip 側で再生されるため二重に鳴らさない
+          invSig = ''; // 装備・在庫の変化を即時反映
+        });
+      });
+    }
+
     // クラフト（資源変換）
     el('div', '', p).className = 'uiv-sec';
     p.lastChild.textContent = 'クラフト（資源を変換・クリックで作成）';
@@ -646,6 +676,74 @@
       btn.addEventListener('mousemove', moveTip);
       btn.addEventListener('mouseleave', hideTip);
       btn.addEventListener('click', () => { if (!btn.disabled) { callCraft(i); invSig = ''; } });
+    });
+  }
+
+  // 装備パネル（1号機の口に配線：equipWeapon / toggleShield / unequipArmor）
+  const ARMOR_SLOTS = [['head', '頭'], ['body', '胴'], ['legs', '脚']];
+  function equipCell(grid, { icon, name, active, owned, badge, tip, onClick }) {
+    const cell = el('div', '', grid);
+    cell.className = 'uiv-cell' + (active ? ' active' : '') + (owned ? '' : ' empty');
+    if (!onClick) cell.style.cursor = 'default';
+    fillIcon(cell, { name, icon });
+    const nm = el('div', '', cell); nm.className = 'nm'; nm.textContent = name;
+    if (badge) { const b = el('div', '', cell); b.className = 'ct'; b.textContent = badge; }
+    cell.addEventListener('mouseenter', () => buildTip(tip));
+    cell.addEventListener('mousemove', moveTip);
+    cell.addEventListener('mouseleave', hideTip);
+    if (onClick) cell.addEventListener('click', () => { onClick(); invSig = ''; });
+    return cell;
+  }
+  function renderEquip(p, eq) {
+    el('div', '', p).className = 'uiv-sec';
+    p.lastChild.textContent = '装備（クリックで装備／解除）';
+
+    // --- 武器（所持武器を持ち替え）---
+    const wlab = el('div', 'font-size:12px;opacity:.7;margin:2px 0 6px;', p);
+    wlab.textContent = `武器：${eq.weaponName || '素手'} を装備中`;
+    const wgrid = el('div', '', p); wgrid.className = 'uiv-grid';
+    (eq.weapons || []).forEach((w) => {
+      equipCell(wgrid, {
+        icon: w.id === 'fist' ? null : ('item_' + w.id),
+        name: w.name, active: w.active, owned: true,
+        badge: w.active ? '✓' : '',
+        tip: w.active ? `<b>${w.name}</b><br>装備中` : `<b>${w.name}</b><br><span style="opacity:.7">クリックで装備（C/Bでも切替）</span>`,
+        onClick: w.active ? null : () => {
+          try { window.equipWeapon && window.equipWeapon(w.id); } catch (e) {}
+          try { window.playSFX && window.playSFX('pickup'); } catch (e) {}
+        },
+      });
+    });
+
+    // --- 防具・盾 ---
+    const dlab = el('div', 'font-size:12px;opacity:.7;margin:12px 0 6px;', p);
+    dlab.textContent = `防具・盾　防御 ${Math.round((eq.defense || 0) * 100)}% 軽減`;
+    const dgrid = el('div', '', p); dgrid.className = 'uiv-grid';
+    const armor = eq.armor || {};
+    ARMOR_SLOTS.forEach(([slot, label]) => {
+      const on = !!armor[slot];
+      equipCell(dgrid, {
+        icon: 'item_armor', name: label, active: on, owned: on,
+        badge: on ? '○' : '-',
+        tip: on ? `<b>防具（${label}）</b><br><span style="opacity:.7">クリックで外す</span>`
+                : `<b>防具（${label}）</b> 未装備<br><span style="opacity:.7">入手・装備クラフトで装着</span>`,
+        onClick: on ? () => {
+          try { window.unequipArmor && window.unequipArmor(slot); } catch (e) {}
+          try { window.playSFX && window.playSFX('pickup'); } catch (e) {}
+        } : null,
+      });
+    });
+    // 盾
+    equipCell(dgrid, {
+      icon: 'item_shield', name: '盾', active: !!eq.shield, owned: !!eq.ownedShield,
+      badge: eq.shield ? '○' : (eq.ownedShield ? '-' : ''),
+      tip: !eq.ownedShield ? `<b>盾</b> 未入手<br><span style="opacity:.7">入手・装備クラフトで使える</span>`
+           : (eq.shield ? `<b>盾</b> 構え中<br><span style="opacity:.7">クリックで下ろす</span>`
+                        : `<b>盾</b><br><span style="opacity:.7">クリックで構える</span>`),
+      onClick: eq.ownedShield ? () => {
+        try { window.toggleShield && window.toggleShield(); } catch (e) {}
+        try { window.playSFX && window.playSFX('pickup'); } catch (e) {}
+      } : null,
     });
   }
 
