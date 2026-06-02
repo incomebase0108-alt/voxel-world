@@ -14,9 +14,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 76,
-    "size_bytes": 10137088,
-    "size_mb": 9.667
+    "count": 77,
+    "size_bytes": 10460636,
+    "size_mb": 9.975
   },
   "assets": [
     {
@@ -148,6 +148,23 @@
       "meshes": 5,
       "nodes": 5,
       "materials": 6,
+      "error": null
+    },
+    {
+      "file": "mob_dragon.glb",
+      "name": "mob_dragon",
+      "category": "モブ",
+      "size_bytes": 323548,
+      "size_mb": 0.3086,
+      "clips": [
+        "idle",
+        "walk",
+        "attack",
+        "heavy"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 9,
       "error": null
     },
     {
