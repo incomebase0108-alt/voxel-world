@@ -132,6 +132,22 @@
       .ui-pop.heal { color:#7cff9b; font-size:18px; }
       .ui-pop.self { color:#ff6b6b; font-size:22px; }
 
+      /* Lv/EXP バー（ホットバーの上） */
+      .ui-exp { display:flex; align-items:center; gap:7px; }
+      .ui-explv { font-size:12px; font-weight:800; color:#d8ffb0; min-width:44px; text-align:right; }
+      .ui-expbar { position:relative; width:240px; height:9px; border-radius:6px; overflow:hidden;
+        background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.18); }
+      .ui-expfill { position:absolute; inset:0 auto 0 0; width:0%; transition:width .2s ease-out;
+        background:linear-gradient(90deg,#5ec24a,#b6f36a); box-shadow:0 0 6px rgba(140,240,90,.5); }
+      .ui-expnum { font-size:10px; opacity:.7; min-width:54px; }
+
+      /* レベルアップ祝祭バナー */
+      #ui-levelup { position:fixed; left:50%; top:36%; transform:translate(-50%,-50%) scale(.6);
+        z-index:28; pointer-events:none; text-align:center; opacity:0; }
+      #ui-levelup .lu1 { font-size:42px; font-weight:900; letter-spacing:3px; color:#ffe24a;
+        text-shadow:0 0 14px #ff9d00, 0 2px 5px #000; }
+      #ui-levelup .lu2 { font-size:24px; font-weight:800; color:#fff; text-shadow:0 0 8px #000; margin-top:6px; }
+
       /* スロット内アイコン（4号機 128px PNG） */
       .ui-slot .ic { width:30px; height:30px; image-rendering:auto;
         filter:drop-shadow(0 1px 1px rgba(0,0,0,.5)); pointer-events:none; }
@@ -274,6 +290,12 @@
     const hpNum = el('div', '', hpRow); hpNum.className = 'ui-num';
 
     const selName = el('div', '', bottom); selName.id = 'ui-selname'; selName.className = 'panel';
+    // Lv/EXP バー（state().level がある時だけ表示）
+    const expRow = el('div', 'display:none;', bottom); expRow.className = 'ui-exp panel';
+    const explv = el('div', '', expRow); explv.className = 'ui-explv';
+    const expbar = el('div', '', expRow); expbar.className = 'ui-expbar';
+    const expfill = el('div', '', expbar); expfill.className = 'ui-expfill';
+    const expnum = el('div', '', expRow); expnum.className = 'ui-expnum';
     const hotbar = el('div', '', bottom); hotbar.id = 'ui-hotbar';
 
     // 右上：レーダー＋情報
@@ -285,6 +307,11 @@
     // 全画面ヴィネット
     const hurt = el('div', '', root); hurt.id = 'ui-hurt';
     const heal = el('div', '', root); heal.id = 'ui-heal';
+
+    // レベルアップ祝祭バナー
+    const levelup = el('div', '', root); levelup.id = 'ui-levelup';
+    const lu1 = el('div', '', levelup); lu1.className = 'lu1'; lu1.textContent = '⭐ LEVEL UP!';
+    const lu2 = el('div', '', levelup); lu2.className = 'lu2';
 
     // ダメージFXレイヤー（HUD休止中でも動くよう root 直下に独立配置）
     const fxCanvas = el('canvas', '', document.body); fxCanvas.id = 'ui-fx-canvas';
@@ -308,6 +335,7 @@
       selName, hotbar, radar, rctx: radar.getContext('2d'), info, hurt, heal,
       fxCanvas, fxctx: fxCanvas.getContext('2d'), fxLayer,
       inv, panel, tip, hint, menu, menuPanel,
+      expRow, explv, expfill, expnum, levelup, lu2,
       hpSegEls: [], foodSegEls: [], breathSegEls: [], slotEls: [],
     };
     resizeFX();
@@ -771,11 +799,21 @@
   // =====================================================================
   // ダメージ／回復演出
   // =====================================================================
-  let hurtT = 0, healT = 0, lastHp = null;
+  let hurtT = 0, healT = 0, lastHp = null, levelUpT = 0;
   function flashDamage(amount) {
     hurtT = Math.min(1, 0.45 + clamp01((amount || 1) / 12) * 0.55);
   }
   function flashHeal() { healT = 0.7; }
+
+  // レベルアップ祝祭演出（1号機 core が window.onLevelUp(level) を呼ぶ）
+  function doLevelUp(level) {
+    if (!dom) return;
+    if (dom.lu2) dom.lu2.textContent = 'Lv ' + clampN(level);
+    levelUpT = 1; // バナーの寿命（tick で 0 へ）
+    // 画面中央に金色の大バースト（fx canvas）
+    hits.push({ x: innerWidth / 2, y: innerHeight * 0.36, life: 0, ttl: 0.7, kind: 'level', crit: true, ang: 0 });
+    hits.push({ x: innerWidth / 2, y: innerHeight * 0.36, life: -0.12, ttl: 0.8, kind: 'level', crit: true, ang: 0 });
+  }
 
   // コアの既存フックに相乗り（コア改変不要）
   function hookDamage() {
@@ -783,6 +821,12 @@
     window.onPlayerHurt = function (cause, amount) {
       try { if (typeof prev === 'function') prev(cause, amount); } catch (e) {}
       flashDamage(amount);
+    };
+    // レベルアップ口（ui.jsが定義・coreは呼ぶだけ）。既存があれば相乗り
+    const prevLU = window.onLevelUp;
+    window.onLevelUp = function (level) {
+      try { if (typeof prevLU === 'function') prevLU(level); } catch (e) {}
+      doLevelUp(level);
     };
   }
 
@@ -886,11 +930,22 @@
       const h = hits[i];
       h.life += dt;
       const k = h.life / h.ttl;
+      if (k < 0) continue; // 出現を少し遅らせる二重リング用（life 負スタート）
       if (k >= 1) { hits.splice(i, 1); continue; }
       const a = clamp01(1 - k);
-      const r = (h.crit ? 26 : 16) * (0.4 + k * 1.3);
       ctx.save();
       ctx.translate(h.x, h.y);
+      if (h.kind === 'level') {
+        // レベルアップ：大きな金色の拡散リング
+        const lr = 40 + k * 150;
+        ctx.globalAlpha = a * 0.85;
+        ctx.strokeStyle = '#ffe24a'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(0, 0, lr, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = a * 0.5; ctx.strokeStyle = '#fff6c8'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, lr * 0.7, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore(); continue;
+      }
+      const r = (h.crit ? 26 : 16) * (0.4 + k * 1.3);
       // 放射状の閃光リング
       ctx.globalAlpha = a * 0.9;
       ctx.strokeStyle = h.kind === 'heal' ? '#7cff9b' : (h.crit ? '#ffec5c' : '#fff2cc');
@@ -902,6 +957,20 @@
       const len = (h.crit ? 22 : 14) * (0.6 + k);
       ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(len, 0); ctx.stroke();
       ctx.restore();
+    }
+
+    // --- レベルアップ祝祭バナー ---
+    if (dom.levelup) {
+      if (levelUpT > 0) {
+        levelUpT = Math.max(0, levelUpT - dt * 0.6); // 約1.7秒
+        const e = 1 - levelUpT;                       // 経過 0→1
+        const sc = 0.6 + clamp01(e / 0.18) * 0.4 + Math.sin(clamp01(e) * Math.PI) * 0.06;
+        const op = e < 0.12 ? e / 0.12 : (levelUpT < 0.25 ? levelUpT / 0.25 : 1);
+        dom.levelup.style.opacity = clamp01(op).toFixed(3);
+        dom.levelup.style.transform = `translate(-50%,-50%) scale(${sc.toFixed(3)})`;
+      } else if (dom.levelup.style.opacity !== '0') {
+        dom.levelup.style.opacity = '0';
+      }
     }
   }
 
@@ -971,6 +1040,19 @@
     paintHotbar(hotbar);
     const sel = hotbar.find(h => h.active);
     dom.selName.textContent = sel ? `${sel.name}（所持 ${clampN(sel.count)}）` : '';
+
+    // --- Lv/EXP バー（state().level がある時だけ表示） ---
+    if (typeof st.level === 'number') {
+      dom.expRow.style.display = '';
+      dom.explv.textContent = 'Lv ' + clampN(st.level);
+      const need = (typeof st.expToNext === 'number' && st.expToNext > 0) ? st.expToNext : 0;
+      const cur = clampN(st.exp);
+      const ratio = need > 0 ? clamp01(cur / need) : 0;
+      dom.expfill.style.width = (ratio * 100).toFixed(1) + '%';
+      dom.expnum.textContent = need > 0 ? `${cur}/${need}` : '';
+    } else if (dom.expRow.style.display !== 'none') {
+      dom.expRow.style.display = 'none';
+    }
 
     // --- レーダー＆情報 ---
     paintRadar(st);

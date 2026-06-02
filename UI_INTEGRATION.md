@@ -120,6 +120,21 @@ function updateHotbar(){ if (window.UI_TAKEOVER) return; /* …既存… */ }
 
 ---
 
+## レベルアップ連携（1号機レベルシステムと接続）
+
+- `state()` に **`level` / `exp` / `expToNext`** を入れると、ui.js が*ホットバー上に Lv/EXP バー*を自動表示します（無ければ非表示）。
+- **`window.onLevelUp(level)`** は *ui.js が定義*します（祝祭バナー＋金バースト）。core は*呼ぶだけ*（空代入で上書きしないでください）。
+  - 加えて core が `playSFX('levelup')` を鳴らせば音と画面が一致（音は2号機）。
+
+```js
+// state() に追記（B のブロック内）
+level: lvl, exp: curExp, expToNext: needExp,
+// レベルアップ時に1行
+window.onLevelUp && window.onLevelUp(lvl);
+```
+
+---
+
 ## ② インベントリ／クラフトの操作口（方針A・コア改修不要の範囲）
 
 `ui.js` が独自のインベントリ/クラフト画面（4号機アイコン込み）を描画します。読み取りは `state()`、
