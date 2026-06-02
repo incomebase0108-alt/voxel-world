@@ -240,8 +240,8 @@
       const c = ac();
       if (c && bgmScene && SCENES[bgmScene]) {
         const sc = SCENES[bgmScene], node = sceneGain(bgmScene), spb = 60 / sc.tempo / 2; // 8分音符
-        const lvl = sc.level || 1;
-        if (node.gain.value < lvl - 0.02) node.gain.setTargetAtTime(lvl, c.currentTime, 0.25); // アクティブscene gainを必ずlevelへ駆動（stuck/0張り付き防止）
+        const lvl = sc.level || 1, gp = node.gain.gain; // node.gain=GainNode本体 / .gain.gain=AudioParam
+        if (gp.value < lvl - 0.02) gp.setTargetAtTime(lvl, c.currentTime, 0.25); // アクティブscene gainを必ずlevelへ駆動（stuck/0張り付き防止）
         if (nextNoteT < c.currentTime) nextNoteT = c.currentTime; // 背景化等で遅れたら追従（大量生成・例外を防止）
         let guard = 0; // 暴走ガード
         while (nextNoteT < c.currentTime + 0.2 && guard++ < 64) {
@@ -264,7 +264,8 @@
     }
   }
   function fadeSceneGain(name, to) {
-    const c = ac(), g = sceneGain(name).gain;
+    // sceneNodes[name].gain は GainNode本体。AudioParam は .gain.gain（取り違え=真因のTypeError修正）
+    const c = ac(), g = sceneGain(name).gain.gain;
     g.cancelScheduledValues(c.currentTime);
     g.setValueAtTime(Math.max(0.0001, g.value), c.currentTime);
     g.linearRampToValueAtTime(Math.max(0.0001, to), c.currentTime + XFADE);
