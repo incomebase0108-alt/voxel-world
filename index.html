@@ -647,6 +647,10 @@ window.VoxelGame = {
     hotbar: HOTBAR.map(b => ({ block:b, name:NAMES[b], swatch:SWATCH[b], count:counts[b]||0, active:b===selBlock })),
     items:  ITEM_DEFS.map(k => ({ key:k, name:ITEM_NAMES[k], count:itemCounts[k]||0 })),
     recipes: RECIPES.map(r => ({ outName:NAMES[r.out], n:r.n, inName:NAMES[r.in], cost:r.cost, canCraft:(counts[r.in]||0)>=r.cost })),
+    // 採掘素材→装備のクラフト（3号機の装備クラフトタブ用。VoxelGame.craftEquip(id) で実行）
+    equipRecipes: EQUIP_RECIPES.map(r => ({ id:r.id, name:r.name, kind:r.kind,
+      cost: [...Object.entries(r.mats).map(([k,n]) => `${ITEM_NAMES[k]}×${n}`), ...Object.entries(r.blocks).map(([b,n]) => `${NAMES[b]}×${n}`)].join(' '),
+      canCraft: canCraftEquip(r) })),
     time: (() => { const hh=Math.floor(((dayTime+0.5)%1)*24), mm=Math.floor((((dayTime+0.5)%1)*24%1)*60);
                    return { hh, mm, phase: isNight()?'夜':isDay()?'昼':'薄明' }; })(),
     weather, biome: biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z)),
@@ -1477,7 +1481,7 @@ function craft(r) {
   counts[r.in] -= r.cost;
   counts[r.out] = (counts[r.out]||0) + r.n;
   updateHotbar(); buildInventory(); scheduleSave();
-  window.playSFX && window.playSFX('place');
+  window.playSFX && window.playSFX('craft');
 }
 function openInventory() {
   invOpen = true; buildInventory(); invEl.style.display = 'flex'; overlay.style.display = 'none';
@@ -2346,6 +2350,35 @@ window.getEquipment = () => equipState();
 window.equipWeapon = (type) => { if (!ownedWeapons.has(type) || !WEAPONS[type]) return false; currentWeapon = type; emitEquipChange(); return true; };
 window.toggleShield = () => { if (!ownedShield) return false; equip.shield = !equip.shield; window.playSFX && window.playSFX('equip'); emitEquipChange(); scheduleSave(); return equip.shield; };
 window.unequipArmor = (slot) => { if (equip.armor[slot]) { equip.armor[slot] = false; emitEquipChange(); scheduleSave(); return true; } return false; };
+
+// 採掘素材→装備のクラフト（鉱石と装備システムを連結）。mats=itemCounts素材 / blocks=設置ブロック
+const EQUIP_RECIPES = [
+  { id:'pickaxe', name:'ピッケル', kind:'pickaxe', mats:{ iron:2 }, blocks:{ [B.planks]:2 } },
+  { id:'sword',   name:'剣',       kind:'sword',   mats:{ iron:2 }, blocks:{ [B.planks]:1 } },
+  { id:'axe',     name:'斧',       kind:'axe',     mats:{ iron:3 }, blocks:{ [B.planks]:2 } },
+  { id:'bow',     name:'弓',       kind:'bow',     mats:{},          blocks:{ [B.planks]:3 } },
+  { id:'shield',  name:'盾',       kind:'shield',  mats:{ iron:1 },  blocks:{ [B.planks]:3 } },
+  { id:'armor',   name:'防具1枚',  kind:'armor',   mats:{ iron:3 },  blocks:{} },
+];
+function canCraftEquip(r) {
+  if (!r) return false;
+  for (const k in r.mats)   if ((itemCounts[k]||0) < r.mats[k])   return false;
+  for (const b in r.blocks) if ((counts[b]||0)     < r.blocks[b]) return false;
+  if (WEAPONS[r.kind] && ownedWeapons.has(r.kind)) return false;                  // 既所持の武器は不要
+  if (r.kind === 'shield' && ownedShield) return false;                           // 盾は1つで十分
+  if (r.kind === 'armor' && equip.armor.head && equip.armor.body && equip.armor.legs) return false; // 防具枠満杯
+  return true;
+}
+function craftEquip(id) {
+  const r = EQUIP_RECIPES.find(x => x.id === id);
+  if (!canCraftEquip(r)) return false;
+  for (const k in r.mats)   itemCounts[k] -= r.mats[k];
+  for (const b in r.blocks) counts[b]     -= r.blocks[b];
+  grantEquip(r.kind);                       // 所持＆装備＋通知＋保存
+  updateHotbar(); window.playSFX && window.playSFX('craft');
+  return true;
+}
+window.VoxelGame.craftEquip = (id) => craftEquip(id);
 function triggerHitstop(t) { hitstop = Math.max(hitstop, t); }
 // 連携口：ヒット通知（UIのダメージ数字/エフェクト用）。UI側の例外で本体を止めない
 function emitCombatHit(x, y, z, amount, isCrit, weapon, targetType, killed, comboIndex) {
