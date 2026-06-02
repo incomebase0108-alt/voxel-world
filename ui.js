@@ -70,8 +70,17 @@
     s.id = 'voxel-ui-style';
     s.textContent = `
       #ui-root { position:fixed; inset:0; z-index:15; pointer-events:none;
-        font-family: system-ui, sans-serif; color:#fff; user-select:none; }
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color:#fff; user-select:none;
+        -webkit-font-smoothing:antialiased; }
       #ui-root .panel { text-shadow:0 0 3px #000, 0 0 3px #000; }
+      /* オーバーレイ共通：フェード＋パネルのスケール（開閉トランジション） */
+      #ui-inv, #ui-menu { -webkit-font-smoothing:antialiased; }
+      #ui-inv, #ui-menu { opacity:0; visibility:hidden; pointer-events:none;
+        transition:opacity .18s ease, visibility .18s ease; }
+      #ui-inv.open, #ui-menu.open { opacity:1; visibility:visible; pointer-events:auto; }
+      .uiv-panel, .uim-panel { transform:scale(.94) translateY(8px); opacity:.6;
+        transition:transform .22s cubic-bezier(.2,.9,.25,1), opacity .22s ease; }
+      #ui-inv.open .uiv-panel, #ui-menu.open .uim-panel { transform:scale(1) translateY(0); opacity:1; }
 
       /* 下部中央：ステータス＋ホットバー */
       #ui-bottom { position:fixed; left:50%; bottom:14px; transform:translateX(-50%);
@@ -189,10 +198,9 @@
         filter:drop-shadow(0 1px 1px rgba(0,0,0,.5)); pointer-events:none; }
 
       /* ② インベントリ／クラフト画面 */
-      #ui-inv { position:fixed; inset:0; z-index:30; display:none; pointer-events:auto;
+      #ui-inv { position:fixed; inset:0; z-index:30; display:flex;
         align-items:center; justify-content:center; background:rgba(8,14,26,.82);
         backdrop-filter:blur(3px); }
-      #ui-inv.open { display:flex; }
       .uiv-panel { width:min(720px,92vw); max-height:88vh; overflow:auto; color:#fff;
         background:linear-gradient(180deg, rgba(28,38,58,.96), rgba(18,26,42,.96));
         border:1px solid rgba(255,255,255,.14); border-radius:14px; padding:18px 20px;
@@ -229,9 +237,8 @@
         opacity:.7; text-shadow:0 0 3px #000; pointer-events:none; }
 
       /* ③ メニュー／設定／セーブスロット */
-      #ui-menu { position:fixed; inset:0; z-index:31; display:none; pointer-events:auto;
+      #ui-menu { position:fixed; inset:0; z-index:31; display:flex;
         align-items:center; justify-content:center; background:rgba(8,14,26,.86); backdrop-filter:blur(3px); }
-      #ui-menu.open { display:flex; }
       .uim-panel { width:min(560px,92vw); max-height:90vh; overflow:auto; color:#fff;
         background:linear-gradient(180deg, rgba(28,38,58,.97), rgba(16,24,40,.97));
         border:1px solid rgba(255,255,255,.14); border-radius:16px; padding:22px 24px;
