@@ -14,9 +14,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 47,
-    "size_bytes": 6014324,
-    "size_mb": 5.736
+    "count": 50,
+    "size_bytes": 6135192,
+    "size_mb": 5.851
   },
   "assets": [
     {
@@ -664,6 +664,42 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 3,
+      "error": null
+    },
+    {
+      "file": "ship_rowboat.glb",
+      "name": "ship_rowboat",
+      "category": "船",
+      "size_bytes": 41204,
+      "size_mb": 0.0393,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "ship_sailboat.glb",
+      "name": "ship_sailboat",
+      "category": "船",
+      "size_bytes": 40372,
+      "size_mb": 0.0385,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "ship_wreck.glb",
+      "name": "ship_wreck",
+      "category": "船",
+      "size_bytes": 39292,
+      "size_mb": 0.0375,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 4,
       "error": null
     }
   ]
