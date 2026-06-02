@@ -1,0 +1,106 @@
+{
+  "spec": {
+    "px": 128,
+    "format": "PNG RGBA(透過)",
+    "angle": "方位45°/仰角30°(斜め45°)",
+    "margin": "10%",
+    "normalized": "各モデルを枠いっぱいに正規化(オルソ投影)"
+  },
+  "icons": [
+    {
+      "name": "item_meat",
+      "file": "icon_item_meat.png",
+      "type": "item"
+    },
+    {
+      "name": "item_egg",
+      "file": "icon_item_egg.png",
+      "type": "item"
+    },
+    {
+      "name": "item_coin",
+      "file": "icon_item_coin.png",
+      "type": "item"
+    },
+    {
+      "name": "item_apple",
+      "file": "icon_item_apple.png",
+      "type": "item"
+    },
+    {
+      "name": "item_sword",
+      "file": "icon_item_sword.png",
+      "type": "equipment"
+    },
+    {
+      "name": "item_pickaxe",
+      "file": "icon_item_pickaxe.png",
+      "type": "equipment"
+    },
+    {
+      "name": "item_axe",
+      "file": "icon_item_axe.png",
+      "type": "equipment"
+    },
+    {
+      "name": "item_bow",
+      "file": "icon_item_bow.png",
+      "type": "equipment"
+    },
+    {
+      "name": "item_shield",
+      "file": "icon_item_shield.png",
+      "type": "equipment"
+    },
+    {
+      "name": "item_armor",
+      "file": "icon_item_armor.png",
+      "type": "equipment"
+    },
+    {
+      "name": "block_grass",
+      "file": "icon_block_grass.png",
+      "type": "block"
+    },
+    {
+      "name": "block_dirt",
+      "file": "icon_block_dirt.png",
+      "type": "block"
+    },
+    {
+      "name": "block_stone",
+      "file": "icon_block_stone.png",
+      "type": "block"
+    },
+    {
+      "name": "block_sand",
+      "file": "icon_block_sand.png",
+      "type": "block"
+    },
+    {
+      "name": "block_wood",
+      "file": "icon_block_wood.png",
+      "type": "block"
+    },
+    {
+      "name": "block_leaves",
+      "file": "icon_block_leaves.png",
+      "type": "block"
+    },
+    {
+      "name": "block_planks",
+      "file": "icon_block_planks.png",
+      "type": "block"
+    },
+    {
+      "name": "block_stonebrick",
+      "file": "icon_block_stonebrick.png",
+      "type": "block"
+    },
+    {
+      "name": "block_glass",
+      "file": "icon_block_glass.png",
+      "type": "block"
+    }
+  ]
+}
