@@ -86,6 +86,28 @@ ui.js 側は「`window.UI.toggle` が一度でも呼ばれたら自前のフォ�
 
 ---
 
+## ③ メニュー／設定／セーブスロットの連携
+
+`ui.js` がメニュー/設定/セーブスロット画面を描画します（`window.UI.open('menu'|'settings'|'slots')`）。
+
+- *音量*：2号機 `window.setMasterVolume/setSfxVolume/setBgmVolume/setMuted` に配線済み（追加作業不要）。
+- *セーブスロット*：1号機 `window.VoxelGame.list/current/switchSlot/newWorld/deleteSlot` に配線済み（既存口でフル機能）。
+- *タイトルの色選択*：既存のコア実装（`#charsel`）をそのまま使用。ui.js は重複描画しません。
+
+### 1号機にお願い（軽微・任意）
+1. *Escの委譲*：`UI_TAKEOVER` 時、コアのEscは自前のポーズではなく `window.UI.toggle('menu')` を呼ぶ。
+   （E同様、ui.js は委譲を検知して自前フォールバックを止めます）
+2. *感度/画質の消費*：ui.js は設定を `window.UI_SETTINGS = { sensitivity:1.0, quality:'high'|'low' }` で公開し、
+   変更時に `uisettingschange` イベントを出します。コア側で読んで反映してください：
+   ```js
+   // マウス移動（既存 s=0.0023 に感度を掛ける）
+   const s = 0.0023 * ((window.UI_SETTINGS && window.UI_SETTINGS.sensitivity) || 1);
+   // 画質（任意）：'low' のとき pixelRatio/描画半径を落とす等
+   ```
+   未対応でも設定値は localStorage に保存され無害です。
+
+---
+
 ## 戦闘演出の口（1号機の戦闘実装と接続）
 
 `ui.js` が **以下2つを定義・公開**します。1号機は命中時にこれを呼ぶだけ（演出の中身はUI側）。

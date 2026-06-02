@@ -176,6 +176,43 @@
       #ui-hint { position:fixed; right:14px; bottom:14px; z-index:16; color:#fff; font-size:12px;
         opacity:.7; text-shadow:0 0 3px #000; pointer-events:none; }
 
+      /* ③ メニュー／設定／セーブスロット */
+      #ui-menu { position:fixed; inset:0; z-index:31; display:none; pointer-events:auto;
+        align-items:center; justify-content:center; background:rgba(8,14,26,.86); backdrop-filter:blur(3px); }
+      #ui-menu.open { display:flex; }
+      .uim-panel { width:min(560px,92vw); max-height:90vh; overflow:auto; color:#fff;
+        background:linear-gradient(180deg, rgba(28,38,58,.97), rgba(16,24,40,.97));
+        border:1px solid rgba(255,255,255,.14); border-radius:16px; padding:22px 24px;
+        box-shadow:0 20px 70px rgba(0,0,0,.55); }
+      .uim-title { font-size:22px; font-weight:800; letter-spacing:2px; text-align:center; margin-bottom:4px; }
+      .uim-sub { font-size:12px; opacity:.7; text-align:center; margin-bottom:18px; }
+      .uim-btns { display:flex; flex-direction:column; gap:10px; }
+      .uim-btn { pointer-events:auto; cursor:pointer; text-align:center; color:#fff; font-size:15px;
+        border:1px solid rgba(255,255,255,.22); border-radius:10px; padding:12px; background:rgba(255,255,255,.05);
+        transition:.12s; }
+      .uim-btn:hover { background:rgba(255,255,255,.13); border-color:rgba(255,255,255,.5); transform:translateY(-1px); }
+      .uim-btn.primary { background:linear-gradient(180deg,#3a7bd5,#2c5fb0); border-color:#5a9bff; }
+      .uim-btn.danger:hover { background:rgba(190,40,40,.35); border-color:#ff7a7a; }
+      .uim-row { display:flex; align-items:center; gap:12px; margin:14px 0; }
+      .uim-row label { flex:0 0 96px; font-size:13px; opacity:.9; }
+      .uim-row input[type=range] { flex:1; accent-color:#ffd54a; }
+      .uim-row .val { flex:0 0 44px; text-align:right; font-size:12px; opacity:.85; font-variant-numeric:tabular-nums; }
+      .uim-row select { flex:1; background:rgba(0,0,0,.35); color:#fff; border:1px solid rgba(255,255,255,.25);
+        border-radius:8px; padding:6px; }
+      .uim-back { margin-top:18px; text-align:center; }
+      .uim-slot { border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:12px 14px; margin-bottom:10px;
+        background:rgba(255,255,255,.04); }
+      .uim-slot.cur { border-color:#ffd54a; box-shadow:0 0 10px rgba(255,213,74,.35); }
+      .uim-slot .sh { display:flex; align-items:center; justify-content:space-between; }
+      .uim-slot .sn { font-size:15px; font-weight:700; }
+      .uim-slot .sm { font-size:11px; opacity:.75; margin-top:3px; line-height:1.5; }
+      .uim-slot .sa { display:flex; gap:6px; margin-top:8px; }
+      .uim-slot .sa button { pointer-events:auto; cursor:pointer; font-size:12px; color:#fff;
+        border:1px solid rgba(255,255,255,.25); border-radius:7px; padding:5px 10px; background:rgba(0,0,0,.25); transition:.1s; }
+      .uim-slot .sa button:hover { background:rgba(255,255,255,.12); }
+      .uim-slot .sa button.danger:hover { background:rgba(190,40,40,.4); border-color:#ff7a7a; }
+      .uim-mute { display:flex; align-items:center; gap:8px; font-size:13px; margin:6px 0 2px; cursor:pointer; }
+
       @media (max-width:640px) {
         #ui-radar { width:96px; height:96px; }
         .ui-slot { width:42px; height:42px; }
@@ -234,11 +271,16 @@
     const hint = el('div', 'display:none;', document.body); hint.id = 'ui-hint';
     hint.textContent = 'E：インベントリ';
 
+    // ③ メニュー／設定／スロット
+    const menu = el('div', '', document.body); menu.id = 'ui-menu';
+    const menuPanel = el('div', '', menu); menuPanel.className = 'uim-panel';
+    menu.addEventListener('click', (e) => { if (e.target === menu) closeMenu(); });
+
     dom = {
       root, breathRow, breathSegs, foodSegs, foodNum, hpSegs, hpNum,
       selName, hotbar, radar, rctx: radar.getContext('2d'), info, hurt, heal,
       fxCanvas, fxctx: fxCanvas.getContext('2d'), fxLayer,
-      inv, panel, tip, hint,
+      inv, panel, tip, hint, menu, menuPanel,
       hpSegEls: [], foodSegEls: [], breathSegEls: [], slotEls: [],
     };
     resizeFX();
@@ -424,6 +466,142 @@
     dom.inv.classList.remove('open');
   }
   function toggleInv() { invOpen ? closeInv() : openInv(); }
+
+  // =====================================================================
+  // ③ メニュー／設定／セーブスロット
+  //   ・音量 = 2号機 window.setMasterVolume 他（SoundSettings）に配線
+  //   ・スロット = 1号機 window.VoxelGame.list/switchSlot/newWorld/deleteSlot に配線
+  //   ・感度/画質 = localStorage 永続＋ window.UI_SETTINGS 公開（コアが読めば反映）
+  // =====================================================================
+  let menuOpen = false, menuScreen = 'menu';
+  const SETTINGS_KEY = 'voxel_ui_settings_v1';
+  function loadUiSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } }
+  const uiSettings = Object.assign({ sensitivity: 1.0, quality: 'high' }, loadUiSettings());
+  function publishSettings() {
+    window.UI_SETTINGS = uiSettings;
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(uiSettings)); } catch (e) {}
+    try { window.dispatchEvent(new CustomEvent('uisettingschange', { detail: uiSettings })); } catch (e) {}
+  }
+
+  const hasAudio = () => typeof window.setMasterVolume === 'function';
+  const hasSlots = () => !!(window.VoxelGame && typeof window.VoxelGame.list === 'function');
+
+  // スライダー行（0..1 を %表示）。oninput で即反映＋値表示
+  function sliderRow(parent, label, get, set) {
+    const row = el('div', '', parent); row.className = 'uim-row';
+    const lb = el('label', '', row); lb.textContent = label;
+    const inp = el('input', '', row); inp.type = 'range'; inp.min = '0'; inp.max = '100'; inp.step = '1';
+    const val = el('div', '', row); val.className = 'val';
+    const v = clamp01(get()); inp.value = String(Math.round(v * 100)); val.textContent = Math.round(v * 100) + '%';
+    inp.addEventListener('input', () => { const f = clampN(inp.value) / 100; val.textContent = Math.round(f * 100) + '%'; try { set(f); } catch (e) {} });
+    return inp;
+  }
+
+  function renderSettings(p) {
+    el('div', '', p).className = 'uim-title'; p.lastChild.textContent = '⚙ 設定';
+    el('div', '', p).className = 'uim-sub'; p.lastChild.textContent = '音量は即時反映・感度/画質は保存されます';
+
+    // --- 音量（2号機 SoundSettings へ配線）---
+    el('div', '', p).className = 'uiv-sec'; p.lastChild.textContent = '音量';
+    if (hasAudio()) {
+      sliderRow(p, 'マスター', () => window.getMasterVolume ? window.getMasterVolume() : 1, (v) => window.setMasterVolume(v));
+      if (window.setSfxVolume) sliderRow(p, '効果音', () => window.getSfxVolume ? window.getSfxVolume() : 1, (v) => window.setSfxVolume(v));
+      if (window.setBgmVolume) sliderRow(p, 'BGM', () => window.getBgmVolume ? window.getBgmVolume() : 0.6, (v) => window.setBgmVolume(v));
+      const mute = el('label', '', p); mute.className = 'uim-mute';
+      const cb = el('input', '', mute); cb.type = 'checkbox';
+      try { cb.checked = !!(window.SoundSettings && window.SoundSettings.get().muted); } catch (e) {}
+      mute.appendChild(document.createTextNode(' ミュート'));
+      cb.addEventListener('change', () => { if (window.setMuted) window.setMuted(cb.checked); });
+    } else {
+      const n = el('div', 'font-size:12px;opacity:.7;', p); n.textContent = '※ 音声システム未読込（sound.js 読込後に有効）';
+    }
+
+    // --- 操作・表示（感度/画質：localStorage＋UI_SETTINGS）---
+    el('div', '', p).className = 'uiv-sec'; p.lastChild.textContent = '操作・表示';
+    const sr = el('div', '', p); sr.className = 'uim-row';
+    el('label', '', sr).textContent = 'マウス感度';
+    const si = el('input', '', sr); si.type = 'range'; si.min = '30'; si.max = '250'; si.step = '5';
+    si.value = String(Math.round(uiSettings.sensitivity * 100));
+    const sv = el('div', '', sr); sv.className = 'val'; sv.textContent = (uiSettings.sensitivity).toFixed(2) + '×';
+    si.addEventListener('input', () => { uiSettings.sensitivity = clampN(si.value) / 100; sv.textContent = uiSettings.sensitivity.toFixed(2) + '×'; publishSettings(); });
+
+    const qr = el('div', '', p); qr.className = 'uim-row';
+    el('label', '', qr).textContent = '画質';
+    const qs = el('select', '', qr);
+    [['high', '高（標準）'], ['low', '軽量（スマホ向け）']].forEach(([v, t]) => { const o = el('option', '', qs); o.value = v; o.textContent = t; });
+    qs.value = uiSettings.quality;
+    qs.addEventListener('change', () => { uiSettings.quality = qs.value; publishSettings(); });
+
+    const back = el('div', '', p); back.className = 'uim-back';
+    const b = el('div', '', back); b.className = 'uim-btn'; b.textContent = '← 戻る'; b.addEventListener('click', () => renderMenu('menu'));
+  }
+
+  // 破壊的操作の二段確認（確定/取消に化ける）
+  function confirmBtn(holder, label, danger, onYes) {
+    const b = el('button', '', holder); b.textContent = label; if (danger) b.className = 'danger';
+    b.addEventListener('click', () => {
+      b.textContent = '確定?'; b.className = danger ? 'danger' : '';
+      const cancel = el('button', '', holder); cancel.textContent = '取消';
+      const t = setTimeout(() => { b.textContent = label; cancel.remove(); }, 2600);
+      const yes = () => { clearTimeout(t); onYes(); };
+      b.onclick = yes;
+      cancel.addEventListener('click', () => { clearTimeout(t); b.textContent = label; b.onclick = null; cancel.remove(); });
+    }, { once: true });
+  }
+
+  function renderSlots(p) {
+    el('div', '', p).className = 'uim-title'; p.lastChild.textContent = '💾 セーブ＆ロード';
+    el('div', '', p).className = 'uim-sub'; p.lastChild.textContent = '切替・新規・削除はページが再読込されます';
+    if (!hasSlots()) { const n = el('div', 'font-size:13px;opacity:.7;', p); n.textContent = '※ セーブ口未読込（VoxelGame 統合後に有効）'; }
+    else {
+      let list = []; try { list = window.VoxelGame.list() || []; } catch (e) {}
+      const cur = (() => { try { return window.VoxelGame.current(); } catch (e) { return 1; } })();
+      list.forEach((s) => {
+        const card = el('div', '', p); card.className = 'uim-slot' + (s.current || s.slot === cur ? ' cur' : '');
+        const head = el('div', '', card); head.className = 'sh';
+        const nm = el('div', '', head); nm.className = 'sn';
+        nm.textContent = `スロット ${s.slot}` + ((s.current || s.slot === cur) ? '（使用中）' : '');
+        const meta = el('div', '', card); meta.className = 'sm';
+        if (s.exists) {
+          const when = s.ts ? new Date(s.ts).toLocaleString('ja-JP') : '—';
+          const hh = (typeof s.dayTime === 'number') ? String(Math.floor(((s.dayTime + 0.5) % 1) * 24)).padStart(2, '0') + '時' : '—';
+          meta.textContent = `更新 ${when} ／ 改変 ${clampN(s.editCount)} ・ モブ ${clampN(s.mobCount)} ・ HP ${s.hp != null ? s.hp : '—'} ・ ${hh}`;
+        } else meta.textContent = '（空きスロット）';
+        const act = el('div', '', card); act.className = 'sa';
+        if (!(s.current || s.slot === cur)) confirmBtn(act, s.exists ? '▶ このデータで開始' : '＋ 新規作成', false, () => {
+          try { s.exists ? window.VoxelGame.switchSlot(s.slot) : window.VoxelGame.newWorld(s.slot); } catch (e) {}
+        });
+        if (s.exists) confirmBtn(act, '🗑 削除', true, () => { try { window.VoxelGame.deleteSlot(s.slot); } catch (e) {} renderMenu('slots'); });
+      });
+    }
+    const back = el('div', '', p); back.className = 'uim-back';
+    const b = el('div', '', back); b.className = 'uim-btn'; b.textContent = '← 戻る'; b.addEventListener('click', () => renderMenu('menu'));
+  }
+
+  function renderMenuRoot(p) {
+    el('div', '', p).className = 'uim-title'; p.lastChild.textContent = '⏸ メニュー';
+    el('div', '', p).className = 'uim-sub'; p.lastChild.textContent = 'VOXEL WORLD';
+    const btns = el('div', '', p); btns.className = 'uim-btns';
+    const mk = (label, cls, fn) => { const b = el('div', '', btns); b.className = 'uim-btn' + (cls ? ' ' + cls : ''); b.textContent = label; b.addEventListener('click', fn); };
+    mk('▶ ゲームに戻る', 'primary', closeMenu);
+    mk('⚙ 設定', '', () => renderMenu('settings'));
+    mk('💾 セーブ＆ロード', '', () => renderMenu('slots'));
+    mk('💾 今すぐ保存', '', () => { try { window.VoxelGame && window.VoxelGame.save && window.VoxelGame.save(); } catch (e) {} const b = btns.lastChild; b.textContent = '✓ 保存しました'; setTimeout(() => { b.textContent = '💾 今すぐ保存'; }, 1200); });
+  }
+
+  function renderMenu(screen) {
+    menuScreen = screen;
+    const p = dom.menuPanel; p.innerHTML = '';
+    if (screen === 'settings') renderSettings(p);
+    else if (screen === 'slots') renderSlots(p);
+    else renderMenuRoot(p);
+  }
+  function openMenu(screen) {
+    menuOpen = true; renderMenu(screen || 'menu');
+    dom.menu.classList.add('open');
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  function closeMenu() { menuOpen = false; dom.menu.classList.remove('open'); }
 
   // =====================================================================
   // レーダーミニマップ（北を上にしたシンプル版・プレイヤー中心）
@@ -702,20 +880,35 @@
     exposeFXHooks(); // window.spawnDamagePopup / spawnHitEffect を公開
     requestAnimationFrame(tick);
 
-    // UI操作口（1号機はEキー処理から window.UI.toggle('inventory') を呼ぶ＝委譲）
+    publishSettings(); // window.UI_SETTINGS を起動時に公開（コアが感度/画質を読めるように）
+
+    // UI操作口（1号機はEキー処理から window.UI.toggle('inventory')、Escから open('menu') を呼ぶ＝委譲）
     window.UI = window.UI || {};
-    window.UI.open = (which) => { window.UI._routed = true; if (!which || which === 'inventory') openInv(); };
-    window.UI.close = () => { closeInv(); };
-    window.UI.toggle = (which) => { window.UI._routed = true; if (!which || which === 'inventory') toggleInv(); };
+    window.UI.open = (which) => {
+      window.UI._routed = true;
+      if (which === 'menu' || which === 'settings' || which === 'slots') openMenu(which === 'menu' ? 'menu' : which);
+      else openInv();
+    };
+    window.UI.close = () => { closeInv(); closeMenu(); };
+    window.UI.toggle = (which) => {
+      window.UI._routed = true;
+      if (which === 'menu') { menuOpen ? closeMenu() : openMenu('menu'); }
+      else toggleInv();
+    };
     window.UI.spawnDamagePopup = spawnDamagePopup;
     window.UI.spawnHitEffect = spawnHitEffect;
+    window.UI.settings = () => uiSettings;
 
     // フォールバックのEキー（コアが委譲し始めたら _routed=true で自動停止＝二重起動回避）
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape' && invOpen) { closeInv(); return; }
+      if (e.code === 'Escape') {
+        if (menuOpen) { closeMenu(); return; }
+        if (invOpen) { closeInv(); return; }
+      }
       if (e.code === 'KeyE') {
         if (window.UI._routed) return;     // コアがEを委譲済み → ui.js側は触らない
         if (!coreIntegrated()) return;     // 統合前はコア内蔵インベントリに任せる
+        if (menuOpen) return;
         toggleInv();
       }
     });
