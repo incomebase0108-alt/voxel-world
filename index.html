@@ -2466,14 +2466,20 @@ let musicScene = '', musicTimer = 0;
 function updateCombatMusic(dt) {
   musicTimer -= dt;
   if (musicTimer > 0) return;
-  musicTimer = 0.5;
+  musicTimer = 0.3;
   let combat = false;
   for (const m of mobs) {
     if (m.hostile && !m.dying && Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z) < 14) { combat = true; break; }
   }
-  const headWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + PH - 0.1), Math.floor(player.pos.z)) === B.water;
-  const sc = combat ? 'combat' : headWater ? 'water' : isNight() ? 'night' : 'day';
-  if (sc !== musicScene) { musicScene = sc; if (typeof window.setMusicScene === 'function') { try { window.setMusicScene(sc); } catch (e) {} } }
+  // 水中判定は頭/胴どちらかが水なら water（水際で出た瞬間に day/night へ戻すため胴も見る）
+  const px = Math.floor(player.pos.x), pz = Math.floor(player.pos.z);
+  const inWater = getBlock(px, Math.floor(player.pos.y + PH - 0.1), pz) === B.water
+               || getBlock(px, Math.floor(player.pos.y + 0.9), pz) === B.water;
+  const sc = combat ? 'combat' : inWater ? 'water' : isNight() ? 'night' : 'day';
+  if (sc !== musicScene) {
+    // ★成功時のみキャッシュ更新：sound.js 未準備のときは更新せず次フレーム再試行（'water'固着・無音の防止）
+    if (typeof window.setMusicScene === 'function') { try { window.setMusicScene(sc); musicScene = sc; } catch (e) {} }
+  }
 }
 
 // ===================================================================
