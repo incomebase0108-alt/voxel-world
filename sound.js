@@ -177,7 +177,7 @@
     combat: { tempo: 148, scale: [146.83, 174.61, 196.00, 220.00, 261.63], pad: [110.00, 146.83, 220.00], wave: 'sawtooth', density: 0.85, drums: true,  level: 1.0 },
     water:  { tempo: 72,  scale: [293.66, 349.23, 392.00, 440.00, 523.25], pad: [196.00, 293.66, 392.00], wave: 'sine',     density: 0.55, drums: false, level: 0.9 },
   };
-  let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false;
+  let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false, lastNoteTime = 0;
   const sceneNodes = {}; // name -> { gain, pad:[{o}] }
 
   function sceneGain(name) {
@@ -187,9 +187,13 @@
     }
     return sceneNodes[name];
   }
+  // pad は各シーン常駐（停止/再生成しない＝停止タイマー競合を原理的に排除）。
+  // 非アクティブ時は scene gain を 0 にして黙らせるだけ。
   function startPad(name) {
     const c = ac(); if (!c) return;
-    const sc = SCENES[name], node = sceneGain(name);
+    const node = sceneGain(name);
+    if (node.pad.length) return; // 既に常駐済みなら二重生成しない
+    const sc = SCENES[name];
     sc.pad.forEach((f, i) => {
       const o = c.createOscillator(), g = c.createGain();
       o.type = name === 'combat' ? 'sawtooth' : 'sine';
@@ -207,6 +211,7 @@
   function bgmNote(freq, dur, dest, gain, wave) {
     const c = ac(); if (!c) return;
     const t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    lastNoteTime = t; // 診断：直近のノート発音時刻
     o.type = wave || 'sine'; o.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(gain || 0.07, t + 0.02);
@@ -264,10 +269,7 @@
     if (name === bgmScene) return;
     const prev = bgmScene; bgmScene = name;
     startPad(name); fadeSceneGain(name, SCENES[name].level || 1);
-    if (prev && sceneNodes[prev]) {
-      fadeSceneGain(prev, 0);
-      setTimeout(() => stopPad(prev), (XFADE + 0.2) * 1000);
-    }
+    if (prev && sceneNodes[prev]) fadeSceneGain(prev, 0); // 旋律もpadもgainで消す。oscillatorは止めない（競合回避）
   }
   function stopMusic() {
     userMusicCtl = true; bgmOn = false;
@@ -373,16 +375,26 @@
   window.getSfxGain      = (name) => window.SoundSettings.getGain(name);
 
   // 診断：console で getSoundDiag() を叩けば状態が出る（H診断にも流用可）
-  window.getSoundDiag = () => ({
-    audioContext: ctx ? ctx.state : 'none(未生成)',   // running / suspended / none
-    bgmOn: bgmOn, bgmScene: bgmScene,
-    bgmBusGain: bgmBus ? +bgmBus.gain.value.toFixed(3) : null,
-    sfxBusGain: sfxBus ? +sfxBus.gain.value.toFixed(3) : null,
-    masterGain: master ? +master.gain.value.toFixed(3) : null,
-    muted: vol.muted,
-    vol: { master: vol.master, sfx: vol.sfx, bgm: vol.bgm },
-    musicSceneCalledByCore: typeof window.__setMusicSceneCalled === 'boolean' ? window.__setMusicSceneCalled : '(未計測)',
-  });
+  window.getSoundDiag = () => {
+    const node = bgmScene ? sceneNodes[bgmScene] : null;
+    let totalPad = 0; Object.keys(sceneNodes).forEach((n) => { totalPad += sceneNodes[n].pad.length; });
+    return {
+      audioContext: ctx ? ctx.state : 'none(未生成)',   // running / suspended / none
+      bgmOn: bgmOn, bgmScene: bgmScene,
+      // 「鳴る準備はできているのに音が出ない」をここで切り分ける ↓
+      schedulerRunning: !!bgmTimer,                          // ノート生成ループが回っているか
+      activeScenePadOscillators: node ? node.pad.length : 0, // アクティブシーンのpad数（0なら無音）
+      totalPadOscillators: totalPad,
+      activeSceneGain: node ? +node.gain.gain.value.toFixed(4) : null, // ←0なら原因確定（gainで消えてる）
+      lastNoteAgoSec: (ctx && lastNoteTime) ? +(ctx.currentTime - lastNoteTime).toFixed(2) : null, // 直近ノートから何秒
+      bgmBusGain: bgmBus ? +bgmBus.gain.value.toFixed(3) : null,
+      sfxBusGain: sfxBus ? +sfxBus.gain.value.toFixed(3) : null,
+      masterGain: master ? +master.gain.value.toFixed(3) : null,
+      muted: vol.muted,
+      vol: { master: vol.master, sfx: vol.sfx, bgm: vol.bgm },
+      musicSceneCalledByCore: typeof window.__setMusicSceneCalled === 'boolean' ? window.__setMusicSceneCalled : '(未計測)',
+    };
+  };
 
   // 設定の永続化（localStorage）：起動時に復元し、変更時に保存（音量＋個別倍率）
   const VOL_KEY = 'vw_sound_v1';

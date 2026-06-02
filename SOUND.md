@@ -53,7 +53,13 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 各シーンは `level`（音量バランス）を持ち、water は静かめ。陸地に出れば day/night のはっきりしたBGMに切り替わります。
 
 ### 診断
-コンソールで `window.getSoundDiag()` を実行すると `{audioContext, bgmOn, bgmScene, bgmBusGain, sfxBusGain, masterGain, muted, vol, musicSceneCalledByCore}` が返ります。「BGMが聞こえない」時はまず `bgmScene` を確認（`water` なら水中BGMが鳴っているだけ）。
+コンソールで `window.getSoundDiag()` を実行すると状態一式が返ります。「BGMが聞こえない」時の切り分け順：
+1. `bgmScene` … `water` なら水中BGMが鳴っているだけ（陸へ）
+2. `activeSceneGain` … `0` なら gain で消えている（フェード/設定の問題）
+3. `activeScenePadOscillators` … `0` なら pad が鳴っていない
+4. `schedulerRunning` … `false` ならノート生成ループが止まっている
+5. `lastNoteAgoSec` … 大きすぎ（数十秒）ならノートが出ていない
+6. `audioContext`(running) / `bgmBusGain` / `masterGain` / `muted` … 基本条件
 
 各シーンは「持続pad＋確率メロディ（combatはドラム）」のレイヤー構成。
 
