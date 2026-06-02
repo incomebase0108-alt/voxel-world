@@ -149,6 +149,38 @@ window.VoxelGame.trade = (offerId) => { /* 支払い可なら itemCounts 増減 
 
 ---
 
+## 必殺技 連携（1号機の技ロジックと接続・三位一体の演出担当）
+
+`ui.js` が *必殺技ゲージ・装備スキルボタン(Z X C V)・発動演出(全画面FX)・習得通知・技選択UI* を担当。
+
+### state() に追記（あれば表示・無ければ非表示）
+```js
+skills: {
+  energy: 0..1,                       // 必殺ゲージ（任意）
+  equipped: ['fire','quake', …],      // 装備中ID（最大4・HUDボタン順）
+  list: [ { id:'fire', name:'火炎斬', icon:'item_sword'/*任意*/, kind:'slash',
+            color:'#ffd54a'/*任意*/, ready:true, cooldown:0/*残割合0..1*/, desc:'前方を炎で薙ぐ' }, … ],
+}
+```
+`kind` は発動演出の種類：**`nova`(全方位放射) / `beam`(横薙ぎ閃光) / `slash`(巨大斬撃) / `buff`(オーラ)**。
+
+### ui.js が定義する口（core は呼ぶだけ）
+```js
+window.onUseSkill(skillId, { name, kind, color });  // 発動演出＋技名バナー＋全画面フラッシュ＋画面シェイク
+window.onLearnSkill({ name, icon });                // 「✦ 新必殺技 習得！」バナー（Lv演出と同系）
+```
+### ui.js が core を呼ぶ口（実装してください）
+```js
+window.VoxelGame.useSkill  = (skillId) => { /* 発動（ゲージ/CD消費・効果適用）→ window.onUseSkill を呼ぶ */ };
+window.VoxelGame.equipSkill = (skillId) => { /* 装備のトグル（最大4） */ };
+```
+- スキルボタンは *ready の時だけ* 押下可（`useSkill` を呼ぶ）。キー Z/X/C/V を core 側で `useSkill(equipped[i])` に割り当ててもOK。
+- 技一覧/装備は `window.UI.open('skills')`（ポーズメニューにも「⚡必殺技」）。
+- 発動音は **2号機 `playSFX('skill')`**（kind別に `playSFX('skill_'+kind)` でも可）。
+- レベルアップで習得する想定なら、Lvアップ処理で `window.onLearnSkill(skill)` を1行。
+
+---
+
 ## レベルアップ連携（1号機レベルシステムと接続）
 
 - `state()` に **`level` / `exp` / `expToNext`** を入れると、ui.js が*ホットバー上に Lv/EXP バー*を自動表示します（無ければ非表示）。

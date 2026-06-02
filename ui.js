@@ -148,6 +148,41 @@
         text-shadow:0 0 14px #ff9d00, 0 2px 5px #000; }
       #ui-levelup .lu2 { font-size:24px; font-weight:800; color:#fff; text-shadow:0 0 8px #000; margin-top:6px; }
 
+      /* 必殺技：装備スキルボタン＋必殺ゲージ */
+      #ui-skills { position:fixed; right:14px; bottom:92px; display:flex; gap:8px; z-index:16; pointer-events:auto; }
+      .ui-skill { position:relative; width:54px; height:54px; border-radius:13px; overflow:hidden; cursor:pointer;
+        border:2px solid rgba(150,190,255,.45); background:rgba(18,28,52,.55); display:flex; align-items:center; justify-content:center;
+        box-shadow:0 0 10px rgba(80,140,255,.2); transition:transform .12s, box-shadow .12s; }
+      .ui-skill.ready { border-color:#7fd0ff; box-shadow:0 0 16px rgba(120,200,255,.6); }
+      .ui-skill.ready:hover { transform:translateY(-3px); }
+      .ui-skill:not(.ready) { filter:grayscale(.55) brightness(.66); cursor:default; }
+      .ui-skill .ic, .ui-skill .sw { width:34px; height:34px; }
+      .ui-skill .cd { position:absolute; left:0; right:0; bottom:0; background:rgba(0,0,0,.62); pointer-events:none; }
+      .ui-skill .key { position:absolute; left:4px; top:2px; font-size:10px; color:#cfe6ff; text-shadow:0 0 2px #000; font-weight:700; }
+      #ui-ult { position:fixed; right:14px; bottom:78px; width:178px; height:7px; border-radius:5px; overflow:hidden;
+        background:rgba(0,0,0,.42); border:1px solid rgba(255,255,255,.2); z-index:16; display:none; }
+      #ui-ultfill { position:absolute; inset:0 auto 0 0; width:0%; transition:width .18s ease-out;
+        background:linear-gradient(90deg,#5a9bff,#b58cff,#ff7ad0); }
+      #ui-ult.full #ui-ultfill { animation:ui-ultglow 1s ease-in-out infinite; }
+      @keyframes ui-ultglow { 0%,100%{ filter:brightness(1) } 50%{ filter:brightness(1.7) } }
+
+      /* スキル名／習得バナー */
+      #ui-skillname { position:fixed; left:50%; top:30%; transform:translate(-50%,-50%) scale(.7);
+        z-index:29; pointer-events:none; text-align:center; opacity:0; }
+      #ui-skillname .s1 { font-size:48px; font-weight:900; letter-spacing:5px; text-shadow:0 0 20px currentColor, 0 3px 7px #000; }
+      #ui-skillname .s2 { font-size:18px; font-weight:800; color:#fff; text-shadow:0 0 8px #000; margin-top:5px; letter-spacing:2px; }
+
+      /* スキル選択カード */
+      .uik-card { display:flex; align-items:center; gap:12px; border:2px solid rgba(255,255,255,.16); border-radius:12px;
+        padding:10px 12px; margin-bottom:8px; background:rgba(0,0,0,.22); cursor:pointer; transition:.12s; }
+      .uik-card.eq { border-color:#7fd0ff; box-shadow:0 0 12px rgba(120,200,255,.35); background:rgba(40,70,120,.3); }
+      .uik-card:hover { background:rgba(255,255,255,.06); }
+      .uik-card .ic, .uik-card .sw { width:42px; height:42px; border-radius:10px; flex:0 0 auto; }
+      .uik-card .info { flex:1; }
+      .uik-card .nm { font-size:15px; font-weight:800; }
+      .uik-card .ds { font-size:11px; opacity:.75; margin-top:2px; }
+      .uik-card .eqtag { font-size:11px; color:#7fd0ff; font-weight:800; flex:0 0 auto; }
+
       /* スロット内アイコン（4号機 128px PNG） */
       .ui-slot .ic { width:30px; height:30px; image-rendering:auto;
         filter:drop-shadow(0 1px 1px rgba(0,0,0,.5)); pointer-events:none; }
@@ -333,6 +368,14 @@
     const lu1 = el('div', '', levelup); lu1.className = 'lu1'; lu1.textContent = '⭐ LEVEL UP!';
     const lu2 = el('div', '', levelup); lu2.className = 'lu2';
 
+    // 必殺技：装備スキルボタン＋必殺ゲージ＋発動/習得バナー
+    const skills = el('div', '', root); skills.id = 'ui-skills';
+    const ult = el('div', '', root); ult.id = 'ui-ult';
+    const ultfill = el('div', '', ult); ultfill.id = 'ui-ultfill';
+    const skillname = el('div', '', root); skillname.id = 'ui-skillname';
+    const sk1 = el('div', '', skillname); sk1.className = 's1';
+    const sk2 = el('div', '', skillname); sk2.className = 's2';
+
     // ダメージFXレイヤー（HUD休止中でも動くよう root 直下に独立配置）
     const fxCanvas = el('canvas', '', document.body); fxCanvas.id = 'ui-fx-canvas';
     const fxLayer = el('div', '', document.body); fxLayer.id = 'ui-fx';
@@ -356,6 +399,7 @@
       fxCanvas, fxctx: fxCanvas.getContext('2d'), fxLayer,
       inv, panel, tip, hint, menu, menuPanel,
       expRow, explv, expfill, expnum, levelup, lu2,
+      skills, ult, ultfill, skillname, sk1, sk2, skillEls: [],
       hpSegEls: [], foodSegEls: [], breathSegEls: [], slotEls: [],
     };
     resizeFX();
@@ -427,6 +471,74 @@
       ui.cnt.className = 'cnt' + (h.count > 0 ? '' : ' zero');
       ui.slot.title = h.name || '';
     }
+  }
+
+  // =====================================================================
+  // 必殺技 HUD（装備スキルボタン＋必殺ゲージ）。state().skills がある時だけ表示
+  //   skills = { energy?:0..1, equipped?:[id], list:[{id,name,icon,kind,desc,ready,cooldown}] }
+  //   cooldown は「残り割合 0..1」（1=出来たて, 0=使用可）。ready 優先。
+  // =====================================================================
+  const SKILL_KEYS = ['Z', 'X', 'C', 'V'];
+  let skillSig = '';
+  function paintSkills(sk) {
+    sk = sk || {};
+    const byId = {}; (sk.list || []).forEach(s => byId[s.id] = s);
+    const ids = (Array.isArray(sk.equipped) && sk.equipped.length) ? sk.equipped
+              : (sk.list || []).map(s => s.id);
+    const shown = ids.map(id => byId[id]).filter(Boolean).slice(0, 4);
+    dom.skills.style.display = shown.length ? 'flex' : 'none';
+
+    const sig = shown.map(s => s.id).join('|');
+    if (sig !== skillSig) { // 構成が変わった時だけ作り直す
+      skillSig = sig;
+      while (dom.skillEls.length < shown.length) {
+        const b = el('div', '', dom.skills); b.className = 'ui-skill';
+        const key = el('div', '', b); key.className = 'key';
+        const ic = el('img', 'display:none;', b); ic.className = 'ic'; ic.alt = '';
+        ic.addEventListener('error', () => { ic.style.display = 'none'; });
+        const sw = el('div', '', b); sw.className = 'sw';
+        const cd = el('div', '', b); cd.className = 'cd';
+        dom.skillEls.push({ b, key, ic, sw, cd, id: null });
+      }
+      for (let i = 0; i < dom.skillEls.length; i++) {
+        const ui = dom.skillEls[i], s = shown[i];
+        ui.b.style.display = s ? '' : 'none';
+        if (!s) continue;
+        ui.id = s.id; ui.key.textContent = SKILL_KEYS[i] || '';
+        const url = iconUrl({ name: s.name, icon: s.icon });
+        if (url) { if (ui.ic.getAttribute('src') !== url) ui.ic.src = url; ui.ic.style.display = ''; ui.sw.style.display = 'none'; }
+        else { ui.ic.style.display = 'none'; ui.sw.style.display = ''; ui.sw.style.background = s.color || '#6a8cff'; }
+        ui.b.title = s.name + (s.desc ? ' — ' + s.desc : '');
+        ui.b.onclick = () => {
+          const ready = !!byIdReady(ui.id);
+          if (!ready) return;
+          try { const vg = window.VoxelGame; if (vg && typeof vg.useSkill === 'function') vg.useSkill(ui.id); } catch (e) {}
+        };
+      }
+    }
+    // 毎フレーム：ready/cooldown を反映
+    for (let i = 0; i < dom.skillEls.length; i++) {
+      const ui = dom.skillEls[i], s = shown[i]; if (!s) continue;
+      const ready = s.ready != null ? !!s.ready : (clamp01(s.cooldown) <= 0.001);
+      ui.b.classList.toggle('ready', ready);
+      const rem = ready ? 0 : clamp01(s.cooldown);
+      ui.cd.style.height = (rem * 100).toFixed(0) + '%';
+    }
+    // 必殺ゲージ
+    if (typeof sk.energy === 'number') {
+      dom.ult.style.display = 'block';
+      const e = clamp01(sk.energy);
+      dom.ultfill.style.width = (e * 100).toFixed(1) + '%';
+      dom.ult.classList.toggle('full', e >= 0.999);
+    } else dom.ult.style.display = 'none';
+    skillStateRef = sk; // クリック時の最新ready参照用
+  }
+  let skillStateRef = null;
+  function byIdReady(id) {
+    if (!skillStateRef || !skillStateRef.list) return true;
+    const s = skillStateRef.list.find(x => x.id === id);
+    if (!s) return true;
+    return s.ready != null ? !!s.ready : (clamp01(s.cooldown) <= 0.001);
   }
 
   // =====================================================================
@@ -659,6 +771,7 @@
     const btns = el('div', '', p); btns.className = 'uim-btns';
     const mk = (label, cls, fn) => { const b = el('div', '', btns); b.className = 'uim-btn' + (cls ? ' ' + cls : ''); b.textContent = label; b.addEventListener('click', fn); };
     mk('▶ ゲームに戻る', 'primary', closeMenu);
+    mk('⚡ 必殺技', '', () => renderMenu('skills'));
     mk('⚙ 設定', '', () => renderMenu('settings'));
     mk('💾 セーブ＆ロード', '', () => renderMenu('slots'));
     mk('💾 今すぐ保存', '', () => { try { window.VoxelGame && window.VoxelGame.save && window.VoxelGame.save(); } catch (e) {} const b = btns.lastChild; b.textContent = '✓ 保存しました'; setTimeout(() => { b.textContent = '💾 今すぐ保存'; }, 1200); });
@@ -670,7 +783,38 @@
     if (screen === 'settings') renderSettings(p);
     else if (screen === 'slots') renderSlots(p);
     else if (screen === 'trade') renderTrade(p);
+    else if (screen === 'skills') renderSkillsScreen(p);
     else renderMenuRoot(p);
+  }
+
+  // 必殺技の一覧／装備UI（覚えた技を最大4つ装備）
+  function renderSkillsScreen(p) {
+    el('div', '', p).className = 'uim-title'; p.lastChild.textContent = '⚡ 必殺技';
+    el('div', '', p).className = 'uim-sub'; p.lastChild.textContent = 'クリックで装備／解除（最大4つ・Z X C V）';
+    let sk = {};
+    try { const vg = window.VoxelGame; if (vg && typeof vg.state === 'function') sk = vg.state().skills || {}; } catch (e) {}
+    const list = Array.isArray(sk.list) ? sk.list : [];
+    let equipped = Array.isArray(sk.equipped) ? sk.equipped.slice() : list.map(s => s.id).slice(0, 4);
+    if (!list.length) { const n = el('div', 'font-size:13px;opacity:.7;', p); n.textContent = 'まだ必殺技を覚えていない。レベルを上げて習得しよう。'; }
+    list.forEach((s) => {
+      const card = el('div', '', p); card.className = 'uik-card' + (equipped.indexOf(s.id) >= 0 ? ' eq' : '');
+      fillIcon(card, { name: s.name, icon: s.icon, swatch: s.color });
+      const info = el('div', '', card); info.className = 'info';
+      const nm = el('div', '', info); nm.className = 'nm'; nm.textContent = s.name;
+      const ds = el('div', '', info); ds.className = 'ds'; ds.textContent = s.desc || (s.kind ? `タイプ: ${s.kind}` : '');
+      const tag = el('div', '', card); tag.className = 'eqtag';
+      const slot = equipped.indexOf(s.id);
+      tag.textContent = slot >= 0 ? (SKILL_KEYS[slot] || '装備中') : '＋装備';
+      card.addEventListener('click', () => {
+        try {
+          const vg = window.VoxelGame;
+          if (vg && typeof vg.equipSkill === 'function') vg.equipSkill(s.id);
+        } catch (e) {}
+        renderMenu('skills'); // 反映
+      });
+    });
+    const back = el('div', '', p); back.className = 'uim-back';
+    const b = el('div', '', back); b.className = 'uim-btn'; b.textContent = '← 戻る'; b.addEventListener('click', () => renderMenu('menu'));
   }
   function openMenu(screen) {
     menuOpen = true; renderMenu(screen || 'menu');
@@ -891,6 +1035,35 @@
     hits.push({ x: innerWidth / 2, y: innerHeight * 0.36, life: -0.12, ttl: 0.8, kind: 'level', crit: true, ang: 0 });
   }
 
+  // ===== 必殺技：発動演出（全画面FX・技別）／習得通知 =====
+  //   onUseSkill(skillId, opts?) / onLearnSkill(skill) を ui.js が定義、core が呼ぶ。
+  //   opts = { name, kind:'nova'|'beam'|'slash'|'buff', color }
+  const SKILL_KINDS = ['nova', 'beam', 'slash', 'buff'];
+  const SKILL_COLORS = { nova: '#7ab8ff', beam: '#ff6bd0', slash: '#ffd54a', buff: '#7cff9b' };
+  const skillFx = []; // {kind, color, life, ttl}
+  let skillNameT = 0, skillFlashT = 0, shakeT = 0;
+  function doUseSkill(skillId, opts) {
+    if (!dom) return;
+    opts = opts || {};
+    const kind = SKILL_KINDS.indexOf(opts.kind) >= 0 ? opts.kind : 'nova';
+    const color = opts.color || SKILL_COLORS[kind] || '#7ab8ff';
+    skillFx.push({ kind, color, life: 0, ttl: 0.9 });
+    skillFlashT = 0.6; shakeT = Math.max(shakeT, 0.5);
+    if (opts.name && dom.sk1) {
+      dom.sk1.textContent = opts.name; dom.sk1.style.color = color;
+      dom.sk2.textContent = '必殺技';
+      skillNameT = 1;
+    }
+  }
+  function doLearnSkill(skill) {
+    if (!dom) return;
+    skill = skill || {};
+    if (dom.sk1) { dom.sk1.textContent = '✦ 新必殺技 習得！'; dom.sk1.style.color = '#ffe24a'; }
+    if (dom.sk2) dom.sk2.textContent = skill.name || '';
+    skillNameT = 1.2;
+    skillFx.push({ kind: 'nova', color: '#ffe24a', life: 0, ttl: 0.9 });
+  }
+
   // コアの既存フックに相乗り（コア改変不要）
   function hookDamage() {
     const prev = window.onPlayerHurt;
@@ -903,6 +1076,17 @@
     window.onLevelUp = function (level) {
       try { if (typeof prevLU === 'function') prevLU(level); } catch (e) {}
       doLevelUp(level);
+    };
+    // 必殺技 発動／習得（ui.jsが定義・coreは呼ぶだけ）
+    const prevUse = window.onUseSkill;
+    window.onUseSkill = function (skillId, opts) {
+      try { if (typeof prevUse === 'function') prevUse(skillId, opts); } catch (e) {}
+      doUseSkill(skillId, opts);
+    };
+    const prevLearn = window.onLearnSkill;
+    window.onLearnSkill = function (skill) {
+      try { if (typeof prevLearn === 'function') prevLearn(skill); } catch (e) {}
+      doLearnSkill(skill);
     };
   }
 
@@ -1048,7 +1232,66 @@
         dom.levelup.style.opacity = '0';
       }
     }
+
+    // --- 必殺技：発動演出（全画面FX・技別）---
+    const cx = innerWidth / 2, cy = innerHeight / 2;
+    for (let i = skillFx.length - 1; i >= 0; i--) {
+      const f = skillFx[i]; f.life += dt;
+      const k = f.life / f.ttl;
+      if (k >= 1) { skillFx.splice(i, 1); continue; }
+      const a = clamp01(1 - k);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = f.color; ctx.fillStyle = f.color;
+      if (f.kind === 'nova') {
+        for (let r = 0; r < 3; r++) { ctx.globalAlpha = a * (0.8 - r * 0.2); ctx.lineWidth = 6 - r * 1.5;
+          ctx.beginPath(); ctx.arc(cx, cy, (40 + r * 50) + k * (innerWidth * 0.7), 0, Math.PI * 2); ctx.stroke(); }
+      } else if (f.kind === 'beam') {
+        const h = innerHeight * (0.18 + Math.sin(clamp01(k) * Math.PI) * 0.16);
+        ctx.globalAlpha = a * 0.85; ctx.fillRect(0, cy - h / 2, innerWidth, h);
+        ctx.globalAlpha = a; ctx.fillStyle = '#fff'; ctx.fillRect(0, cy - h * 0.12, innerWidth, h * 0.24);
+      } else if (f.kind === 'slash') {
+        ctx.globalAlpha = a; ctx.lineWidth = 10 + 30 * Math.sin(clamp01(k) * Math.PI);
+        ctx.lineCap = 'round'; ctx.beginPath();
+        ctx.moveTo(-50, innerHeight * 0.15 + k * 60); ctx.lineTo(innerWidth + 50, innerHeight * 0.85 - k * 60); ctx.stroke();
+      } else { // buff：中心から立ち上るオーラ
+        for (let r = 0; r < 3; r++) { ctx.globalAlpha = a * (0.5 - r * 0.12);
+          ctx.beginPath(); ctx.arc(cx, cy + innerHeight * 0.18, (60 + r * 40) * (0.5 + k), Math.PI, 0); ctx.stroke(); }
+      }
+      ctx.restore();
+    }
+    // 発動時の全画面フラッシュ
+    skillFlashT = Math.max(0, skillFlashT - dt * 2.4);
+    if (skillFlashT > 0) {
+      ctx.save(); ctx.globalAlpha = skillFlashT * 0.5; ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, innerWidth, innerHeight); ctx.restore();
+    }
+
+    // --- スキル名／習得バナー ---
+    if (dom.skillname) {
+      if (skillNameT > 0) {
+        skillNameT = Math.max(0, skillNameT - dt * 0.6);
+        const e = 1 - skillNameT;
+        const sc = 0.7 + clamp01(e / 0.14) * 0.45;
+        const op = e < 0.1 ? e / 0.1 : (skillNameT < 0.3 ? skillNameT / 0.3 : 1);
+        dom.skillname.style.opacity = clamp01(op).toFixed(3);
+        dom.skillname.style.transform = `translate(-50%,-50%) scale(${sc.toFixed(3)})`;
+      } else if (dom.skillname.style.opacity !== '0') {
+        dom.skillname.style.opacity = '0';
+      }
+    }
+
+    // --- 画面シェイク（FXレイヤー＋HUDを軽く揺らす＝インパクト）---
+    shakeT = Math.max(0, shakeT - dt * 2);
+    if (shakeT > 0 && dom.root) {
+      const m = shakeT * 9, ph = f0 += dt * 60; // 決定的（乱数不使用）
+      const ox = Math.sin(ph) * m, oy = Math.cos(ph * 1.3) * m;
+      dom.root.style.transform = `translate(${ox.toFixed(1)}px,${oy.toFixed(1)}px)`;
+    } else if (dom.root && dom.root.style.transform) {
+      dom.root.style.transform = '';
+    }
   }
+  let f0 = 0;
 
   // 口を公開（1号機が hit 時に呼ぶ）。安全に何度上書きされても無害
   function exposeFXHooks() {
@@ -1130,6 +1373,10 @@
       dom.expRow.style.display = 'none';
     }
 
+    // --- 必殺技 HUD（state().skills がある時だけ） ---
+    if (st.skills) paintSkills(st.skills);
+    else { dom.skills.style.display = 'none'; dom.ult.style.display = 'none'; }
+
     // --- レーダー＆情報 ---
     paintRadar(st);
     const time = st.time || {};
@@ -1172,7 +1419,7 @@
     window.UI.open = (which, data) => {
       window.UI._routed = true;
       if (which === 'trade') openTrade(data);
-      else if (which === 'menu' || which === 'settings' || which === 'slots') openMenu(which === 'menu' ? 'menu' : which);
+      else if (which === 'menu' || which === 'settings' || which === 'slots' || which === 'skills') openMenu(which === 'menu' ? 'menu' : which);
       else openInv();
     };
     window.UI.openTrade = (session) => { window.UI._routed = true; openTrade(session); };
