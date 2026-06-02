@@ -139,10 +139,11 @@ const CFG = {
   player: {
     maxHp: 20, maxHunger: 20, breathMax: 10, // 最大HP / 最大空腹 / 息が続く秒
     fallSafe: 4, fallDmgPerBlock: 1,         // 無傷の落差 / 超過1ブロックのダメージ
-    regenDelay: 5, regenInterval: 1.5, regenHungerMin: 6, // 回復開始までの秒 / 回復間隔 / 回復に要する最低空腹
-    hungerDecay: 0.05, hungerMoveExtra: 0.04, hungerDashExtra: 0.12, // 空腹の毎秒減少（待機/移動/ダッシュ）
+    regenDelay: 5, regenInterval: 1.5, regenHungerMin: 5, // 回復開始までの秒 / 回復間隔 / 回復に要する最低空腹
+    // 空腹の毎秒減少（待機/移動/ダッシュ）。星野さんFBで一段緩和（待機≒1.8/分・通常移動≒3.3/分・ダッシュ≒6/分）
+    hungerDecay: 0.03, hungerMoveExtra: 0.025, hungerDashExtra: 0.07,
     starveInterval: 2, drownInterval: 1,     // 空腹0/溺れのダメージ間隔（秒）
-    food: { meat: 8, apple: 5 },             // 食料の空腹回復量
+    food: { meat: 9, apple: 6 },             // 食料の空腹回復量（やや増）
   },
   combat: {
     playerReach: 3.2, playerDmg: 4,          // プレイヤーの攻撃間合い / 攻撃力
@@ -1068,7 +1069,10 @@ let hunger = P.maxHunger;
 let starveAccum = 0;
 let gameTime = 0;             // 経過秒（回復タイミング判定用）
 let lastDamageTime = -999;
+let lastDamageCause = '-';    // (D)診断：最後に被ダメージを受けた要因
 let regenAccum = 0;
+// (D)診断：空腹/HPの「1分あたり減少」を1秒サンプリングで推定（どちらが早いか切り分け用）
+let rateTimer = 1, prevHungerSample = P.maxHunger, prevHpSample = P.maxHp, hungerRatePerMin = 0, hpRatePerMin = 0;
 let breath = P.breathMax;
 let drownAccum = 0;
 let hurtFlash = 0;            // 被ダメージ時の赤フラッシュ（0..1、減衰）
@@ -1089,6 +1093,7 @@ function damage(amount, cause) {
   if (!(amount > 0) || hp <= 0) return; // NaN/負/0 を弾く（NaN<=0 は false で素通りするため > 比較で防御）
   hp = Math.max(0, hp - amount);
   lastDamageTime = gameTime;
+  lastDamageCause = cause || '?';
   regenAccum = 0;
   hurtFlash = 1;
   if (window.onPlayerHurt) window.onPlayerHurt(cause, amount); // 音は後付け前提のトリガー
@@ -1107,6 +1112,15 @@ function respawn() {
 
 function updateHealth(dt) {
   gameTime += dt;
+  // (D)診断：1秒ごとに空腹/HPの増減を測り「1分あたり減少」へ換算（respawn等の急変はノイズとして除外）
+  rateTimer -= dt;
+  if (rateTimer <= 0) {
+    rateTimer = 1;
+    const dHunger = prevHungerSample - hunger, dHp = prevHpSample - hp; // 正=減少
+    if (Math.abs(dHunger) < 5) hungerRatePerMin = hungerRatePerMin * 0.5 + (dHunger * 60) * 0.5; // 平滑化
+    if (Math.abs(dHp) < 10)    hpRatePerMin     = hpRatePerMin * 0.5 + (dHp * 60) * 0.5;
+    prevHungerSample = hunger; prevHpSample = hp;
+  }
   // --- 落下ダメージ（水中は無効＝水に落ちても痛くない）---
   const feetWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.5), Math.floor(player.pos.z)) === B.water;
   if (player.onGround && !prevOnGround && !feetWater) {
@@ -1445,6 +1459,8 @@ function buildDiag() {
     `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
     `HP / 空腹 / 息 : ${hp}/${P.maxHp} / ${hunger.toFixed(1)}/${P.maxHunger} / ${breath.toFixed(1)}`,
+    `減少速度(/分) : 空腹 ${hungerRatePerMin.toFixed(1)} / HP ${hpRatePerMin.toFixed(1)}　※正=減少・負=回復`,
+    `最後の被ダメ  : ${lastDamageCause}（${(gameTime - lastDamageTime).toFixed(0)}秒前）`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗         : ${ridingMob ? '馬に騎乗中' : '徒歩'}`,
