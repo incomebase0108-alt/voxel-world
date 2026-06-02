@@ -380,7 +380,7 @@ function generateChunk(cx, cz) {
 const VILLAGE_CELL = 56; // 村の発生間隔（ブロック）
 const DUNGEON_CELL = 64; // ダンジョンの発生間隔（ブロック）
 const FORT_CELL = 140;   // 砦の発生間隔（まれ・大型）
-const SHIP_CELL = 96;    // 船/難破船の発生間隔
+const SHIP_CELL = 88;    // 船/難破船の発生間隔（やや密に＝乗れる船に出会いやすく）
 function buildStructures(cx, cz, stamp) {
   const margin = 9; // 最大構造物の半径ぶん広げて候補セルを走査
   const minWX = cx*CHUNK - margin, maxWX = cx*CHUNK + CHUNK + margin;
@@ -420,7 +420,7 @@ function buildStructures(cx, cz, stamp) {
   // --- 船/難破船（海・水際） ---
   for (let gx = Math.floor(minWX/SHIP_CELL); gx <= Math.floor(maxWX/SHIP_CELL); gx++)
     for (let gz = Math.floor(minWZ/SHIP_CELL); gz <= Math.floor(maxWZ/SHIP_CELL); gz++) {
-      if (hash2(gx*71+9, gz*71+23) > 0.45) continue;
+      if (hash2(gx*71+9, gz*71+23) > 0.45) continue; // 船スポットの有無（hash2は0〜0.5域なので約9割のセルに出現）
       const ox = gx*SHIP_CELL + 8 + Math.floor(hash2(gx+3, gz+19) * (SHIP_CELL-16));
       const oz = gz*SHIP_CELL + 8 + Math.floor(hash2(gx+14, gz+2) * (SHIP_CELL-16));
       const wh = heightAt(ox, oz);
@@ -431,6 +431,7 @@ function buildStructures(cx, cz, stamp) {
 // 村：中心の周りに数軒の家を配置し、村人スポーン地点として登録
 function buildVillage(ox, oz, gx, gz, sw) {
   villages.set(gx+','+gz, { x: ox, z: oz, gh: heightAt(ox, oz) });
+  ensureRideableBoat(ox, oz, 24); // 海沿いの村は近くの浅瀬に乗れる船を1隻（歩いて到達できる足）
   addProp(ox + 3, heightAt(ox+3, oz) + 1, oz, 'well');     // 村の中心近くに井戸
   addProp(ox - 4, heightAt(ox-4, oz) + 1, oz, 'torch');    // 広場の松明
   // 町小物（生活感＋夜間照明）。足元は各地点の地表に合わせる
@@ -516,16 +517,36 @@ function buildFort(ox, oz, sw) {
 }
 // 船/難破船：海に難破船(探索スポット＝宝箱)を配置。たまに小舟/帆船を浮かべる（将来の乗船用）
 function buildShipSpot(ox, oz, gx, gz, sw) {
+  // ★ hash2 は実装上 0〜0.5 の値しか返さない（世界生成全体の既定なので変更不可）。
+  //   旧コードは難破船 r<0.4 ＝ 0.4/0.5＝約8割が難破船で「乗れる船に出会えない」原因だった（星野さん対応）。
+  //   [0,0.5] 域に合わせて閾値を引き直し、難破船25%/帆船37%/小舟38%＝乗れる船75%に。
   const r = hash2(gx*5+1, gz*5+2);
-  if (r < 0.4) { // 難破船＋宝箱（探索報酬・乗船不可）
+  if (r < 0.13) { // 難破船＋宝箱（探索報酬・乗船不可）
     addProp(ox, WATER_LEVEL, oz, 'ship_wreck', hash2(gx,gz) * Math.PI * 2);
     sw(ox, WATER_LEVEL, oz, B.chest);          // 中の宝箱（水面付近・開封可）
     addProp(ox, WATER_LEVEL, oz, 'chest');
-  } else if (r < 0.72) {
+  } else if (r < 0.32) {
     addProp(ox, WATER_LEVEL, oz, 'ship_sailboat', hash2(gx+3,gz+3) * Math.PI * 2); // 帆船（乗船可）
   } else {
     addProp(ox, WATER_LEVEL, oz, 'ship_rowboat', hash2(gx+7,gz+7) * Math.PI * 2);  // 小舟（乗船可）
   }
+}
+// 乗れる船を (cx,cz) 付近の浅瀬に1隻だけ保証配置する（村の岸・スポーン地点の足）。
+//   外側へ螺旋探索し、最初に見つかった「歩いて/泳いで到達できる浅瀬」へ帆船を置く。
+//   addProp は世界共通・冪等なので、どのチャンクから呼ばれても同じ1隻に収束する。
+function ensureRideableBoat(cx, cz, maxR) {
+  for (let r = 2; r <= maxR; r++) {
+    for (let a = 0; a < r*6; a++) {
+      const ang = a / (r*6) * Math.PI * 2;
+      const x = Math.round(cx + Math.cos(ang) * r), z = Math.round(cz + Math.sin(ang) * r);
+      const h = heightAt(x, z);
+      if (h <= WATER_LEVEL && h >= WATER_LEVEL - 4) { // 岸の浅瀬（深海の孤立を避ける＝到達可能）
+        addProp(x, WATER_LEVEL, z, 'ship_sailboat', hash2(x, z) * Math.PI * 2);
+        return true;
+      }
+    }
+  }
+  return false; // 周囲に到達可能な水面なし＝内陸の村（船は置かない）
 }
 
 function getChunkData(cx, cz) {
@@ -1093,6 +1114,8 @@ const player = {
   vel: new THREE.Vector3(),
   yaw: 0, pitch: 0, onGround: false,
 };
+// スポーン地点付近に必ず乗れる船を1隻（星野さん対応＝最初から水の攻略手段に出会える）
+ensureRideableBoat(Math.floor(player.pos.x), Math.floor(player.pos.z), 64);
 const keys = {};
 let selBlock = B.grass;
 let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
@@ -1709,6 +1732,17 @@ function buildDiag() {
   let lc = 0; const ls = [];
   scene.traverse(o => { if (o.isLight) { lc++; ls.push(`${o.type}=${o.intensity.toFixed(2)}`); } });
   let nonNull = 0; for (const m of meshes.values()) if (m) nonNull++;
+  // 最寄りの「乗れる船」（登録済みプロップから探索＝表示範囲内に船があるか星野さんが一目で分かる）
+  let nbd = Infinity, nbDx = 0, nbDz = 0, nbKind = '';
+  for (const p of props.values()) {
+    if (p.kind !== 'ship_rowboat' && p.kind !== 'ship_sailboat') continue;
+    const dx = p.x + 0.5 - player.pos.x, dz = p.z + 0.5 - player.pos.z, d = Math.hypot(dx, dz);
+    if (d < nbd) { nbd = d; nbDx = dx; nbDz = dz; nbKind = p.kind; }
+  }
+  // 8方位（-Z=北・+X=東。船首は-Z＝北向き基準）
+  const compass8 = (dx, dz) => ['北','北東','東','南東','南','南西','西','北西'][Math.round(Math.atan2(dx, -dz) / (Math.PI/4) + 8) % 8];
+  const nearBoat = nbd === Infinity ? '範囲内になし（歩いて海岸へ）'
+    : `${nbd.toFixed(0)}m ${compass8(nbDx, nbDz)}（${nbKind === 'ship_sailboat' ? '帆船' : '小舟'}）`;
   const hh = Math.floor(((dayTime + 0.5) % 1) * 24);
   const mm = Math.floor((((dayTime + 0.5) % 1) * 24 % 1) * 60);
   const g = diag.glb;
@@ -1741,6 +1775,7 @@ function buildDiag() {
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗/乗船    : ${ridingMob ? '馬に騎乗中' : ridingBoat ? `船に乗船中(${ridingBoat.kind}/obj${ridingBoat.obj?'有':'無'})` : '徒歩'}　速度vel: ${player.vel.x.toFixed(1)},${player.vel.z.toFixed(1)}`,
     `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
+    `最寄り乗れる船: ${nearBoat}`,
     `武器 / 戦闘  : ${WEAPONS[currentWeapon].name}（C切替・所持${[...ownedWeapons].length}）/ コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'} / ヒットストップ${hitstop>0?'発生':'-'}`,
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
