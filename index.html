@@ -268,6 +268,13 @@ const idx = (x,y,z) => x + z*CHUNK + y*CHUNK*CHUNK;
 // ② 構造物レジストリ（決定論的生成中に発見・登録。実行時の村人/敵スポーンに使う）
 const villages = new Map(); // "gx,gz" -> { x, z, gh }（村の中心）
 const spawners = new Map(); // "wx,wy,wz" -> { x, y, z, cd }（ダンジョンの敵スポナー）
+// ② 構造物プロップ（4号機の struct_*.glb を該当位置に表示する装飾。決定論的に登録）
+//   kind: 'chest'|'spawner'|'torch'|'altar'|'well'。obj/mixer は近接時に生成・遠方で破棄
+const props = new Map(); // "wx,wy,wz" -> { x, y, z, kind, obj, mixer, actIdle, actOpen, opened }
+function addProp(x, y, z, kind) {
+  const k = `${x},${y},${z}`;
+  if (!props.has(k)) props.set(k, { x, y, z, kind, obj:null, mixer:null, actIdle:null, actOpen:null, opened:false });
+}
 
 function generateChunk(cx, cz) {
   const data = new Uint8Array(CHUNK*CHUNK*HEIGHT);
@@ -353,6 +360,8 @@ function buildStructures(cx, cz, stamp) {
 // 村：中心の周りに数軒の家を配置し、村人スポーン地点として登録
 function buildVillage(ox, oz, gx, gz, sw) {
   villages.set(gx+','+gz, { x: ox, z: oz, gh: heightAt(ox, oz) });
+  addProp(ox + 3, heightAt(ox+3, oz) + 1, oz, 'well');     // 村の中心近くに井戸
+  addProp(ox - 4, heightAt(ox-4, oz) + 1, oz, 'torch');    // 広場の松明
   const layout = [[0,0], [-8,-2], [7,-3], [-3,8], [6,7]];
   const n = 2 + (hashi(gx, gz) % (layout.length - 1)); // 家2〜5軒
   for (let i = 0; i < n; i++) {
@@ -392,6 +401,14 @@ function buildDungeon(ox, oz, sw) {
   sw(ox-2, fy+1, oz-2, B.chest);   // 宝箱
   sw(ox,   fy+1, oz,   B.spawner); // 敵スポナー
   spawners.set(`${ox},${fy+1},${oz}`, { x: ox, y: fy+1, z: oz, cd: 0 });
+  // 装飾プロップ（GLB表示）：宝箱・スポナー・壁際の松明4本・奥の祭壇
+  addProp(ox-2, fy+1, oz-2, 'chest');
+  addProp(ox,   fy+1, oz,   'spawner');
+  addProp(ox+2, fy+1, oz-2, 'altar');
+  addProp(ox-2, fy+1, oz+2, 'torch');
+  addProp(ox+2, fy+1, oz+2, 'torch');
+  addProp(ox-2, fy+1, oz,   'torch');
+  addProp(ox+2, fy+1, oz,   'torch');
 }
 
 function getChunkData(cx, cz) {
@@ -781,7 +798,9 @@ const meshes = new Map();       // key -> THREE.Mesh（固体）
 const waterMeshes = new Map();  // key -> THREE.Mesh（水）
 const dirty = new Set();        // 編集等で作り直しが必要なチャンク key
 function markDirty(cx, cz) { if (meshes.has(cx+','+cz)) dirty.add(cx+','+cz); }
-const isOpaque = b => b !== B.air && b !== B.water && b !== B.glass; // 不透明（水・ガラス・空気は透過扱い）
+// chest/spawner は GLB プロップで表示するため、ボクセルとしては描画しない（衝突・レイキャストは固体のまま）
+const isPropBlock = b => b === B.chest || b === B.spawner;
+const isOpaque = b => b !== B.air && b !== B.water && b !== B.glass && !isPropBlock(b); // 不透明（水・ガラス・空気・プロップは透過扱い）
 const isTransparentBlock = b => b === B.water || b === B.glass; // 半透明メッシュで描く
 
 // 固体ブロックのジオメトリ（水は別途）。隣が不透明でない面だけ描く
@@ -793,7 +812,7 @@ function buildGeometry(cx, cz) {
     for (let z=0; z<CHUNK; z++)
       for (let x=0; x<CHUNK; x++) {
         const b = d[idx(x,y,z)];
-        if (b === B.air || isTransparentBlock(b)) continue; // 空気・半透明ブロック(水/ガラス)は別メッシュ
+        if (b === B.air || isTransparentBlock(b) || isPropBlock(b)) continue; // 空気・半透明・プロップ(GLB表示)は描かない
         const wx = cx*CHUNK+x, wy = y, wz = cz*CHUNK+z;
         for (const f of FACES) {
           if (isOpaque(getBlock(wx+f.dir[0], wy+f.dir[1], wz+f.dir[2]))) continue; // 隣が不透明なら面を描かない
@@ -1180,6 +1199,7 @@ function openChest(x, y, z) {
   if (Math.random() < 0.3) giveBlock(B.glass, 1 + ri(3));
   updateHotbar(); scheduleSave();
   flashLoot(loot);
+  openChestProp(x, y, z); // 宝箱プロップを開アニメで開く
 }
 function placeBlock() {
   const r = raycastVoxel();
@@ -1397,7 +1417,7 @@ function buildDiag() {
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 村人${mobs.filter(m=>m.def.type==='villager').length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
-    `構造物       : 村${villages.size} / スポナー${spawners.size}（発見済み）`,
+    `構造物       : 村${villages.size} / スポナー${spawners.size} / プロップ${props.size}(表示${[...props.values()].filter(p=>p.obj).length}) / structテンプレ${Object.keys(structTemplates).length}種`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
   ].join('\n');
 }
@@ -1910,6 +1930,49 @@ function updateArrows(dt) {
 const ITEM_DEFS = ['meat','egg','coin','apple'];
 const itemTemplates = {};
 ITEM_DEFS.forEach(n => gltfLoader.load(`models/item_${n}.glb`, g => { itemTemplates[n] = g.scene; }, undefined, () => {}));
+
+// ② 構造物プロップ用 GLB（4号機提供）。未配置でも本体は動く（読込失敗は無視）
+const STRUCT_DEFS = ['chest','spawner','torch','altar','well'];
+const structTemplates = {}; // kind -> { scene, animations }
+STRUCT_DEFS.forEach(k => gltfLoader.load(`models/struct_${k}.glb`,
+  g => { structTemplates[k] = { scene: g.scene, animations: g.animations || [] }; },
+  undefined, () => {}));
+const PROP_VIEW = 34; // この距離内のプロップだけ GLB を生成（負荷管理）
+// プロップ（宝箱/スポナー/松明/祭壇/井戸）の表示を近接時のみ生成・遠方で破棄
+function updateProps(dt) {
+  for (const [k, p] of props) {
+    const d = Math.hypot(p.x + 0.5 - player.pos.x, p.z + 0.5 - player.pos.z) + Math.abs(p.y - player.pos.y) * 0.5;
+    // 宝箱/スポナーはブロックが破壊されたら除去（開封・破壊で消える）
+    if (p.kind === 'chest' && getBlock(p.x, p.y, p.z) !== B.chest && !p.opened) { disposeProp(p); props.delete(k); continue; }
+    if (p.kind === 'spawner' && getBlock(p.x, p.y, p.z) !== B.spawner) { disposeProp(p); props.delete(k); continue; }
+    if (d > PROP_VIEW) { if (p.obj) disposeProp(p); continue; }
+    if (!p.obj) {
+      const tpl = structTemplates[p.kind];
+      if (!tpl) continue; // テンプレ未読込
+      const obj = tpl.scene.clone(true);
+      obj.position.set(p.x + 0.5, p.y, p.z + 0.5);
+      scene.add(obj);
+      p.obj = obj;
+      if (tpl.animations.length) {
+        p.mixer = new THREE.AnimationMixer(obj);
+        const byName = {}; tpl.animations.forEach(c => byName[c.name] = c);
+        p.actIdle = p.mixer.clipAction(byName['idle'] || tpl.animations[0]);
+        if (byName['open']) { p.actOpen = p.mixer.clipAction(byName['open']); p.actOpen.clampWhenFinished = true; p.actOpen.loop = THREE.LoopOnce; }
+        if (p.opened && p.actOpen) { p.actOpen.play(); p.actOpen.time = p.actOpen.getClip().duration; } // 既に開封済みなら開状態で
+        else p.actIdle.play();
+      }
+    }
+    if (p.mixer) p.mixer.update(dt);
+  }
+}
+function disposeProp(p) { if (p.obj) { scene.remove(p.obj); p.obj = null; p.mixer = null; p.actIdle = null; p.actOpen = null; } }
+// 宝箱プロップを開アニメで開く（openChest から呼ぶ）
+function openChestProp(x, y, z) {
+  const p = props.get(`${x},${y},${z}`);
+  if (!p || p.kind !== 'chest') return;
+  p.opened = true;
+  if (p.actOpen) { p.actOpen.reset().play(); if (p.actIdle) p.actIdle.stop(); }
+}
 const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご' };
 const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin' };
 const drops = []; // 地面に落ちたアイテム { obj, item, t, life }
@@ -1986,6 +2049,7 @@ function loop(now) {
   updateSky(dt);
   updateParticles(dt);
   updateClouds(dt);
+  updateProps(dt); // ② 構造物プロップ(GLB)の表示・アニメ
   if (mixer) mixer.update(dt); // アバターのアニメ再生
   updateChunks();
   renderer.render(scene, camera);
