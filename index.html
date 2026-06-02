@@ -116,6 +116,9 @@ const COLORS = {
   [B.glass]:  { all: rgb(.78,.90,.96) },
   [B.chest]:  { top: rgb(.78,.58,.28), side: rgb(.55,.38,.18), bottom: rgb(.42,.28,.13) }, // 宝箱（蓋が明るい木箱）
   [B.spawner]:{ all: rgb(.20,.22,.26) },                                                   // スポナー（黒い檻）
+  [B.coal]:   { all: rgb(.30,.30,.32) },  // 石炭鉱石（暗い石）
+  [B.iron]:   { all: rgb(.68,.56,.46) },  // 鉄鉱石（淡い橙茶）
+  [B.gold]:   { all: rgb(.86,.74,.30) },  // 金鉱石（黄金）
 };
 // ホットバー表示用の代表色
 const SWATCH = {
@@ -126,7 +129,7 @@ const SWATCH = {
 const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand, B.snow, B.planks, B.stonebrick, B.glass];
 const counts = {};          // ブロック種別ごとの所持数（破壊で増え、設置で減る）
 HOTBAR.forEach(b => counts[b] = 0);
-const itemCounts = { meat:0, egg:0, coin:0, apple:0 }; // ドロップ品の所持数（早期宣言＝ロード時に参照するため）
+const itemCounts = { meat:0, egg:0, coin:0, apple:0, coal:0, iron:0, gold:0 }; // ドロップ品・採掘素材の所持数（早期宣言＝ロード時に参照するため）
 
 // ===================================================================
 // ⑤ (D)バランスの数値基盤：ゲームの体感を決める数値を1か所に集約
@@ -262,6 +265,14 @@ function caveNoise(wx, wy, wz) {
 function isCave(wx, wy, wz) {
   return Math.abs(caveNoise(wx, wy, wz) - 0.5) < 0.052; // トンネル状の連結空洞
 }
+// 鉱石：深さで出し分け（決定論）。深いほど良い鉱石が出る＝採掘で素材→クラフト/装備の鉱脈
+function oreAt(wx, wy, wz) {
+  const r = hash2(wx*3.1 + wy*5.7 + 13, wz*3.1 - wy*2.3 + 29); // 0..1 の擬似乱数(vein状に散布)
+  if (wy <= 7)       { if (r > 0.972) return B.gold; if (r < 0.05) return B.iron; if (r > 0.90) return B.coal; } // 深層=金/鉄/石炭
+  else if (wy <= 20) { if (r > 0.955) return B.iron; if (r < 0.05) return B.coal; }                              // 中層=鉄/石炭
+  else               { if (r > 0.955) return B.coal; }                                                           // 浅層=石炭
+  return 0;
+}
 // 開始/復活地点：水面より上の固体地面を (8,8) 付近からリング状に探す
 function findSpawn() {
   for (let r = 0; r <= 80; r++) {
@@ -311,8 +322,11 @@ function generateChunk(cx, cz) {
       if (y === h)       b = top;
       else if (y >= h-3) b = sub;
       else               b = B.stone;
-      // ② 洞窟：地表3層と最下層は残し、内部の石をトンネル状に掘る
-      if (b === B.stone && y > 2 && y < h-4 && isCave(wx, y, wz)) b = B.air;
+      // ② 洞窟：地表3層と最下層は残し、内部の石をトンネル状に掘る。残った石には鉱石を散布
+      if (b === B.stone) {
+        if (y > 2 && y < h-4 && isCave(wx, y, wz)) b = B.air;
+        else { const ore = oreAt(wx, y, wz); if (ore) b = ore; }
+      }
       data[idx(x,y,z)] = b;
     }
     // 窪地を水面まで水で満たす（海・水たまり）
@@ -1258,9 +1272,13 @@ function breakBlock() {
     setBlock(r.hit.x, r.hit.y, r.hit.z, B.air);
     if (b === B.spawner) spawners.delete(`${r.hit.x},${r.hit.y},${r.hit.z}`); // スポナー破壊で停止
     window.playSFX && window.playSFX('break');
-    if (b !== B.air && counts[b] !== undefined) { counts[b]++; updateHotbar(); } // 壊したブロックを入手
+    const mat = ORE_MAT[b];
+    if (mat) { itemCounts[mat] = (itemCounts[mat]||0) + 1; window.playSFX && window.playSFX('pickup'); scheduleSave(); } // 鉱石→素材を採掘
+    else if (b !== B.air && counts[b] !== undefined) { counts[b]++; updateHotbar(); } // 壊したブロックを入手
   }
 }
+// 鉱石ブロック→採掘素材の対応
+const ORE_MAT = { [B.coal]:'coal', [B.iron]:'iron', [B.gold]:'gold' };
 // ② 宝箱を開ける：ランダムな戦利品を入手し、空気にして記録（edits 経由で再取得不可に）
 function openChest(x, y, z) {
   setBlock(x, y, z, B.air);
@@ -1350,7 +1368,7 @@ addEventListener('resize', () => {
 // UI（ホットバー / HUD）
 // ===================================================================
 const hotbarEl = document.getElementById('hotbar');
-const NAMES = { [B.grass]:'草',[B.dirt]:'土',[B.stone]:'石',[B.log]:'原木',[B.leaves]:'葉',[B.sand]:'砂',[B.water]:'水',[B.snow]:'雪',[B.planks]:'木材',[B.stonebrick]:'石レンガ',[B.glass]:'ガラス',[B.chest]:'宝箱',[B.spawner]:'スポナー' };
+const NAMES = { [B.grass]:'草',[B.dirt]:'土',[B.stone]:'石',[B.log]:'原木',[B.leaves]:'葉',[B.sand]:'砂',[B.water]:'水',[B.snow]:'雪',[B.planks]:'木材',[B.stonebrick]:'石レンガ',[B.glass]:'ガラス',[B.chest]:'宝箱',[B.spawner]:'スポナー',[B.coal]:'石炭鉱石',[B.iron]:'鉄鉱石',[B.gold]:'金鉱石' };
 function updateHotbar() {
   hotbarEl.innerHTML = HOTBAR.map((b,i) =>
     `<div class="slot ${b===selBlock?'active':''}">
@@ -1519,6 +1537,7 @@ function buildDiag() {
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
     `構造物       : 村${villages.size} / スポナー${spawners.size} / プロップ${props.size}(表示${[...props.values()].filter(p=>p.obj).length}) / structテンプレ${Object.keys(structTemplates).length}種`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
+    `採掘素材     : 石炭${itemCounts.coal} 鉄${itemCounts.iron} 金${itemCounts.gold}`,
   ].join('\n');
 }
 window.diag = () => { const s = buildDiag(); console.log(s); return s; }; // コンソールから diag()
@@ -2108,7 +2127,7 @@ function updateArrows(dt) {
 // ===================================================================
 // ⑦ 戦闘（プレイヤー→モブ攻撃）とドロップ・アイテム入手
 // ===================================================================
-const ITEM_DEFS = ['meat','egg','coin','apple'];
+const ITEM_DEFS = ['meat','egg','coin','apple','coal','iron','gold'];
 const itemTemplates = {};
 ITEM_DEFS.forEach(n => gltfLoader.load(`models/item_${n}.glb`, g => { itemTemplates[n] = g.scene; }, undefined, () => {}));
 
@@ -2165,7 +2184,7 @@ function openChestProp(x, y, z) {
   p.opened = true;
   if (p.actOpen) { p.actOpen.reset().play(); if (p.actIdle) p.actIdle.stop(); }
 }
-const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご' };
+const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご', coal:'石炭', iron:'鉄', gold:'金' };
 const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin' };
 const drops = []; // 地面に落ちたアイテム { obj, item, equip?, t, life }
 
