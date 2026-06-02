@@ -15,20 +15,21 @@
   },
   "totals": {
     "count": 77,
-    "size_bytes": 10460636,
-    "size_mb": 9.975
+    "size_bytes": 10501768,
+    "size_mb": 10.015
   },
   "assets": [
     {
       "file": "player.glb",
       "name": "player",
       "category": "プレイヤー",
-      "size_bytes": 1054144,
-      "size_mb": 1.0053,
+      "size_bytes": 1062688,
+      "size_mb": 1.0135,
       "clips": [
         "idle",
         "walk",
-        "attack"
+        "attack",
+        "swim"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -39,12 +40,13 @@
       "file": "player_azure.glb",
       "name": "player_azure",
       "category": "プレイヤー",
-      "size_bytes": 1054452,
-      "size_mb": 1.0056,
+      "size_bytes": 1062184,
+      "size_mb": 1.013,
       "clips": [
         "idle",
         "walk",
-        "attack"
+        "attack",
+        "swim"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -55,12 +57,13 @@
       "file": "player_crimson.glb",
       "name": "player_crimson",
       "category": "プレイヤー",
-      "size_bytes": 1054208,
-      "size_mb": 1.0054,
+      "size_bytes": 1062300,
+      "size_mb": 1.0131,
       "clips": [
         "idle",
         "walk",
-        "attack"
+        "attack",
+        "swim"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -71,12 +74,13 @@
       "file": "player_emerald.glb",
       "name": "player_emerald",
       "category": "プレイヤー",
-      "size_bytes": 1054004,
-      "size_mb": 1.0052,
+      "size_bytes": 1063124,
+      "size_mb": 1.0139,
       "clips": [
         "idle",
         "walk",
-        "attack"
+        "attack",
+        "swim"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -87,12 +91,13 @@
       "file": "player_gold.glb",
       "name": "player_gold",
       "category": "プレイヤー",
-      "size_bytes": 1054304,
-      "size_mb": 1.0055,
+      "size_bytes": 1061948,
+      "size_mb": 1.0128,
       "clips": [
         "idle",
         "walk",
-        "attack"
+        "attack",
+        "swim"
       ],
       "meshes": 5,
       "nodes": 5,
