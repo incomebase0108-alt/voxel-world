@@ -16,7 +16,7 @@
   const gains = {
     footstep: 1, jump: 1, land: 1, break: 1, place: 1, eat: 1, pickup: 1, craft: 1,
     splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
-    whiff: 1, charge_start: 1, charge_full: 1,
+    whiff: 1, charge_start: 1, charge_full: 1, levelup: 1,
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
 
@@ -44,9 +44,9 @@
   }
 
   // 単音（周波数スライド可）
-  function tone(freq, dur, type, gain, slideTo, dest) {
+  function tone(freq, dur, type, gain, slideTo, dest, at) {
     const c = ac(); if (!c) return;
-    const t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    const t = c.currentTime + (at || 0), o = c.createOscillator(), g = c.createGain(); // at=発音オフセット秒（アルペジオ用）
     o.type = type || 'sine';
     o.frequency.setValueAtTime(freq, t);
     if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1, slideTo), t + dur);
@@ -129,6 +129,12 @@
     whiff()       { noise(0.18, 0.06, 1200, 'bandpass'); },                                          // 空振り（風切り）
     charge_start(){ tone(160, 0.25, 'sawtooth', 0.07, 320); },                                       // 溜め開始（上昇）
     charge_full() { tone(880, 0.10, 'sine', 0.10, 1320); tone(1320, 0.08, 'sine', 0.07, 1760); },    // 溜め完了（チャイム）
+    // レベルアップ（1号機の playSFX('levelup') 連携）：上昇アルペジオ＋締めのきらめき
+    levelup() {
+      const seq = [523.25, 659.25, 783.99, 1046.50]; // C5-E5-G5-C6
+      seq.forEach((f, i) => tone(f, 0.20, 'square', 0.12, f, null, i * 0.09));
+      tone(1318.51, 0.30, 'sine', 0.10, 1568.00, null, 0.40); // 締め(E6→G6きらめき)
+    },
   };
 
   // 公開API：playSFX(name, opts) ── opts は省略可（後方互換）

@@ -34,6 +34,7 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | `whiff` | 攻撃の空振り | — | `onAttackWhiff` 経由 |
 | `charge_start` | 溜め開始 | — | `onAttackCharge('start')` |
 | `charge_full` | 溜め完了 | — | `onAttackCharge('full')` |
+| `levelup` | レベルアップ（上昇アルペジオ） | — | 1号機が `playSFX('levelup')` を呼出（配線済） |
 
 - 材質 `block`: `grass / dirt / sand / stone / stonebrick / planks / glass / water`（未知は default）
 - モブ `type`: `cow / sheep / chicken / pig / horse / villager / slime / zombie / skeleton / golem`
