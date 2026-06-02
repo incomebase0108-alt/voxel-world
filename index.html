@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03e'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-03f'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -784,6 +784,12 @@ window.VoxelGame = {
     riding: !!ridingMob, thirdPerson,
     pos: { x:player.pos.x, y:player.pos.y, z:player.pos.z }, yaw: player.yaw,
     weapon: currentWeapon, defense: defenseFactor(),                 // 装備の表示用（任意）
+    // 装備パネル用（3号機UIが state() から装備欄を描画できるよう一式公開）。操作は window.equipWeapon/toggleShield/unequipArmor
+    equipment: {
+      weapon: currentWeapon, weaponName: WEAPONS[currentWeapon].name,
+      weapons: WEAPON_ORDER.filter(w => ownedWeapons.has(w)).map(w => ({ id:w, name:WEAPONS[w].name, active:w===currentWeapon })), // 所持武器（クリックで equipWeapon(id)）
+      armor: { ...equip.armor }, shield: equip.shield, ownedShield, defense: defenseFactor(),
+    },
     mobs: mobs.slice(0, 16).map(m => ({ x:m.obj.position.x, z:m.obj.position.z, hostile:!!m.hostile, type:m.def.type })),
     // 必殺技（②）：習得済みが1つも無ければ undefined＝3号機HUD非表示。equipped/list/energy を公開
     skills: (() => {
@@ -1846,7 +1852,7 @@ function buildDiag() {
     `騎乗/乗船    : ${ridingMob ? '馬に騎乗中' : ridingBoat ? `船に乗船中(${ridingBoat.kind}/obj${ridingBoat.obj?'有':'無'})` : '徒歩'}　速度vel: ${player.vel.x.toFixed(1)},${player.vel.z.toFixed(1)}`,
     `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
     `最寄り乗れる船: ${nearBoat}`,
-    `武器 / 戦闘  : ${WEAPONS[currentWeapon].name}（C切替・所持${[...ownedWeapons].length}）/ コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'} / ヒットストップ${hitstop>0?'発生':'-'}`,
+    `武器 / 戦闘  : 装備=${WEAPONS[currentWeapon].name}（C/Bで切替）所持[${WEAPON_ORDER.filter(w=>ownedWeapons.has(w)).map(w=>WEAPONS[w].name).join('・')}] / コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'}`,
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 住人${mobs.filter(m=>m.home).length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
