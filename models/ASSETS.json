@@ -14,9 +14,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 55,
-    "size_bytes": 6218608,
-    "size_mb": 5.931
+    "count": 63,
+    "size_bytes": 7962500,
+    "size_mb": 7.594
   },
   "assets": [
     {
@@ -258,6 +258,111 @@
       "error": null
     },
     {
+      "file": "npc_baker.glb",
+      "name": "npc_baker",
+      "category": "NPC",
+      "size_bytes": 208088,
+      "size_mb": 0.1984,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 10,
+      "error": null
+    },
+    {
+      "file": "npc_blacksmith.glb",
+      "name": "npc_blacksmith",
+      "category": "NPC",
+      "size_bytes": 223296,
+      "size_mb": 0.213,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 13,
+      "error": null
+    },
+    {
+      "file": "npc_child.glb",
+      "name": "npc_child",
+      "category": "NPC",
+      "size_bytes": 201260,
+      "size_mb": 0.1919,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 8,
+      "error": null
+    },
+    {
+      "file": "npc_elder.glb",
+      "name": "npc_elder",
+      "category": "NPC",
+      "size_bytes": 233544,
+      "size_mb": 0.2227,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 10,
+      "error": null
+    },
+    {
+      "file": "npc_farmer.glb",
+      "name": "npc_farmer",
+      "category": "NPC",
+      "size_bytes": 217328,
+      "size_mb": 0.2073,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 12,
+      "error": null
+    },
+    {
+      "file": "npc_guard.glb",
+      "name": "npc_guard",
+      "category": "NPC",
+      "size_bytes": 235476,
+      "size_mb": 0.2246,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 9,
+      "error": null
+    },
+    {
+      "file": "npc_merchant.glb",
+      "name": "npc_merchant",
+      "category": "NPC",
+      "size_bytes": 219876,
+      "size_mb": 0.2097,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 11,
+      "error": null
+    },
+    {
       "file": "npc_villager.glb",
       "name": "npc_villager",
       "category": "NPC",
@@ -272,6 +377,21 @@
       "meshes": 5,
       "nodes": 5,
       "materials": 9,
+      "error": null
+    },
+    {
+      "file": "npc_woman.glb",
+      "name": "npc_woman",
+      "category": "NPC",
+      "size_bytes": 205024,
+      "size_mb": 0.1955,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 10,
       "error": null
     },
     {

@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 55 ファイル / 5.93 MB
+**合計**: 63 ファイル / 7.59 MB
 
 
 ## プレイヤー
@@ -38,7 +38,15 @@
 
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
+| `npc_baker.glb` | 0.1984 | `idle`, `walk` | 5/5 |
+| `npc_blacksmith.glb` | 0.2130 | `idle`, `walk` | 5/5 |
+| `npc_child.glb` | 0.1919 | `idle`, `walk` | 5/5 |
+| `npc_elder.glb` | 0.2227 | `idle`, `walk` | 5/5 |
+| `npc_farmer.glb` | 0.2073 | `idle`, `walk` | 5/5 |
+| `npc_guard.glb` | 0.2246 | `idle`, `walk` | 5/5 |
+| `npc_merchant.glb` | 0.2097 | `idle`, `walk` | 5/5 |
 | `npc_villager.glb` | 0.2083 | `walk`, `idle`, `die`, `hit` | 5/5 |
+| `npc_woman.glb` | 0.1955 | `idle`, `walk` | 5/5 |
 
 ## 構造物
 
