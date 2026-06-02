@@ -1497,6 +1497,143 @@ let mobSpawnTimer = 2;
 function groundY(x, z) {
   return heightAt(Math.floor(x), Math.floor(z)) + 1; // 固体地表の上面に吸着（水面は接地面にしない）
 }
+
+// ===================================================================
+// ③ モブのナビゲーション（足場ベース：段差登り・水回避・障害物回避＋簡易A*）
+//   ・地表だけでなく洞窟内の足場も歩けるよう、現在高さ付近の「足場」を探す
+//   ・陸生モブは水没コラムを避ける（陸生継続）／段差は1上り・3下りまで
+// ===================================================================
+const STEP_UP = 1, STEP_DOWN = 3; // 登れる/降りられる段差（ブロック）
+// (x,z) コラムで refY 付近の足場の高さ（上が空き・下が固体になる y）を返す
+function floorYNear(x, z, refY) {
+  x = Math.floor(x); z = Math.floor(z);
+  const start = Math.min(HEIGHT-1, Math.max(1, Math.floor(refY) + 2));
+  for (let y = start; y >= 1; y--) {
+    if (isSolid(getBlock(x, y-1, z)) && !isSolid(getBlock(x, y, z))) return y;
+  }
+  return Math.max(1, heightAt(x, z) + 1);
+}
+// コラムの歩行情報：足場高さ / 水没(=水中) / 頭上が塞がっている
+function colInfo(x, z, refY) {
+  x = Math.floor(x); z = Math.floor(z);
+  const fy = floorYNear(x, z, refY);
+  return { fy, submerged: getBlock(x, fy, z) === B.water, blocked: isSolid(getBlock(x, fy+1, z)) };
+}
+// 希望方向へ1歩進む。塞がっていれば角度を振って回避（局所障害物回避）。段差は滑らかに登降
+function tryMoveMob(m, dirx, dirz, speed, dt) {
+  const px = m.obj.position.x, pz = m.obj.position.z, py = m.obj.position.y;
+  const fromFloor = floorYNear(px, pz, py);
+  const baseAng = Math.atan2(dirz, dirx);
+  const offs = [0, 0.45, -0.45, 0.95, -0.95, 1.6, -1.6]; // 希望方向から徐々に外して空きを探す
+  const stepLen = speed * dt;
+  for (const off of offs) {
+    const a = baseAng + off, ux = Math.cos(a), uz = Math.sin(a);
+    const nx = px + ux*stepLen, nz = pz + uz*stepLen;
+    const info = colInfo(nx, nz, py);
+    if (info.blocked) continue;
+    if (info.submerged && !m.aquatic) continue;        // 陸生は水を避ける
+    const up = info.fy - fromFloor;
+    if (up > STEP_UP || -up > STEP_DOWN) continue;      // 段差制限（1上り/3下り）
+    m.obj.position.x = nx; m.obj.position.z = nz;
+    m.obj.position.y += (info.fy - py) * Math.min(1, dt*12); // 段差を滑らかに反映
+    m.obj.rotation.y = Math.atan2(-ux, -uz);            // 進行方向を向く（正面-Z）
+    m.flx = ux; m.flz = uz;
+    return true;
+  }
+  return false; // 全方向ふさがれた
+}
+// 静止モブを足場へ滑らかに吸着
+function followFloor(m, dt) {
+  const fy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
+  m.obj.position.y += (fy - m.obj.position.y) * Math.min(1, dt*12);
+}
+// 中立モブの群れ行動（結合＋分離＋徘徊バイアス）。同種が近くにいると群れる
+function flockHeading(m, dt) {
+  m.timer -= dt;
+  if (m.timer <= 0) {
+    m.timer = 2 + Math.random()*3;
+    const a = Math.random()*Math.PI*2; m.wx = Math.cos(a); m.wz = Math.sin(a);
+    m.state = (Math.random() < 0.35) ? 'idle' : 'walk';
+  }
+  let cx=0, cz=0, sx=0, sz=0, n=0;
+  for (const o of mobs) {
+    if (o === m || o.def.type !== m.def.type) continue;
+    const ddx = o.obj.position.x - m.obj.position.x, ddz = o.obj.position.z - m.obj.position.z;
+    const d = Math.hypot(ddx, ddz);
+    if (d > 9 || d < 1e-4) continue;
+    n++; cx += ddx; cz += ddz;                 // 結合：群れの中心へ
+    if (d < 2.2) { sx -= ddx/d; sz -= ddz/d; }  // 分離：近すぎる仲間から離れる
+  }
+  let hx = m.wx*0.7, hz = m.wz*0.7;             // 徘徊バイアス
+  if (n > 0) { hx += (cx/n)*0.06 + sx*1.2; hz += (cz/n)*0.06 + sz*1.2; }
+  const L = Math.hypot(hx, hz);
+  if (L < 1e-4) return null;
+  return { x: hx/L, z: hz/L };
+}
+// 敵性モブの追跡進路：簡易A*でプレイヤーへの最初の一歩を求める（負荷分散のため周期再計算）
+function chaseHeading(m, dt) {
+  m.navCd -= dt;
+  if (m.navCd <= 0) {
+    m.navCd = 0.45 + Math.random()*0.25;
+    const d = findPathDir(m.obj.position.x, m.obj.position.z, player.pos.x, player.pos.z, m.obj.position.y, 180);
+    if (d) { m.navx = d.x; m.navz = d.z; }
+    else { // 経路なし＝直線方向で接近を試みる（局所回避は tryMoveMob 任せ）
+      const ex = player.pos.x - m.obj.position.x, ez = player.pos.z - m.obj.position.z, L = Math.hypot(ex, ez) || 1;
+      m.navx = ex/L; m.navz = ez/L;
+    }
+  }
+  return { x: m.navx, z: m.navz };
+}
+// 簡易A*（足場グリッド上）。最初の一歩の単位ベクトルを返す。ノード数 maxNodes で打ち切り
+function findPathDir(sxf, szf, txf, tzf, refY, maxNodes = 180) {
+  const sx = Math.floor(sxf), sz = Math.floor(szf), tx = Math.floor(txf), tz = Math.floor(tzf);
+  if (sx === tx && sz === tz) return null;
+  const key = (x, z) => x + '_' + z;
+  const startK = key(sx, sz), sFloor = floorYNear(sx, sz, refY);
+  const gScore = new Map([[startK, 0]]);
+  const came = new Map();
+  const open = [{ x: sx, z: sz, f: 0, fy: sFloor }];
+  const closed = new Set();
+  const H = (x, z) => { const ax = Math.abs(x-tx), az = Math.abs(z-tz); return (ax+az) + (Math.SQRT2-2)*Math.min(ax, az); };
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  let nodes = 0, reached = false, best = startK, bestH = H(sx, sz);
+  while (open.length && nodes < maxNodes) {
+    let bi = 0; for (let i = 1; i < open.length; i++) if (open[i].f < open[bi].f) bi = i;
+    const cur = open.splice(bi, 1)[0];
+    const ck = key(cur.x, cur.z);
+    if (closed.has(ck)) continue;
+    closed.add(ck); nodes++;
+    const hc = H(cur.x, cur.z);
+    if (hc < bestH) { bestH = hc; best = ck; }
+    if (cur.x === tx && cur.z === tz) { reached = true; best = ck; break; }
+    for (const [dx, dz] of dirs) {
+      const nx = cur.x+dx, nz = cur.z+dz, nk = key(nx, nz);
+      if (closed.has(nk)) continue;
+      const info = colInfo(nx, nz, cur.fy);
+      if (info.blocked || info.submerged) continue;            // 塞がり・水は通れない
+      const up = info.fy - cur.fy;
+      if (up > STEP_UP || -up > STEP_DOWN) continue;            // 段差制限
+      if (dx && dz) {                                          // 斜めの角抜け防止
+        const i1 = colInfo(cur.x+dx, cur.z, cur.fy), i2 = colInfo(cur.x, cur.z+dz, cur.fy);
+        if (i1.blocked || i1.submerged || i2.blocked || i2.submerged) continue;
+      }
+      const ng = (gScore.get(ck) ?? Infinity) + ((dx && dz) ? Math.SQRT2 : 1);
+      if (ng < (gScore.get(nk) ?? Infinity)) {
+        gScore.set(nk, ng); came.set(nk, ck);
+        open.push({ x: nx, z: nz, f: ng + H(nx, nz), fy: info.fy });
+      }
+    }
+  }
+  // 目標（無ければ最も近い到達ノード）から最初の一歩へ逆探索
+  let node = reached ? key(tx, tz) : best;
+  if (node === startK) return null;
+  let prev = came.get(node);
+  while (prev !== undefined && prev !== startK) { node = prev; prev = came.get(node); }
+  if (prev === undefined) return null; // start に繋がっていない
+  const [fx, fz] = node.split('_').map(Number);
+  const ux = fx - sx, uz = fz - sz, L = Math.hypot(ux, uz) || 1;
+  return { x: ux/L, z: uz/L };
+}
 function spawnMob(type, x, z, opts = {}) {
   const def = MOB_DEFS.find(d => d.type === type);
   const tpl = mobTemplates[type];
@@ -1517,7 +1654,9 @@ function spawnMob(type, x, z, opts = {}) {
   }
   const mob = { def, obj, mixer, aIdle, aWalk, aAttack, aHeavy, cur: aIdle,
     hostile: def.hostile, hp: (typeof opts.hp === 'number') ? opts.hp : (MOB_HP[type] || 5),
-    state: opts.state || 'idle', timer: 1+Math.random()*3, vx:0, vz:0, atkCd:0, atkCnt:0 };
+    state: opts.state || 'idle', timer: 1+Math.random()*3, vx:0, vz:0, atkCd:0, atkCnt:0,
+    // ③ ナビ用：希望進路(navx,navz)・経路再計算CD・徘徊方向(wx,wz)・直近の向き(flx,flz)・スタック計測
+    navx:0, navz:0, navCd: Math.random()*0.5, wx:0, wz:0, flx:0, flz:0, stuck:0 };
   mobs.push(mob);
   return mob;
 }
@@ -1540,14 +1679,6 @@ function setMobAnim(m, name) {
     target.reset().fadeIn(0.15).play();
     if (m.cur) m.cur.fadeOut(0.15);
     m.cur = target;
-  }
-}
-function mobWander(m, dt) {
-  m.timer -= dt;
-  if (m.timer <= 0) {
-    m.timer = 1.5 + Math.random()*3;
-    if (Math.random() < 0.5) { m.state='idle'; m.vx=m.vz=0; }
-    else { m.state='walk'; const a=Math.random()*Math.PI*2; m.vx=Math.cos(a); m.vz=Math.sin(a); }
   }
 }
 function updateMobs(dt) {
@@ -1588,17 +1719,18 @@ function updateMobs(dt) {
 
     const role = m.def.role;
     let moving = false, animName = 'idle';
+    let dhx = 0, dhz = 0; // 希望進路（単位ベクトル）
     if (role === 'ranged' && dist < 22) {
       // スケルトン：間合いを保って矢を撃つ
-      if (dist < 7) { m.vx = -dx/dist; m.vz = -dz/dist; moving = true; animName = 'walk'; } // 近すぎたら下がる
+      if (dist < 7) { dhx = -dx/dist; dhz = -dz/dist; moving = true; animName = 'walk'; } // 近すぎたら下がる
       else {
         m.obj.rotation.y = Math.atan2(-dx, -dz); animName = 'attack';
         m.atkCd -= dt;
         if (m.atkCd <= 0) { m.atkCd = 2.0; shootArrow(m.obj.position.x, m.obj.position.y+1.2, m.obj.position.z, player.pos.x, player.pos.y+0.9, player.pos.z); }
       }
     } else if (role === 'boss' && dist < 26) {
-      // ゴーレム：遅い接近＋強攻撃(heavy)
-      if (dist > 2.2) { m.vx = dx/dist; m.vz = dz/dist; moving = true; animName = 'walk'; }
+      // ゴーレム：遅い接近（経路探索）＋強攻撃(heavy)
+      if (dist > 2.2) { const h = chaseHeading(m, dt); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; }
       else {
         m.obj.rotation.y = Math.atan2(-dx, -dz);
         m.atkCd -= dt; animName = 'attack';
@@ -1609,22 +1741,26 @@ function updateMobs(dt) {
         }
       }
     } else if (role === 'melee' && dist < 20) {
-      if (dist > 1.4) { m.vx = dx/dist; m.vz = dz/dist; moving = true; animName = 'walk'; }
+      if (dist > 1.4) { const h = chaseHeading(m, dt); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; } // 経路探索で追跡
       else { m.obj.rotation.y = Math.atan2(-dx, -dz); animName = 'attack'; m.atkCd -= dt; if (m.atkCd <= 0) { m.atkCd = 1.2; damage(2, 'mob'); } }
     } else if (role === 'neutral' && dist < 5) {
-      m.vx = -dx/dist; m.vz = -dz/dist; moving = true; animName = 'walk'; // プレイヤーから離れる
+      dhx = -dx/dist; dhz = -dz/dist; moving = true; animName = 'walk'; // プレイヤーから逃げる
     } else {
-      mobWander(m, dt); moving = (m.state === 'walk'); animName = moving ? 'walk' : 'idle';
+      const fh = flockHeading(m, dt); // 中立は群れ＋徘徊
+      if (m.state === 'walk' && fh) { dhx = fh.x; dhz = fh.z; moving = true; animName = 'walk'; }
+      else { moving = false; animName = 'idle'; }
     }
     if (moving) {
-      const len = Math.hypot(m.vx, m.vz) || 1;
-      const spd = role === 'boss' ? 1.4 : m.hostile ? 2.2 : 1.3;
-      m.obj.position.x += (m.vx/len) * spd * dt;
-      m.obj.position.z += (m.vz/len) * spd * dt;
-      m.obj.rotation.y = Math.atan2(-m.vx, -m.vz); // 進行方向を向く（正面-Z）
+      const spd = role === 'boss' ? 1.4 : m.hostile ? 2.2 : (m.def.type === 'villager' ? 1.0 : 1.3);
+      const ok = tryMoveMob(m, dhx, dhz, spd, dt);
+      if (!ok) { // 行き止まり：経路を引き直し、徘徊中なら一旦停止して向きを変える
+        m.stuck += dt; m.navCd = 0; animName = 'idle';
+        if (!m.hostile && m.stuck > 1.0) { m.state = 'idle'; m.timer = 0.3; m.stuck = 0; }
+      } else m.stuck = 0;
+    } else {
+      followFloor(m, dt); // 静止時も足場へ吸着
     }
     setMobAnim(m, animName);
-    m.obj.position.y = groundY(m.obj.position.x, m.obj.position.z); // 地面に吸着
     if (m.mixer) m.mixer.update(dt);
   }
 }
