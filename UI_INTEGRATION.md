@@ -149,6 +149,16 @@ window.VoxelGame.trade = (offerId) => { /* 支払い可なら itemCounts 増減 
 
 ---
 
+## ミニマップ（レーダー）の構造物表示
+
+`state()` に **`structures`** を入れると、レーダーに*構造物マーカー*（四角）と、*範囲外の重要構造物への縁の方向矢印*が出ます（無ければ出ません）。探索の足跡（通過点）は ui.js が自動記録・点描します。
+```js
+structures: [ { x, z, type:'village'|'fort'|'dungeon'|'chest'|'spawner' }, … ]
+// 色: village=緑 / fort=橙 / dungeon=紫 / chest=金 / spawner=赤。範囲外矢印は village/fort/dungeon のみ。
+```
+
+---
+
 ## 必殺技 連携（1号機の技ロジックと接続・三位一体の演出担当）
 
 `ui.js` が *必殺技ゲージ・装備スキルボタン(Z X C V)・発動演出(全画面FX)・習得通知・技選択UI* を担当。

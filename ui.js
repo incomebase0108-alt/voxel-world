@@ -987,6 +987,16 @@
   // レーダーミニマップ（北を上にしたシンプル版・プレイヤー中心）
   // =====================================================================
   const RADAR_RANGE = 44; // 半径（ブロック）
+  // 探索の足跡：一定距離ごとに通過点を記録（固定長リングで軽量）
+  const trail = [];
+  let lastTrailX = null, lastTrailZ = null;
+  function recordTrail(px, pz) {
+    if (lastTrailX === null || (px - lastTrailX) * (px - lastTrailX) + (pz - lastTrailZ) * (pz - lastTrailZ) >= 12) {
+      trail.push({ x: px, z: pz });
+      lastTrailX = px; lastTrailZ = pz;
+      if (trail.length > 800) trail.shift();
+    }
+  }
   function paintRadar(st) {
     const ctx = dom.rctx, W = 128, R = W / 2, scale = (R - 8) / RADAR_RANGE;
     ctx.clearRect(0, 0, W, W);
@@ -1001,8 +1011,39 @@
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('N', R, 9);
 
-    // モブ blip（北上＝world +x→右, +z→下）
     const px = st.pos ? st.pos.x : 0, pz = st.pos ? st.pos.z : 0;
+    const edge = R - 8;
+
+    // 探索の足跡（一定距離ごとに記録した過去位置を薄く点描）
+    recordTrail(px, pz);
+    ctx.fillStyle = 'rgba(160,210,255,.16)';
+    for (let i = 0; i < trail.length; i++) {
+      const dx = (trail[i].x - px) * scale, dz = (trail[i].z - pz) * scale;
+      if (dx * dx + dz * dz > edge * edge) continue;
+      ctx.beginPath(); ctx.arc(R + dx, R + dz, 2.4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 構造物マーカー（四角）＋範囲外の重要構造物は縁に方向矢印
+    const SCOL = { village: '#9be86a', fort: '#d9b36a', dungeon: '#c58cff', chest: '#ffd54a', spawner: '#ff6a6a' };
+    const structs = Array.isArray(st.structures) ? st.structures : [];
+    for (const s of structs) {
+      const dx = (s.x - px) * scale, dz = (s.z - pz) * scale;
+      const col = SCOL[s.type] || '#fff', dist = Math.hypot(dx, dz);
+      if (dist <= edge) {
+        ctx.save(); ctx.translate(R + dx, R + dz);
+        ctx.fillStyle = col; ctx.fillRect(-3.4, -3.4, 6.8, 6.8);
+        ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1; ctx.strokeRect(-3.4, -3.4, 6.8, 6.8);
+        ctx.restore();
+      } else if (s.type === 'village' || s.type === 'fort' || s.type === 'dungeon') {
+        const a = Math.atan2(dz, dx);
+        ctx.save(); ctx.translate(R + Math.cos(a) * edge, R + Math.sin(a) * edge); ctx.rotate(a);
+        ctx.fillStyle = col; ctx.globalAlpha = 0.9;
+        ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(-3, -3.2); ctx.lineTo(-3, 3.2); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // モブ blip（北上＝world +x→右, +z→下）
     const mobs = Array.isArray(st.mobs) ? st.mobs : [];
     for (const m of mobs) {
       const dx = (m.x - px) * scale, dz = (m.z - pz) * scale;
