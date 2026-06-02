@@ -423,7 +423,8 @@ function buildStructures(cx, cz, stamp) {
       if (hash2(gx*71+9, gz*71+23) > 0.45) continue;
       const ox = gx*SHIP_CELL + 8 + Math.floor(hash2(gx+3, gz+19) * (SHIP_CELL-16));
       const oz = gz*SHIP_CELL + 8 + Math.floor(hash2(gx+14, gz+2) * (SHIP_CELL-16));
-      if (heightAt(ox, oz) > WATER_LEVEL - 1) continue; // 水深のある海のみ
+      const wh = heightAt(ox, oz);
+      if (wh > WATER_LEVEL || wh < WATER_LEVEL - 4) continue; // 岸の浅瀬〜やや深め＝徒歩/泳ぎで到達可能（深海の孤立を防ぐ）
       buildShipSpot(ox, oz, gx, gz, sw);
     }
 }
@@ -516,14 +517,14 @@ function buildFort(ox, oz, sw) {
 // 船/難破船：海に難破船(探索スポット＝宝箱)を配置。たまに小舟/帆船を浮かべる（将来の乗船用）
 function buildShipSpot(ox, oz, gx, gz, sw) {
   const r = hash2(gx*5+1, gz*5+2);
-  if (r < 0.6) { // 難破船＋宝箱（探索報酬）
+  if (r < 0.4) { // 難破船＋宝箱（探索報酬・乗船不可）
     addProp(ox, WATER_LEVEL, oz, 'ship_wreck', hash2(gx,gz) * Math.PI * 2);
     sw(ox, WATER_LEVEL, oz, B.chest);          // 中の宝箱（水面付近・開封可）
     addProp(ox, WATER_LEVEL, oz, 'chest');
-  } else if (r < 0.82) {
-    addProp(ox, WATER_LEVEL, oz, 'ship_sailboat', hash2(gx+3,gz+3) * Math.PI * 2); // 帆船（浮遊・装飾／将来乗船）
+  } else if (r < 0.72) {
+    addProp(ox, WATER_LEVEL, oz, 'ship_sailboat', hash2(gx+3,gz+3) * Math.PI * 2); // 帆船（乗船可）
   } else {
-    addProp(ox, WATER_LEVEL, oz, 'ship_rowboat', hash2(gx+7,gz+7) * Math.PI * 2);  // 小舟
+    addProp(ox, WATER_LEVEL, oz, 'ship_rowboat', hash2(gx+7,gz+7) * Math.PI * 2);  // 小舟（乗船可）
   }
 }
 
@@ -1269,7 +1270,7 @@ function toggleRide() {
   }
   if (best) { ridingMob = best; best.ridden = true; window.playSFX && window.playSFX('jump'); return; }
   // 近くの船（表示中の rowboat/sailboat プロップ）。乗船中は props 管理から外す（消えないように）
-  let bb = null, bbd = 3.6, bbk = null;
+  let bb = null, bbd = 4.5, bbk = null;
   for (const [k, p] of props) {
     if (p.kind !== 'ship_rowboat' && p.kind !== 'ship_sailboat' || !p.obj) continue;
     const d = Math.hypot(p.x + 0.5 - player.pos.x, p.z + 0.5 - player.pos.z);
@@ -1729,7 +1730,7 @@ function buildDiag() {
     `BGMシーン     : ${musicScene||'-'}（近接敵${dbgNearEnemies} / 水中${dbgMusicWater?'○':'-'} / combat保持${combatHold.toFixed(1)}s）`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
-    `騎乗/乗船    : ${ridingMob ? '馬に騎乗中' : ridingBoat ? '船に乗船中' : '徒歩'}`,
+    `騎乗/乗船    : ${ridingMob ? '馬に騎乗中' : ridingBoat ? `船に乗船中(${ridingBoat.kind}/obj${ridingBoat.obj?'有':'無'})` : '徒歩'}　速度vel: ${player.vel.x.toFixed(1)},${player.vel.z.toFixed(1)}`,
     `武器 / 戦闘  : ${WEAPONS[currentWeapon].name}（C切替・所持${[...ownedWeapons].length}）/ コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'} / ヒットストップ${hitstop>0?'発生':'-'}`,
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
@@ -2350,9 +2351,10 @@ function updateArrows(dt) {
 // ===================================================================
 // ⑦ 戦闘（プレイヤー→モブ攻撃）とドロップ・アイテム入手
 // ===================================================================
-const ITEM_DEFS = ['meat','egg','coin','apple','coal','iron','gold'];
+const ITEM_DEFS = ['meat','egg','coin','apple','coal','iron','gold']; // インベントリ表示用（鉱石素材含む）
+const ITEM_MODELS = ['meat','egg','coin','apple'];                    // 地面ドロップに3Dモデルがある物のみ（鉱石は採掘→直接所持＝モデル不要）
 const itemTemplates = {};
-ITEM_DEFS.forEach(n => gltfLoader.load(`models/item_${n}.glb`, g => { itemTemplates[n] = g.scene; }, undefined, () => {}));
+ITEM_MODELS.forEach(n => gltfLoader.load(`models/item_${n}.glb`, g => { itemTemplates[n] = g.scene; }, undefined, () => {})); // item_coal/iron/gold.glb は無い＝404回避
 
 // ② 構造物プロップ用 GLB（4号機提供）。未配置でも本体は動く（読込失敗は無視）
 const STRUCT_DEFS = ['chest','spawner','torch','altar','well'];
