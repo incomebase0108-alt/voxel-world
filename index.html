@@ -959,6 +959,20 @@ let selBlock = B.grass;
 let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
 let avatarYaw = 0;       // 三人称アバターの向き（移動方向に追従）
 let ridingMob = null;    // 騎乗中の馬（Rキーで乗降）
+let dbgHeadWater = false, dbgShore = 0; // 診断用：頭が水中か / 水際ledgeの段数(0=岸なし)
+// 水際の陸ledge判定：足元から隣接4方向に「1〜2段上の陸(固体・非水)」があれば最大段数を返す（0=岸なし）
+function shoreLedge() {
+  const fx = Math.floor(player.pos.x), fz = Math.floor(player.pos.z);
+  const feet = Math.floor(player.pos.y + 0.1);
+  let best = 0;
+  for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    const info = colInfo(fx + dx, fz + dz, player.pos.y + 1); // 隣接コラムの足場
+    if (info.submerged || info.blocked) continue;             // 水没/天井ふさがりは岸でない
+    const climb = info.fy - feet;
+    if (climb >= 0 && climb <= 2) best = Math.max(best, Math.max(1, climb)); // 同高〜2段上を岸とみなす
+  }
+  return best;
+}
 
 function collideAxis(axis) {
   const minX = Math.floor(player.pos.x-PW), maxX = Math.floor(player.pos.x+PW);
@@ -1000,11 +1014,18 @@ function updatePlayer(dt) {
 
   // 水中判定：頭が水中なら「潜水」、頭が出ていれば水面上＝通常重力
   const headInWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + PH - 0.1), Math.floor(player.pos.z)) === B.water;
+  // 水際の陸 ledge（足元から1〜2段上に上がれる陸があるか）。岸があれば脱出ジャンプを許可
+  const shore = headInWater ? shoreLedge() : 0;
+  dbgHeadWater = headInWater; dbgShore = shore; // 診断用
   if (headInWater) {
     // 潜水中：浮力で重力弱め＋スペースで浮上。頭が水面から出れば通常重力に戻る＝水面より上には飛び続けない
     player.vel.y -= 8 * dt;
     if (player.vel.y < -4) player.vel.y = -4;       // 沈下速度を制限
-    if (keys['Space']) player.vel.y = 4;            // 泳いで浮上
+    if (keys['Space']) {
+      // 岸があれば「泳ぎ上がり」＝1〜2段の陸へ乗り越えられる強さ。深場(岸なし)は浮上のみ＝頭打ち維持＝危険
+      player.vel.y = shore > 0 ? (7 + shore * 2) : 4;
+      if (shore > 0) { player.onGround = false; window.playSFX && window.playSFX('jump'); }
+    }
   } else {
     // 水面上・陸上：通常重力＋接地時のみジャンプ
     player.vel.y -= 26 * dt;
@@ -1487,6 +1508,7 @@ function buildDiag() {
     `HP / 空腹 / 息 : ${hp}/${P.maxHp} / ${hunger.toFixed(1)}/${P.maxHunger} / ${breath.toFixed(1)}`,
     `減少速度(/分) : 空腹 ${hungerRatePerMin.toFixed(1)} / HP ${hpRatePerMin.toFixed(1)}　※正=減少・負=回復`,
     `最後の被ダメ  : ${lastDamageCause}（${(gameTime - lastDamageTime).toFixed(0)}秒前）`,
+    `水際判定      : 頭水中${dbgHeadWater?'○':'-'} / 岸ledge${dbgShore>0?dbgShore+'段(脱出可)':'なし(深場)'}`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗         : ${ridingMob ? '馬に騎乗中' : '徒歩'}`,
