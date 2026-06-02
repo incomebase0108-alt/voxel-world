@@ -64,7 +64,7 @@
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
     <kbd>1</kbd>〜<kbd>9</kbd> ブロック選択　/　<kbd>E</kbd> インベントリ・クラフト　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断<br>
     壊して入手 → 置いて消費（所持0は置けない）　/　<kbd>左クリック</kbd>攻撃（連打でコンボ）　/　<kbd>C</kbd> 武器切替（素手/剣/斧/弓）　/　弓は左長押しで溜め<br>
-    <kbd>Q</kbd> 食べる　/　<kbd>R</kbd> 馬に乗る/降りる
+    <kbd>Q</kbd> 食べる　/　<kbd>R</kbd> 馬・船に乗る/降りる（船で水上を安全に渡れる）
   </div>
   <div id="charsel"></div>
   <div class="start">クリックして開始</div>
@@ -1088,6 +1088,7 @@ let selBlock = B.grass;
 let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
 let avatarYaw = 0;       // 三人称アバターの向き（移動方向に追従）
 let ridingMob = null;    // 騎乗中の馬（Rキーで乗降）
+let ridingBoat = null;   // 乗船中の船プロップ（Rキーで乗降。水上を安全に移動＝水の攻略手段）
 let dbgHeadWater = false, dbgShore = 0, dbgStepUp = false; // 診断用：頭が水中か / 水際ledge段数 / 今ステップアップしたか
 // 進行方向の前方に1〜2段の固体があり、その上が空いていれば乗り上げる（水中での1段詰まり解消の要）
 function autoStepUp(wishX, wishZ) {
@@ -1148,7 +1149,7 @@ function collideAxis(axis) {
 }
 
 function updatePlayer(dt) {
-  const speed = ridingMob ? 9.0 : (keys['ShiftLeft']||keys['ShiftRight']) ? 8.5 : 5.0; // 騎乗中は速い
+  const speed = ridingBoat ? 7.5 : ridingMob ? 9.0 : (keys['ShiftLeft']||keys['ShiftRight']) ? 8.5 : 5.0; // 乗船/騎乗中は速い
   // yawを基準にした前方・右方向（上下の視点は移動に影響させない）
   const fwd   = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const right = new THREE.Vector3( Math.cos(player.yaw), 0, -Math.sin(player.yaw));
@@ -1161,6 +1162,22 @@ function updatePlayer(dt) {
   player.vel.x = move.x;
   player.vel.z = move.z;
 
+  // 乗船中：水面に固定して浮かぶ（重力・水中物理・溺れを無効化＝水を安全に渡れる）
+  if (ridingBoat) {
+    player.vel.y = 0;
+    player.pos.x += player.vel.x * dt;
+    player.pos.z += player.vel.z * dt;
+    player.pos.y = WATER_LEVEL + 1.0; // 甲板＝水面上面に立つ
+    player.onGround = true;
+    // 船を足元へ追従＋進行方向へ船首(-Z)を向ける
+    const b = ridingBoat.obj;
+    if (b) {
+      b.position.set(player.pos.x, WATER_LEVEL + 0.4, player.pos.z);
+      const sp = player.vel.x*player.vel.x + player.vel.z*player.vel.z;
+      if (sp > 0.5) b.rotation.y = Math.atan2(-player.vel.x, -player.vel.z);
+    }
+    dbgHeadWater = false; dbgShore = 0; dbgStepUp = false;
+  } else {
   // 水中判定：頭が水中なら「潜水」、頭が出ていれば水面上＝通常重力
   const headInWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + PH - 0.1), Math.floor(player.pos.z)) === B.water;
   // 水際の陸 ledge（足元から1〜2段上に上がれる陸があるか）。岸があれば脱出ジャンプを許可
@@ -1194,6 +1211,7 @@ function updatePlayer(dt) {
 
   // 奈落に落ちたら復帰
   if (player.pos.y < -30) { const s = findSpawn(); player.pos.set(s.x, s.y, s.z); player.vel.set(0,0,0); }
+  } // 乗船分岐の else 終端
 
   // カメラ：一人称＝目の位置 / 三人称＝視線の後方へ引く
   camera.rotation.y = player.yaw;
@@ -1228,16 +1246,26 @@ function updatePlayer(dt) {
     if (playerAvatar) { playerAvatar.position.y = player.pos.y + 1.42; playerAvatar.rotation.y = h.rotation.y; }
   }
 }
-// 近くの馬に乗る / 降りる（Rキー）
+// 近くの馬に乗る/降りる・船に乗る/降りる（Rキー）
 function toggleRide() {
   if (ridingMob) { ridingMob.ridden = false; ridingMob = null; window.playSFX && window.playSFX('place'); return; }
+  if (ridingBoat) { ridingBoat = null; window.playSFX && window.playSFX('place'); return; } // 下船（船はその場に残る）
+  // 近くの馬
   let best = null, bd = 2.8;
   for (const m of mobs) {
     if (m.def.type !== 'horse') continue;
     const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
     if (d < bd) { bd = d; best = m; }
   }
-  if (best) { ridingMob = best; best.ridden = true; window.playSFX && window.playSFX('jump'); }
+  if (best) { ridingMob = best; best.ridden = true; window.playSFX && window.playSFX('jump'); return; }
+  // 近くの船（表示中の rowboat/sailboat プロップ）。乗船中は props 管理から外す（消えないように）
+  let bb = null, bbd = 3.6, bbk = null;
+  for (const [k, p] of props) {
+    if (p.kind !== 'ship_rowboat' && p.kind !== 'ship_sailboat' || !p.obj) continue;
+    const d = Math.hypot(p.x + 0.5 - player.pos.x, p.z + 0.5 - player.pos.z);
+    if (d < bbd) { bbd = d; bb = p; bbk = k; }
+  }
+  if (bb) { ridingBoat = bb; props.delete(bbk); window.playSFX && window.playSFX('jump'); }
 }
 
 // ===================================================================
@@ -1691,7 +1719,7 @@ function buildDiag() {
     `BGMシーン     : ${musicScene||'-'}（近接敵${dbgNearEnemies} / 水中${dbgMusicWater?'○':'-'} / combat保持${combatHold.toFixed(1)}s）`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
-    `騎乗         : ${ridingMob ? '馬に騎乗中' : '徒歩'}`,
+    `騎乗/乗船    : ${ridingMob ? '馬に騎乗中' : ridingBoat ? '船に乗船中' : '徒歩'}`,
     `武器 / 戦闘  : ${WEAPONS[currentWeapon].name}（C切替・所持${[...ownedWeapons].length}）/ コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'} / ヒットストップ${hitstop>0?'発生':'-'}`,
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
