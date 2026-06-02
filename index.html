@@ -150,6 +150,7 @@ const CFG = {
     meleeDmg: 2, meleeCd: 1.2,               // 近接敵の攻撃力 / 間隔
     arrowDmg: 3, arrowCd: 2.0, arrowSpeed: 18, // 矢の威力 / 発射間隔 / 速度
     golemDmg: 4, golemHeavyDmg: 7, golemCd: 1.6, golemHeavyCd: 2.5, // ボス通常/強攻撃の威力と間隔
+    armorPerPiece: 0.12, shieldDef: 0.10, defenseCap: 0.6, // 装備：防具1枚/盾の被ダメ軽減と上限
   },
   mob: {
     totalCap: 12, hostileCap: 7, neutralCap: 8,        // 同時存在の総/敵性/中立 上限
@@ -520,6 +521,7 @@ function serializeWorld() {
     hp, hunger, breath,                                               // プレイヤー状態
     counts, itemCounts,                                               // インベントリ
     playerModel: currentPlayerFile,                                   // 選択アバター
+    equip: { weapon: currentWeapon, owned: [...ownedWeapons], armor: { ...equip.armor }, shield: equip.shield, ownedShield }, // 装備
     time: { dayTime, weather, autoWeather, weatherTimer },            // 時刻・天候
     // モブ（騎乗中の馬も含む。位置/向き/HP/状態を保存し、ロード時に再スポーン）
     mobs: mobs.map(m => ({
@@ -577,6 +579,13 @@ function loadWorld(slot = currentSlot) {
     if (obj.counts) for (const k in obj.counts) if (counts[k] !== undefined && Number.isFinite(obj.counts[k])) counts[k] = Math.max(0, obj.counts[k]|0);
     if (obj.itemCounts) for (const k in obj.itemCounts) if (itemCounts[k] !== undefined && Number.isFinite(obj.itemCounts[k])) itemCounts[k] = Math.max(0, obj.itemCounts[k]|0);
     if (typeof obj.playerModel === 'string') currentPlayerFile = obj.playerModel;
+    if (obj.equip && typeof obj.equip === 'object') { // 装備の復元（防御的に）
+      if (Array.isArray(obj.equip.owned)) for (const w of obj.equip.owned) if (WEAPONS[w]) ownedWeapons.add(w);
+      if (WEAPONS[obj.equip.weapon] && ownedWeapons.has(obj.equip.weapon)) currentWeapon = obj.equip.weapon;
+      if (obj.equip.armor && typeof obj.equip.armor === 'object') for (const s of ['head','body','legs']) equip.armor[s] = !!obj.equip.armor[s];
+      equip.shield = !!obj.equip.shield;
+      ownedShield = !!obj.equip.ownedShield || equip.shield;
+    }
     if (obj.time && typeof obj.time === 'object') {
       dayTime = ((num(obj.time.dayTime, dayTime) % 1) + 1) % 1; // 0..1 に正規化
       if (typeof obj.time.autoWeather === 'boolean') autoWeather = obj.time.autoWeather;
@@ -1091,6 +1100,11 @@ function eatFood() {
 
 function damage(amount, cause) {
   if (!(amount > 0) || hp <= 0) return; // NaN/負/0 を弾く（NaN<=0 は false で素通りするため > 比較で防御）
+  // 装備防御：戦闘ダメージ(mob/golem/arrow)のみ軽減。落下/溺れ/餓えには効かない
+  if (cause === 'mob' || cause === 'golem' || cause === 'arrow') {
+    amount = Math.round(amount * (1 - defenseFactor()));
+    if (amount <= 0) return; // 完全に防いだ
+  }
   hp = Math.max(0, hp - amount);
   lastDamageTime = gameTime;
   lastDamageCause = cause || '?';
@@ -1242,6 +1256,11 @@ function openChest(x, y, z) {
   updateHotbar(); scheduleSave();
   flashLoot(loot);
   openChestProp(x, y, z); // 宝箱プロップを開アニメで開く
+  // 宝箱から装備品（半分の確率で1点。地面ドロップとして出し、近づくと自動装備）
+  if (Math.random() < 0.5) {
+    const pool = ['sword','axe','bow','pickaxe','shield','armor'];
+    spawnEquipDrop(pool[ri(pool.length)], x + 0.5, y, z + 0.5);
+  }
 }
 function placeBlock() {
   const r = raycastVoxel();
@@ -1395,6 +1414,13 @@ function flashLoot(items) {
   clearTimeout(lootFlashTimer);
   lootFlashTimer = setTimeout(() => { lootEl.style.opacity = '0'; }, 2600);
 }
+// 汎用トースト（装備入手など短い通知）
+function toast(msg) {
+  lootEl.innerHTML = '⚔️ ' + msg;
+  lootEl.style.opacity = '1';
+  clearTimeout(lootFlashTimer);
+  lootFlashTimer = setTimeout(() => { lootEl.style.opacity = '0'; }, 2200);
+}
 
 // 体力ハート（ホットバーの上）
 const hpEl = document.createElement('div');
@@ -1464,7 +1490,8 @@ function buildDiag() {
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗         : ${ridingMob ? '馬に騎乗中' : '徒歩'}`,
-    `武器 / 戦闘  : ${WEAPONS[currentWeapon].name}（C切替）/ コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'} / ヒットストップ${hitstop>0?'発生':'-'}`,
+    `武器 / 戦闘  : ${WEAPONS[currentWeapon].name}（C切替・所持${[...ownedWeapons].length}）/ コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'} / ヒットストップ${hitstop>0?'発生':'-'}`,
+    `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 村人${mobs.filter(m=>m.def.type==='villager').length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
@@ -1531,7 +1558,25 @@ const PLAYER_SKINS = [
   { file:'models/player_gold.glb',    name:'金',   color:'#d4af37' },
 ];
 let currentPlayerFile = localStorage.getItem('voxel_player_model') || 'models/player.glb';
-// 起動時にセーブデータがあれば復元（currentPlayerFile を含む状態をここで確定 → 直後の loadAvatar が反映）
+
+// ===================================================================
+// 武器・装備の状態（loadWorld より前に宣言＝セーブ復元時の参照を可能に）。挙動関数は後述
+// ===================================================================
+// 武器ごとの挙動差：dmg=威力 / reach=間合い / dot=扇の狭さ(小さいほど広い) / swing=振り時間 / knock=ノックバック
+const WEAPONS = {
+  fist:    { name:'素手',     dmg:3, reach:2.6, dot:0.45, swing:0.30, knock:0.35, ranged:false },
+  sword:   { name:'剣',       dmg:5, reach:3.3, dot:0.30, swing:0.38, knock:0.5,  ranged:false }, // 範囲広め
+  axe:     { name:'斧',       dmg:9, reach:3.0, dot:0.55, swing:0.72, knock:0.9,  ranged:false }, // 高威力・遅い
+  pickaxe: { name:'ピッケル', dmg:4, reach:2.8, dot:0.40, swing:0.34, knock:0.4,  ranged:false }, // 採掘向き・素手より少し上
+  bow:     { name:'弓',       dmg:7, reach:0,   dot:0,    swing:0.5,  knock:0.25, ranged:true  }, // 遠距離・溜め
+};
+const WEAPON_ORDER = ['fist','sword','axe','pickaxe','bow'];
+let currentWeapon = 'fist'; // 初期は素手（武器は入手して持ち替え）
+const equip = { armor: { head:false, body:false, legs:false }, shield:false }; // 装備状態
+const ownedWeapons = new Set(['fist']); // 入手済み武器（fist常時）
+let ownedShield = false; // 盾を一度でも入手したか（toggleの可否）
+
+// 起動時にセーブデータがあれば復元（currentPlayerFile・装備を含む状態をここで確定 → 直後の loadAvatar が反映）
 loadWorld();
 function loadAvatar(file) {
   currentPlayerFile = file;
@@ -2100,7 +2145,32 @@ function openChestProp(x, y, z) {
 }
 const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご' };
 const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin' };
-const drops = []; // 地面に落ちたアイテム { obj, item, t, life }
+const drops = []; // 地面に落ちたアイテム { obj, item, equip?, t, life }
+
+// 装備品の落下モデル（4号機の item_*.glb）。kind→ファイル名（防具/盾は専用、武器は同名）
+const EQUIP_MODEL = { sword:'sword', axe:'axe', bow:'bow', pickaxe:'pickaxe', shield:'shield', armor:'armor' };
+const equipTemplates = {}; // kind -> scene
+for (const k in EQUIP_MODEL) gltfLoader.load(`models/item_${EQUIP_MODEL[k]}.glb`, g => { equipTemplates[k] = g.scene; }, undefined, () => {});
+// 装備品を地面にドロップ（拾うと grantEquip）
+function spawnEquipDrop(kind, x, y, z) {
+  const tpl = equipTemplates[kind];
+  if (!tpl) { grantEquip(kind); return; } // モデル未読込なら即入手
+  const obj = tpl.clone(true);
+  obj.scale.setScalar(0.8);
+  obj.position.set(x, y + 0.5, z);
+  scene.add(obj);
+  drops.push({ obj, equip: kind, t: Math.random()*Math.PI*2, life: 180 });
+}
+// 敵撃破時の装備ドロップ抽選（敵性ほど良い物が出やすい）
+function maybeDropEquip(m) {
+  const r = Math.random();
+  const chance = m.def.role === 'boss' ? 0.9 : m.hostile ? 0.14 : 0.03;
+  if (r > chance) return;
+  const pool = m.def.role === 'boss' ? ['armor','shield','sword','axe','bow']
+    : ['sword','axe','bow','pickaxe','shield','armor'];
+  const kind = pool[Math.floor(Math.random()*pool.length)];
+  spawnEquipDrop(kind, m.obj.position.x, m.obj.position.y, m.obj.position.z);
+}
 // プレイヤーの攻撃間合い/攻撃力は CFG.combat（C.playerReach / C.playerDmg）
 
 function spawnDrop(item, x, y, z) {
@@ -2120,8 +2190,8 @@ function updateDrops(dt) {
     d.life -= dt;
     const dx = player.pos.x-d.obj.position.x, dy = (player.pos.y+0.8)-d.obj.position.y, dz = player.pos.z-d.obj.position.z;
     if (dx*dx+dy*dy+dz*dz < 1.7*1.7) { // 近づくと拾う
-      itemCounts[d.item] = (itemCounts[d.item]||0) + 1;
-      window.playSFX && window.playSFX('pickup');
+      if (d.equip) { grantEquip(d.equip); }           // 装備品 → 所持＆装備
+      else { itemCounts[d.item] = (itemCounts[d.item]||0) + 1; window.playSFX && window.playSFX('pickup'); }
       scene.remove(d.obj); drops.splice(i,1); scheduleSave(); continue;
     }
     if (d.life <= 0) { scene.remove(d.obj); drops.splice(i,1); } // 時間切れで消滅
@@ -2131,15 +2201,7 @@ function updateDrops(dt) {
 // 攻撃アクション（攻撃モーション・入力バッファ・コンボ・溜め・武器種・扇形マルチヒット・
 //   ヒットストップ・ノックバック・被弾/死亡アニメ）。連携口は宣言済みの契約に準拠
 // ===================================================================
-// 武器ごとの挙動差：dmg=威力 / reach=間合い / dot=扇の狭さ(小さいほど広い) / swing=振り時間 / knock=ノックバック
-const WEAPONS = {
-  fist:  { name:'素手', dmg:3, reach:2.6, dot:0.45, swing:0.30, knock:0.35, ranged:false },
-  sword: { name:'剣',   dmg:5, reach:3.3, dot:0.30, swing:0.38, knock:0.5,  ranged:false }, // 範囲広め
-  axe:   { name:'斧',   dmg:9, reach:3.0, dot:0.55, swing:0.72, knock:0.9,  ranged:false }, // 高威力・遅い
-  bow:   { name:'弓',   dmg:7, reach:0,   dot:0,    swing:0.5,  knock:0.25, ranged:true  }, // 遠距離・溜め
-};
-const WEAPON_ORDER = ['fist','sword','axe','bow'];
-let currentWeapon = 'sword';
+// 武器・装備の状態は上方（loadWorld前）で宣言済み。ここからは攻撃の挙動
 let swingTimer = 0;        // 振り中の残り時間（>0で振り中）
 let attackBuffered = false; // 振り中に押された次の入力
 let comboIndex = 0, comboTimer = 0; // 3連コンボ（3発目が会心）
@@ -2149,9 +2211,43 @@ const CHARGE_FULL = 0.85;  // 弓のフル溜め秒
 const COMBO_WINDOW = 0.9;  // 連撃が繋がる猶予秒
 
 function cycleWeapon() {
-  const i = WEAPON_ORDER.indexOf(currentWeapon);
-  currentWeapon = WEAPON_ORDER[(i + 1) % WEAPON_ORDER.length];
+  const list = WEAPON_ORDER.filter(w => ownedWeapons.has(w)); // 所持武器だけ巡回
+  if (!list.length) return;
+  const i = list.indexOf(currentWeapon);
+  currentWeapon = list[(i + 1) % list.length];
+  emitEquipChange();
 }
+// ===================================================================
+// 装備：防御計算・入手・連携口（宣言済み契約に準拠）
+// ===================================================================
+function armorCount() { return (equip.armor.head?1:0) + (equip.armor.body?1:0) + (equip.armor.legs?1:0); }
+function defenseFactor() { // 被ダメ軽減 0..cap
+  return Math.min(C.defenseCap, armorCount() * C.armorPerPiece + (equip.shield ? C.shieldDef : 0));
+}
+function equipState() {
+  return { weapon: currentWeapon, ownedWeapons: [...ownedWeapons],
+    armor: { ...equip.armor }, shield: equip.shield, defense: defenseFactor() };
+}
+function emitEquipChange() {
+  if (typeof window.onEquipChange === 'function') { try { window.onEquipChange(equipState()); } catch (e) {} }
+}
+// 装備品の入手（拾う＝所持＆自動装備）。kind: 武器名 / 'armor' / 'shield'
+function grantEquip(kind) {
+  if (WEAPONS[kind]) { ownedWeapons.add(kind); currentWeapon = kind; toast(`${WEAPONS[kind].name} を入手・装備`); }
+  else if (kind === 'shield') { equip.shield = true; ownedShield = true; toast('盾 を装備'); }
+  else if (kind === 'armor') {
+    const slot = !equip.armor.head ? 'head' : !equip.armor.body ? 'body' : !equip.armor.legs ? 'legs' : null;
+    if (slot) { equip.armor[slot] = true; toast(`防具(${slot}) を装備`); }
+    else { toast('防具はすべて装備済み'); return; }
+  } else return;
+  window.playSFX && window.playSFX('equip');
+  emitEquipChange(); scheduleSave();
+}
+// UIから叩く操作口
+window.getEquipment = () => equipState();
+window.equipWeapon = (type) => { if (!ownedWeapons.has(type) || !WEAPONS[type]) return false; currentWeapon = type; emitEquipChange(); return true; };
+window.toggleShield = () => { if (!ownedShield) return false; equip.shield = !equip.shield; window.playSFX && window.playSFX('equip'); emitEquipChange(); scheduleSave(); return equip.shield; };
+window.unequipArmor = (slot) => { if (equip.armor[slot]) { equip.armor[slot] = false; emitEquipChange(); scheduleSave(); return true; } return false; };
 function triggerHitstop(t) { hitstop = Math.max(hitstop, t); }
 // 連携口：ヒット通知（UIのダメージ数字/エフェクト用）。UI側の例外で本体を止めない
 function emitCombatHit(x, y, z, amount, isCrit, weapon, targetType, killed, comboIndex) {
@@ -2239,6 +2335,7 @@ function hitMob(m, dmg, isCrit, weapon, combo, kdirx, kdirz, knock) {
 function killMob(m) {
   m.dying = true; m.hp = 0;
   spawnDrop(MOB_DROP[m.def.type], m.obj.position.x, m.obj.position.y, m.obj.position.z);
+  maybeDropEquip(m); // 装備品の抽選ドロップ
   if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); }
   else m.dieTimer = 0; // dieクリップ無ければ次フレーム除去
 }
@@ -2336,10 +2433,11 @@ function loop(now) {
   const WNAME = { clear:'晴れ', rain:'雨', snow:'雪', thunder:'雷' };
   const wpn = WEAPONS[currentWeapon];
   const draw = (wpn.ranged && mouseDown) ? `　弓溜め:${Math.round(Math.min(1, drawTime/CHARGE_FULL)*100)}%` : '';
+  const def = defenseFactor() > 0 ? `　防御:${(defenseFactor()*100).toFixed(0)}%` : '';
   hud.innerHTML =
     `XYZ: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>` +
     `時刻: ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}　読込チャンク: ${meshes.size}　FPS: ${fpsEMA.toFixed(0)}<br>` +
-    `天候: ${WNAME[weather]}${autoWeather ? '(自動)' : ''}（G切替/J自動）　武器: ${wpn.name}（C切替）${draw}　H:診断`;
+    `天候: ${WNAME[weather]}${autoWeather ? '(自動)' : ''}（G切替/J自動）　武器: ${wpn.name}（C切替）${draw}${def}　H:診断`;
   if (diagVisible) diagEl.textContent = buildDiag();
 
   // 体力・空腹・息・被ダメージ表示
