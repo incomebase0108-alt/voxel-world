@@ -307,9 +307,29 @@
     set: (key, value) => {
       if (key === 'muted') { vol.muted = !!value; }
       else if (key in vol) { vol[key] = clamp01(Number(value)); }
-      applyVolumes();
+      applyVolumes(); saveVol();
       try { window.dispatchEvent(new CustomEvent('soundsettingschange', { detail: window.SoundSettings.get() })); } catch (e) {}
     },
     setMuted: (b) => window.SoundSettings.set('muted', b),
   };
+
+  // 3号機UI(UI_INTEGRATION.md)の希望IFに合わせた便利口（SoundSettingsへ委譲）
+  window.setMasterVolume = (v) => window.SoundSettings.set('master', v);
+  window.getMasterVolume = () => vol.master;
+  window.setSfxVolume    = (v) => window.SoundSettings.set('sfx', v);
+  window.getSfxVolume    = () => vol.sfx;
+  window.setBgmVolume    = (v) => window.SoundSettings.set('bgm', v);
+  window.getBgmVolume    = () => vol.bgm;
+  window.setMuted        = (b) => window.SoundSettings.set('muted', b);
+  window.isMuted         = () => vol.muted;
+
+  // 設定の永続化（localStorage）：起動時に復元し、変更時に保存
+  const VOL_KEY = 'vw_sound_v1';
+  function saveVol() { try { localStorage.setItem(VOL_KEY, JSON.stringify({ master: vol.master, sfx: vol.sfx, bgm: vol.bgm, muted: vol.muted })); } catch (e) {} }
+  (function loadVol() {
+    try {
+      const s = JSON.parse(localStorage.getItem(VOL_KEY) || 'null');
+      if (s) { ['master', 'sfx', 'bgm'].forEach((k) => { if (typeof s[k] === 'number') vol[k] = clamp01(s[k]); }); vol.muted = !!s.muted; }
+    } catch (e) {}
+  })();
 })();
