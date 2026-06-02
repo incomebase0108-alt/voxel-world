@@ -77,20 +77,20 @@
   const mat = (b) => MAT[b] || MAT.default;
 
   // ── モブ鳴き声（type 別）。短い合成音で個性を付ける ────────────────
-  function mobCry(type, vmul) {
-    const v = vmul || 1;
+  function mobCry(type, vmul, dest) {
+    const v = vmul || 1, d = dest || null; // dest 指定で 3D パンナー経由（③）。null は sfxBus
     switch (type) {
-      case 'cow':      tone(140, 0.45, 'sawtooth', 0.10 * v, 110); break;
-      case 'sheep':    tone(330, 0.30, 'sawtooth', 0.09 * v, 300); tone(360, 0.18, 'sawtooth', 0.06 * v, 320); break;
-      case 'chicken':  tone(900, 0.06, 'square', 0.07 * v, 1200); tone(1100, 0.05, 'square', 0.06 * v, 800); break;
-      case 'pig':      tone(220, 0.18, 'sawtooth', 0.10 * v, 160); noise(0.10, 0.05 * v, 700); break;
-      case 'horse':    tone(420, 0.35, 'sawtooth', 0.10 * v, 180); noise(0.15, 0.05 * v, 900); break;
-      case 'villager': tone(260, 0.22, 'sine', 0.09 * v, 230); break;
-      case 'slime':    noise(0.18, 0.10 * v, 500, 'lowpass'); break;
-      case 'zombie':   tone(120, 0.5, 'sawtooth', 0.10 * v, 90); noise(0.3, 0.05 * v, 400); break;
-      case 'skeleton': for (let i = 0; i < 4; i++) noise(0.04, 0.07 * v, 2500, 'bandpass'); break; // カタカタ
-      case 'golem':    tone(70, 0.6, 'sine', 0.14 * v, 50); noise(0.4, 0.08 * v, 200); break;
-      default:         tone(300, 0.2, 'sine', 0.08 * v, 280);
+      case 'cow':      tone(140, 0.45, 'sawtooth', 0.10 * v, 110, d); break;
+      case 'sheep':    tone(330, 0.30, 'sawtooth', 0.09 * v, 300, d); tone(360, 0.18, 'sawtooth', 0.06 * v, 320, d); break;
+      case 'chicken':  tone(900, 0.06, 'square', 0.07 * v, 1200, d); tone(1100, 0.05, 'square', 0.06 * v, 800, d); break;
+      case 'pig':      tone(220, 0.18, 'sawtooth', 0.10 * v, 160, d); noise(0.10, 0.05 * v, 700, 'lowpass', d); break;
+      case 'horse':    tone(420, 0.35, 'sawtooth', 0.10 * v, 180, d); noise(0.15, 0.05 * v, 900, 'lowpass', d); break;
+      case 'villager': tone(260, 0.22, 'sine', 0.09 * v, 230, d); break;
+      case 'slime':    noise(0.18, 0.10 * v, 500, 'lowpass', d); break;
+      case 'zombie':   tone(120, 0.5, 'sawtooth', 0.10 * v, 90, d); noise(0.3, 0.05 * v, 400, 'lowpass', d); break;
+      case 'skeleton': for (let i = 0; i < 4; i++) noise(0.04, 0.07 * v, 2500, 'bandpass', d); break; // カタカタ
+      case 'golem':    tone(70, 0.6, 'sine', 0.14 * v, 50, d); noise(0.4, 0.08 * v, 200, 'lowpass', d); break;
+      default:         tone(300, 0.2, 'sine', 0.08 * v, 280, d);
     }
   }
 
@@ -115,7 +115,7 @@
     craft()     { tone(523, 0.07, 'square', 0.10, 523); tone(659, 0.07, 'square', 0.10, 659); noise(0.05, 0.06, 1800); }, // 工作音
     splash()    { noise(0.25, 0.18, 900, 'lowpass'); tone(500, 0.2, 'sine', 0.08, 200); },  // 入水
     swim()      { noise(0.18, 0.06, 600, 'lowpass'); },                                     // 水中移動
-    mob(o)      { mobCry(o && o.type, o && o.vol); },                                       // モブ鳴き声
+    mob(o)      { if (o && o.x != null) playMobSpatial(o); else mobCry(o && o.type, o && o.vol); }, // モブ鳴き(座標あれば3D)
   };
 
   // 公開API：playSFX(name, opts) ── opts は省略可（後方互換）
@@ -241,6 +241,64 @@
   }
   window.addEventListener('pointerdown', autoStartMusic, { once: true });
   window.addEventListener('keydown', autoStartMusic, { once: true });
+
+  // === ③ 3D空間音響（PannerNode・防御的: 口が無ければ黙って無効化）===========
+  //   ・コアが window.getMobPositions() / window.getPlayerPose() を実装したら自動有効化
+  //   ・未定義でもエラーを投げず空動作（事故ゼロ）。push型 playSFX('mob',{type,x,y,z}) も対応
+  let spatialTimer = null;
+  function setPannerPos(p, x, y, z) {
+    if (p.positionX) { p.positionX.value = x || 0; p.positionY.value = y || 0; p.positionZ.value = z || 0; }
+    else if (p.setPosition) { p.setPosition(x || 0, y || 0, z || 0); }
+  }
+  function makePanner(x, y, z) {
+    const c = ac(); if (!c) return null;
+    const p = c.createPanner();
+    p.panningModel = 'equalpower'; p.distanceModel = 'inverse'; // equalpower=軽量
+    p.refDistance = 4; p.maxDistance = 40; p.rolloffFactor = 1;
+    setPannerPos(p, x, y, z); p.connect(sfxBus);
+    return p;
+  }
+  function playMobSpatial(o) {
+    const p = makePanner(o.x, o.y, o.z);
+    if (!p) { mobCry(o.type, o.vol); return; }      // 失敗時は非空間で鳴らす（フォールバック）
+    mobCry(o.type, o.vol, p);
+    setTimeout(() => { try { p.disconnect(); } catch (e) {} }, 1800);
+  }
+  function updateListener(pose) {
+    const c = ac(); if (!c || !pose) return;
+    const L = c.listener;
+    if (L.positionX) { L.positionX.value = pose.x || 0; L.positionY.value = pose.y || 0; L.positionZ.value = pose.z || 0; }
+    else if (L.setPosition) { L.setPosition(pose.x || 0, pose.y || 0, pose.z || 0); }
+    const yaw = pose.yaw || 0, fx = Math.sin(yaw), fz = -Math.cos(yaw); // 正面-Z基準（アバターと同基準）
+    if (L.forwardX) { L.forwardX.value = fx; L.forwardY.value = 0; L.forwardZ.value = fz; L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0; }
+    else if (L.setOrientation) { L.setOrientation(fx, 0, fz, 0, 1, 0); }
+  }
+  // 環境鳴き：口があれば周囲モブの位置から距離減衰つきで散発的に鳴らす
+  function spatialTick() {
+    try {
+      if (ac()) {
+        const poseFn = window.getPlayerPose, mobFn = window.getMobPositions;
+        const pose = (typeof poseFn === 'function' && poseFn()) || null;
+        if (pose) updateListener(pose);
+        if (typeof mobFn === 'function') {
+          const list = mobFn() || [], p = pose || { x: 0, y: 0, z: 0 };
+          for (let i = 0; i < list.length; i++) {
+            const m = list[i]; if (!m) continue;
+            const dx = m.x - p.x, dy = (m.y || 0) - (p.y || 0), dz = m.z - p.z;
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (dist > 36) continue;
+            if (Math.random() < 0.045 * (1 - dist / 36)) { // 近いほど鳴きやすい・低頻度
+              window.playSFX('mob', { type: m.type, x: m.x, y: m.y || 0, z: m.z, vol: 0.9 });
+            }
+          }
+        }
+      }
+    } catch (e) { /* 口未実装・想定外は黙って無視（防御） */ }
+    spatialTimer = setTimeout(spatialTick, 700);
+  }
+  function startSpatial() { if (!spatialTimer) spatialTick(); }
+  window.addEventListener('pointerdown', startSpatial, { once: true });
+  window.addEventListener('keydown', startSpatial, { once: true });
 
   // ④ サウンド設定の受け渡し口（UIは3号機。ここは値とロジックのみ）
   //   get() → {master,sfx,bgm,muted} / set(key,value) / setMuted(bool)
