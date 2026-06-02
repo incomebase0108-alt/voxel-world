@@ -123,7 +123,7 @@
                   noise(0.12, 0.10 + 0.22 * f, 300 + 200 * f, 'lowpass'); tone(110, 0.10, 'sine', 0.08 + 0.1 * f, 70); },
     craft()     { tone(523, 0.07, 'square', 0.10, 523); tone(659, 0.07, 'square', 0.10, 659); noise(0.05, 0.06, 1800); }, // 工作音
     splash()    { noise(0.25, 0.18, 900, 'lowpass'); tone(500, 0.2, 'sine', 0.08, 200); },  // 入水
-    swim()      { noise(0.18, 0.06, 600, 'lowpass'); },                                     // 水中移動
+    swim()      { noise(0.22, 0.035, 420, 'lowpass'); },                                    // 水中移動（やわらかく）
     mob(o)      { if (o && o.x != null) playMobSpatial(o); else mobCry(o && o.type, o && o.vol); }, // モブ鳴き(座標あれば3D)
     // 攻撃アクション（空振り・溜め）
     whiff()       { noise(0.18, 0.06, 1200, 'bandpass'); },                                          // 空振り（風切り）
@@ -182,7 +182,7 @@
     day:    { tempo: 104, scale: [220.00, 246.94, 277.18, 329.63, 369.99], pad: [110.00, 164.81, 220.00], wave: 'triangle', density: 0.55, drums: false, level: 1.0 },
     night:  { tempo: 76,  scale: [164.81, 196.00, 220.00, 261.63, 293.66], pad: [123.47, 164.81, 220.00], wave: 'sine',     density: 0.42, drums: false, level: 0.9 },
     combat: { tempo: 148, scale: [146.83, 174.61, 196.00, 220.00, 261.63], pad: [110.00, 146.83, 220.00], wave: 'sawtooth', density: 0.85, drums: true,  level: 1.0 },
-    water:  { tempo: 72,  scale: [293.66, 349.23, 392.00, 440.00, 523.25], pad: [196.00, 293.66, 392.00], wave: 'sine',     density: 0.55, drums: false, level: 0.9 },
+    water:  { tempo: 58,  scale: [261.63, 311.13, 349.23, 392.00, 466.16], pad: [130.81, 196.00, 261.63], wave: 'sine',     density: 0.26, drums: false, level: 0.6 },
   };
   let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false, lastNoteTime = 0;
   const sceneNodes = {}; // name -> { gain, pad:[{o}] }
