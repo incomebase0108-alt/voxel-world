@@ -14,9 +14,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 63,
-    "size_bytes": 7962500,
-    "size_mb": 7.594
+    "count": 72,
+    "size_bytes": 8100444,
+    "size_mb": 7.725
   },
   "assets": [
     {
@@ -884,6 +884,114 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 4,
+      "error": null
+    },
+    {
+      "file": "prop_barrel.glb",
+      "name": "prop_barrel",
+      "category": "町小物",
+      "size_bytes": 19608,
+      "size_mb": 0.0187,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "prop_bench.glb",
+      "name": "prop_bench",
+      "category": "町小物",
+      "size_bytes": 6584,
+      "size_mb": 0.0063,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "prop_brazier.glb",
+      "name": "prop_brazier",
+      "category": "町小物",
+      "size_bytes": 22020,
+      "size_mb": 0.021,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 5,
+      "error": null
+    },
+    {
+      "file": "prop_cart.glb",
+      "name": "prop_cart",
+      "category": "町小物",
+      "size_bytes": 22884,
+      "size_mb": 0.0218,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "prop_crate.glb",
+      "name": "prop_crate",
+      "category": "町小物",
+      "size_bytes": 17852,
+      "size_mb": 0.017,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "prop_lamp.glb",
+      "name": "prop_lamp",
+      "category": "町小物",
+      "size_bytes": 12132,
+      "size_mb": 0.0116,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "prop_laundry.glb",
+      "name": "prop_laundry",
+      "category": "町小物",
+      "size_bytes": 10604,
+      "size_mb": 0.0101,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 6,
+      "error": null
+    },
+    {
+      "file": "prop_sign.glb",
+      "name": "prop_sign",
+      "category": "町小物",
+      "size_bytes": 6584,
+      "size_mb": 0.0063,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "prop_stall.glb",
+      "name": "prop_stall",
+      "category": "町小物",
+      "size_bytes": 19676,
+      "size_mb": 0.0188,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 5,
       "error": null
     }
   ]
