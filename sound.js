@@ -11,6 +11,15 @@
   // ④ 音量状態（0..1）。UI見た目は3号機、ここは値の受け渡し口のみ。
   const vol = { master: 1.0, sfx: 1.0, bgm: 0.6, muted: false };
 
+  // 個別SE音量の微調整（0..4 の倍率、既定1.0）。例:「足音うるさい」→ gains.footstep=0.5
+  //   window.SoundSettings.setGain('footstep', 0.5) で即変更可。playSFX 経由の音に乗る。
+  const gains = {
+    footstep: 1, jump: 1, land: 1, break: 1, place: 1, eat: 1, pickup: 1, craft: 1,
+    splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
+    whiff: 1, charge_start: 1, charge_full: 1,
+  };
+  let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
+
   function ac() {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -42,7 +51,7 @@
     o.frequency.setValueAtTime(freq, t);
     if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1, slideTo), t + dur);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain || 0.2, t + 0.01);
+    g.gain.exponentialRampToValueAtTime((gain || 0.2) * curMul, t + 0.01);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g).connect(dest || sfxBus);
     o.start(t); o.stop(t + dur + 0.02);
@@ -54,7 +63,7 @@
     const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
     for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
     const src = c.createBufferSource(); src.buffer = buf;
-    const g = c.createGain(); g.gain.setValueAtTime(gain || 0.2, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const g = c.createGain(); g.gain.setValueAtTime((gain || 0.2) * curMul, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     const f = c.createBiquadFilter(); f.type = type || 'lowpass'; f.frequency.value = filterFreq || 1000;
     src.connect(f).connect(g).connect(dest || sfxBus);
     src.start(t); src.stop(t + dur);
@@ -123,7 +132,11 @@
   };
 
   // 公開API：playSFX(name, opts) ── opts は省略可（後方互換）
-  window.playSFX = (name, opts) => { try { (SFX[name] || (() => {}))(opts); } catch (e) {} };
+  window.playSFX = (name, opts) => {
+    const prev = curMul;
+    try { curMul = prev * (gains[name] != null ? gains[name] : 1); (SFX[name] || (() => {}))(opts); }
+    catch (e) {} finally { curMul = prev; }
+  };
 
   // 既存トリガーをサウンドに接続
   window.onThunderSound = () => window.playSFX('thunder');
@@ -143,7 +156,11 @@
     }
     if (isCrit) { tone(1400, 0.12, 'square', 0.12, 2000); tone(1900, 0.10, 'sine', 0.08, 2400); }              // クリティカル強調
   }
-  window.onAttackHit    = (weapon, isCrit) => { try { weaponHit(weapon, !!isCrit); } catch (e) {} };
+  window.onAttackHit    = (weapon, isCrit) => {
+    const prev = curMul;
+    try { curMul = prev * (gains.attack != null ? gains.attack : 1); weaponHit(weapon, !!isCrit); }
+    catch (e) {} finally { curMul = prev; }
+  };
   window.onAttackWhiff  = () => window.playSFX('whiff');
   window.onAttackCharge = (phase) => window.playSFX(phase === 'full' ? 'charge_full' : 'charge_start');
 
@@ -324,15 +341,20 @@
 
   // ④ サウンド設定の受け渡し口（UIは3号機。ここは値とロジックのみ）
   //   get() → {master,sfx,bgm,muted} / set(key,value) / setMuted(bool)
+  const clampGain = (v) => Math.max(0, Math.min(4, Number(v))); // 個別倍率は 0..4
+  function emitChange() { try { window.dispatchEvent(new CustomEvent('soundsettingschange', { detail: window.SoundSettings.get() })); } catch (e) {} }
   window.SoundSettings = {
-    get: () => ({ master: vol.master, sfx: vol.sfx, bgm: vol.bgm, muted: vol.muted }),
+    get: () => ({ master: vol.master, sfx: vol.sfx, bgm: vol.bgm, muted: vol.muted, gains: Object.assign({}, gains) }),
     set: (key, value) => {
       if (key === 'muted') { vol.muted = !!value; }
       else if (key in vol) { vol[key] = clamp01(Number(value)); }
-      applyVolumes(); saveVol();
-      try { window.dispatchEvent(new CustomEvent('soundsettingschange', { detail: window.SoundSettings.get() })); } catch (e) {}
+      applyVolumes(); saveVol(); emitChange();
     },
     setMuted: (b) => window.SoundSettings.set('muted', b),
+    // 個別SEの音量倍率（例:「足音うるさい」→ setGain('footstep', 0.5)）
+    getGains: () => Object.assign({}, gains),
+    getGain: (name) => (gains[name] != null ? gains[name] : 1),
+    setGain: (name, mult) => { if (name in gains) { gains[name] = clampGain(mult); saveVol(); emitChange(); } },
   };
 
   // 3号機UI(UI_INTEGRATION.md)の希望IFに合わせた便利口（SoundSettingsへ委譲）
@@ -344,14 +366,20 @@
   window.getBgmVolume    = () => vol.bgm;
   window.setMuted        = (b) => window.SoundSettings.set('muted', b);
   window.isMuted         = () => vol.muted;
+  window.setSfxGain      = (name, v) => window.SoundSettings.setGain(name, v); // 個別SE倍率
+  window.getSfxGain      = (name) => window.SoundSettings.getGain(name);
 
-  // 設定の永続化（localStorage）：起動時に復元し、変更時に保存
+  // 設定の永続化（localStorage）：起動時に復元し、変更時に保存（音量＋個別倍率）
   const VOL_KEY = 'vw_sound_v1';
-  function saveVol() { try { localStorage.setItem(VOL_KEY, JSON.stringify({ master: vol.master, sfx: vol.sfx, bgm: vol.bgm, muted: vol.muted })); } catch (e) {} }
+  function saveVol() { try { localStorage.setItem(VOL_KEY, JSON.stringify({ master: vol.master, sfx: vol.sfx, bgm: vol.bgm, muted: vol.muted, gains: gains })); } catch (e) {} }
   (function loadVol() {
     try {
       const s = JSON.parse(localStorage.getItem(VOL_KEY) || 'null');
-      if (s) { ['master', 'sfx', 'bgm'].forEach((k) => { if (typeof s[k] === 'number') vol[k] = clamp01(s[k]); }); vol.muted = !!s.muted; }
+      if (s) {
+        ['master', 'sfx', 'bgm'].forEach((k) => { if (typeof s[k] === 'number') vol[k] = clamp01(s[k]); });
+        vol.muted = !!s.muted;
+        if (s.gains) Object.keys(gains).forEach((k) => { if (typeof s.gains[k] === 'number') gains[k] = Math.max(0, Math.min(4, s.gains[k])); });
+      }
     } catch (e) {}
   })();
 })();
