@@ -43,6 +43,7 @@ def category(name):
     if name.startswith("npc_"):   return ("NPC", 2)
     if name.startswith("struct_"):return ("構造物", 3)
     if name.startswith("ore_") or name.startswith("cave_"): return ("洞窟・鉱石", 6)
+    if name.startswith("fort_"): return ("砦・城塞", 7)
     if name.startswith("item_") and name in EQUIP: return ("装備・道具", 5)
     if name.startswith("item_"):  return ("アイテム", 4)
     return ("その他", 9)

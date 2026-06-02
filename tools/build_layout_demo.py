@@ -74,6 +74,23 @@ place("struct_altar", DX, 5.6, 0, 0)            # 奥の祭壇
 for (tx,ty,tyaw) in [(DX-3,1,90),(DX-3,5,90),(DX+3,1,270),(DX+3,5,270)]:
     place("struct_torch", tx, ty, 0, tyaw)      # 四隅付近の壁松明
 
+# ===== 砦（角に塔・辺に城壁2段＋狭間・南に門・塔に旗）X∈22..28 付近 =====
+FX=25  # 砦中心X
+# 4隅の塔（2x2）
+for (tx,ty) in [(FX-3,0),(FX+3,0),(FX-3,6),(FX+3,6)]:
+    place("fort_tower", tx, ty, 0, 0)
+    place("fort_flag", tx, ty, 3.64, 0)               # 塔頂に旗
+# 城壁（辺・各2段＋天端に狭間）。yaw=外向き
+def wall_run(cells, yaw):
+    for (x,y) in cells:
+        place("fort_wall", x, y, 0, yaw); place("fort_wall", x, y, 1, yaw)
+        place("fort_battlement", x, y, 2, yaw)
+wall_run([(FX-1,0),(FX+1,0)], 180)                    # 南辺（中央 FX,0 は門）
+wall_run([(FX-2,6),(FX,6),(FX+2,6)], 0)               # 北辺
+wall_run([(FX-3,2),(FX-3,4)], 90)                     # 西辺
+wall_run([(FX+3,2),(FX+3,4)], 270)                    # 東辺
+place("fort_gate", FX, 0, 0, 180)                     # 南の門
+
 # ===== ライティング/カメラ/レンダ =====
 bpy.ops.object.light_add(type='SUN', location=(6,-10,16)); bpy.context.active_object.data.energy=4.2
 bpy.ops.object.light_add(type='SUN', location=(-6,8,8)); bpy.context.active_object.data.energy=1.6
@@ -95,6 +112,8 @@ def shot(name, loc, look):
 shot("layout_cottage.png", (3.5, -11.0, 8.5), (2.0, 2.0, 1.3))
 # ダンジョン部屋俯瞰
 shot("layout_dungeon.png", (DX, -7.0, 7.5), (DX, 3.0, 0.6))
+# 砦俯瞰
+shot("layout_fort.png", (FX, -11.0, 8.0), (FX, 3.0, 1.4))
 # 全景
 shot("layout_overview.png", (8.0, -16.0, 13.0), (8.0, 2.0, 0.8))
 print("[voxel] layout demo done")

@@ -14,9 +14,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 42,
-    "size_bytes": 5858240,
-    "size_mb": 5.587
+    "count": 47,
+    "size_bytes": 6014324,
+    "size_mb": 5.736
   },
   "assets": [
     {
@@ -604,6 +604,66 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 2,
+      "error": null
+    },
+    {
+      "file": "fort_battlement.glb",
+      "name": "fort_battlement",
+      "category": "砦・城塞",
+      "size_bytes": 19276,
+      "size_mb": 0.0184,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "fort_flag.glb",
+      "name": "fort_flag",
+      "category": "砦・城塞",
+      "size_bytes": 6200,
+      "size_mb": 0.0059,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "fort_gate.glb",
+      "name": "fort_gate",
+      "category": "砦・城塞",
+      "size_bytes": 57608,
+      "size_mb": 0.0549,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 10,
+      "error": null
+    },
+    {
+      "file": "fort_tower.glb",
+      "name": "fort_tower",
+      "category": "砦・城塞",
+      "size_bytes": 48388,
+      "size_mb": 0.0461,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "fort_wall.glb",
+      "name": "fort_wall",
+      "category": "砦・城塞",
+      "size_bytes": 24612,
+      "size_mb": 0.0235,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
       "error": null
     }
   ]
