@@ -1837,6 +1837,7 @@ function buildDiag() {
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 住人${mobs.filter(m=>m.home).length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
+    `モブ地中埋没  : ${mobs.filter(m=>m.buried).length}体（透明な敵の監視。0が正常／復帰処理が毎フレーム作動）`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
     `構造物       : 村${villages.size} / スポナー${spawners.size} / プロップ${props.size}(表示${[...props.values()].filter(p=>p.obj).length}) / structテンプレ${Object.keys(structTemplates).length}種`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
@@ -2161,7 +2162,12 @@ function spawnMob(type, x, z, opts = {}) {
   const tpl = mobTemplates[type];
   if (!def || !tpl) return null;
   const obj = tpl.scene.clone(true);
-  obj.position.set(x, (typeof opts.y === 'number') ? opts.y : groundY(x, z), z);
+  // 湧き高さ：指定 y（スポナー等）または地表。ただし固体に埋まる場合だけ足場へ補正＝「透明な敵」防止。
+  //   スポナーブロック上はそのまま尊重（ダンジョン湧きの正常動作を壊さない）。
+  let y = (typeof opts.y === 'number') ? opts.y : groundY(x, z);
+  const yb = getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
+  if (isSolid(yb) && yb !== B.spawner) y = floorYNear(x, z, y); // 構造物の壁/床に埋まる位置なら空き足場へ
+  obj.position.set(x, y, z);
   if (typeof opts.ry === 'number') obj.rotation.y = opts.ry;
   scene.add(obj);
   let mixer = null, aIdle = null, aWalk = null, aAttack = null, aHeavy = null, aHit = null, aDie = null, aTalk = null;
@@ -2311,6 +2317,16 @@ function updateMobs(dt) {
   for (let i = mobs.length-1; i >= 0; i--) {
     const m = mobs[i];
     updateMobFlash(m, dt); // ③ 被弾の白フラッシュ減衰（死亡中も継続）
+    // 地中スタック復帰（透明な敵バグ対策）：足元と腹の両方が（プロップ以外の）固体に埋まっていたら
+    //   即座に足場へ押し戻す。スポナー/宝箱の上に立つ正常ケースは除外。
+    {
+      const mx = Math.floor(m.obj.position.x), mz = Math.floor(m.obj.position.z);
+      const bf = getBlock(mx, Math.floor(m.obj.position.y + 0.1), mz);
+      const bt = getBlock(mx, Math.floor(m.obj.position.y + 1.0), mz);
+      const buryF = isSolid(bf) && !isPropBlock(bf), buryT = isSolid(bt) && !isPropBlock(bt);
+      m.buried = buryF && buryT;
+      if (m.buried) m.obj.position.y = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
+    }
     // 死亡演出中：AIを止めて die クリップを再生し、終わったら除去
     if (m.dying) {
       m.dieTimer -= dt;
