@@ -9,9 +9,10 @@ glb=os.path.join(repo,"models",MODEL+".glb")
 bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete()
 bpy.ops.import_scene.gltf(filepath=glb)
 
-# 指定クリップのNLAトラックだけ有効化
+# 指定クリップのNLAトラックだけ有効化（activeアクションはNLAを上書きするので外す）
 for o in bpy.context.scene.objects:
     if o.animation_data:
+        o.animation_data.action = None
         for trk in o.animation_data.nla_tracks:
             trk.mute = (trk.name != CLIP)
 bpy.context.scene.frame_set(FRAME)

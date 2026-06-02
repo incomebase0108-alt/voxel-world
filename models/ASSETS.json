@@ -15,8 +15,8 @@
   },
   "totals": {
     "count": 35,
-    "size_bytes": 5634492,
-    "size_mb": 5.373
+    "size_bytes": 5673380,
+    "size_mb": 5.411
   },
   "assets": [
     {
@@ -103,11 +103,13 @@
       "file": "mob_chicken.glb",
       "name": "mob_chicken",
       "category": "モブ",
-      "size_bytes": 109732,
-      "size_mb": 0.1046,
+      "size_bytes": 113160,
+      "size_mb": 0.1079,
       "clips": [
+        "walk",
         "idle",
-        "walk"
+        "die",
+        "hit"
       ],
       "meshes": 7,
       "nodes": 7,
@@ -118,11 +120,13 @@
       "file": "mob_cow.glb",
       "name": "mob_cow",
       "category": "モブ",
-      "size_bytes": 257616,
-      "size_mb": 0.2457,
+      "size_bytes": 261376,
+      "size_mb": 0.2493,
       "clips": [
+        "walk",
         "idle",
-        "walk"
+        "die",
+        "hit"
       ],
       "meshes": 26,
       "nodes": 26,
@@ -133,13 +137,15 @@
       "file": "mob_golem.glb",
       "name": "mob_golem",
       "category": "モブ",
-      "size_bytes": 180200,
-      "size_mb": 0.1719,
+      "size_bytes": 188672,
+      "size_mb": 0.1799,
       "clips": [
-        "idle",
-        "walk",
+        "heavy",
         "attack",
-        "heavy"
+        "walk",
+        "idle",
+        "die",
+        "hit"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -150,11 +156,13 @@
       "file": "mob_horse.glb",
       "name": "mob_horse",
       "category": "モブ",
-      "size_bytes": 163632,
-      "size_mb": 0.1561,
+      "size_bytes": 166816,
+      "size_mb": 0.1591,
       "clips": [
+        "walk",
         "idle",
-        "walk"
+        "die",
+        "hit"
       ],
       "meshes": 6,
       "nodes": 6,
@@ -165,11 +173,13 @@
       "file": "mob_pig.glb",
       "name": "mob_pig",
       "category": "モブ",
-      "size_bytes": 113600,
-      "size_mb": 0.1083,
+      "size_bytes": 116912,
+      "size_mb": 0.1115,
       "clips": [
+        "walk",
         "idle",
-        "walk"
+        "die",
+        "hit"
       ],
       "meshes": 7,
       "nodes": 7,
@@ -180,11 +190,13 @@
       "file": "mob_sheep.glb",
       "name": "mob_sheep",
       "category": "モブ",
-      "size_bytes": 208808,
-      "size_mb": 0.1991,
+      "size_bytes": 212452,
+      "size_mb": 0.2026,
       "clips": [
+        "walk",
         "idle",
-        "walk"
+        "die",
+        "hit"
       ],
       "meshes": 7,
       "nodes": 7,
@@ -195,12 +207,14 @@
       "file": "mob_skeleton.glb",
       "name": "mob_skeleton",
       "category": "モブ",
-      "size_bytes": 282424,
-      "size_mb": 0.2693,
+      "size_bytes": 285984,
+      "size_mb": 0.2727,
       "clips": [
-        "idle",
+        "attack",
         "walk",
-        "attack"
+        "idle",
+        "die",
+        "hit"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -211,12 +225,14 @@
       "file": "mob_slime.glb",
       "name": "mob_slime",
       "category": "モブ",
-      "size_bytes": 41992,
-      "size_mb": 0.04,
+      "size_bytes": 44948,
+      "size_mb": 0.0429,
       "clips": [
-        "idle",
+        "attack",
         "walk",
-        "attack"
+        "idle",
+        "die",
+        "hit"
       ],
       "meshes": 1,
       "nodes": 1,
@@ -227,12 +243,14 @@
       "file": "mob_zombie.glb",
       "name": "mob_zombie",
       "category": "モブ",
-      "size_bytes": 241348,
-      "size_mb": 0.2302,
+      "size_bytes": 244656,
+      "size_mb": 0.2333,
       "clips": [
-        "idle",
+        "attack",
         "walk",
-        "attack"
+        "idle",
+        "die",
+        "hit"
       ],
       "meshes": 5,
       "nodes": 5,
@@ -243,11 +261,13 @@
       "file": "npc_villager.glb",
       "name": "npc_villager",
       "category": "NPC",
-      "size_bytes": 215164,
-      "size_mb": 0.2052,
+      "size_bytes": 218428,
+      "size_mb": 0.2083,
       "clips": [
+        "walk",
         "idle",
-        "walk"
+        "die",
+        "hit"
       ],
       "meshes": 5,
       "nodes": 5,

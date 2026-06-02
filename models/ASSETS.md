@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 35 ファイル / 5.37 MB
+**合計**: 35 ファイル / 5.41 MB
 
 
 ## プレイヤー
@@ -24,21 +24,21 @@
 
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
-| `mob_chicken.glb` | 0.1046 | `idle`, `walk` | 7/7 |
-| `mob_cow.glb` | 0.2457 | `idle`, `walk` | 26/26 |
-| `mob_golem.glb` | 0.1719 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
-| `mob_horse.glb` | 0.1561 | `idle`, `walk` | 6/6 |
-| `mob_pig.glb` | 0.1083 | `idle`, `walk` | 7/7 |
-| `mob_sheep.glb` | 0.1991 | `idle`, `walk` | 7/7 |
-| `mob_skeleton.glb` | 0.2693 | `idle`, `walk`, `attack` | 5/5 |
-| `mob_slime.glb` | 0.0400 | `idle`, `walk`, `attack` | 1/1 |
-| `mob_zombie.glb` | 0.2302 | `idle`, `walk`, `attack` | 5/5 |
+| `mob_chicken.glb` | 0.1079 | `walk`, `idle`, `die`, `hit` | 7/7 |
+| `mob_cow.glb` | 0.2493 | `walk`, `idle`, `die`, `hit` | 26/26 |
+| `mob_golem.glb` | 0.1799 | `heavy`, `attack`, `walk`, `idle`, `die`, `hit` | 5/5 |
+| `mob_horse.glb` | 0.1591 | `walk`, `idle`, `die`, `hit` | 6/6 |
+| `mob_pig.glb` | 0.1115 | `walk`, `idle`, `die`, `hit` | 7/7 |
+| `mob_sheep.glb` | 0.2026 | `walk`, `idle`, `die`, `hit` | 7/7 |
+| `mob_skeleton.glb` | 0.2727 | `attack`, `walk`, `idle`, `die`, `hit` | 5/5 |
+| `mob_slime.glb` | 0.0429 | `attack`, `walk`, `idle`, `die`, `hit` | 1/1 |
+| `mob_zombie.glb` | 0.2333 | `attack`, `walk`, `idle`, `die`, `hit` | 5/5 |
 
 ## NPC
 
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
-| `npc_villager.glb` | 0.2052 | `idle`, `walk` | 5/5 |
+| `npc_villager.glb` | 0.2083 | `walk`, `idle`, `die`, `hit` | 5/5 |
 
 ## 構造物
 
