@@ -15,8 +15,8 @@
   },
   "totals": {
     "count": 76,
-    "size_bytes": 9997724,
-    "size_mb": 9.535
+    "size_bytes": 10067000,
+    "size_mb": 9.601
   },
   "assets": [
     {
@@ -137,19 +137,17 @@
       "file": "mob_golem.glb",
       "name": "mob_golem",
       "category": "モブ",
-      "size_bytes": 188672,
-      "size_mb": 0.1799,
+      "size_bytes": 257948,
+      "size_mb": 0.246,
       "clips": [
-        "heavy",
-        "attack",
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk",
+        "attack",
+        "heavy"
       ],
       "meshes": 5,
       "nodes": 5,
-      "materials": 4,
+      "materials": 6,
       "error": null
     },
     {
