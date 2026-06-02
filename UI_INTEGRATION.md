@@ -64,6 +64,45 @@ function updateHotbar(){ if (window.UI_TAKEOVER) return; /* …既存… */ }
 
 ---
 
+## 戦闘演出の口（1号機の戦闘実装と接続）
+
+`ui.js` が **以下2つを定義・公開**します。1号機は命中時にこれを呼ぶだけ（演出の中身はUI側）。
+**呼ばれなくても無害／呼んでも口未整備なら安全に無効化**します。
+
+```js
+window.spawnDamagePopup(x, y, z, amount, opts?)  // ダメージ数字ポップ＋命中閃光
+window.spawnHitEffect(x, y, z, opts?)            // 命中点の閃光／斬撃線のみ
+//   x,y,z   : 命中位置（ワールド座標）
+//   amount  : ダメージ量（負値=回復扱い）
+//   opts    : { crit?:bool, self?:bool, heal?:bool, screen?:bool }
+//             crit=クリティカル（大きく金色＋強閃光） / self=プレイヤー被ダメ（赤フラッシュ統合）
+//             screen=true のとき x,y を画面px直指定（projector無し時のフォールバック）
+```
+
+### お願い：world→screen 投影口 `window.VoxelGame.project(x,y,z)`（強く推奨・数行）
+ワールド座標を画面座標へ変換するため、カメラを持つコア側に1つください。これが無いと
+ポップの表示位置が出せません（`opts.screen` 直指定のフォールバックは可だが、3D命中点には不向き）。
+
+```js
+window.VoxelGame.project = (x, y, z) => {
+  const v = new THREE.Vector3(x, y, z).project(camera);   // camera は既存
+  return { x:(v.x*0.5+0.5)*innerWidth, y:(-v.y*0.5+0.5)*innerHeight, visible: v.z < 1 };
+};
+```
+
+呼び出し例（1号機の戦闘・被ダメ処理に1行ずつ）:
+```js
+// モブに命中したとき（クリティカル判定があれば crit:true）
+window.spawnDamagePopup && window.spawnDamagePopup(mob.obj.position.x, mob.obj.position.y+1, mob.obj.position.z, dmg, { crit });
+// プレイヤーが被弾したとき（赤フラッシュは ui.js 側で統合）
+window.spawnDamagePopup && window.spawnDamagePopup(player.pos.x, player.pos.y+1.2, player.pos.z, dmg, { self:true });
+```
+
+> 既存の `window.onPlayerHurt(cause, amount)` も ui.js がフックして赤フラッシュを出します（こちらは据え置きでOK）。
+> `self:true` 付きで `spawnDamagePopup` を呼ぶ場合は赤フラッシュが二重にならないよう、どちらか一方で。
+
+---
+
 ## 2号機（sound.js）との口
 設定画面の音量スライダーは、2号機が公開する音量口に接続予定です。希望IF（どちらでも可）:
 - `window.setMasterVolume(v: 0..1)` / `window.getMasterVolume()` 、または

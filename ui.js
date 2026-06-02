@@ -93,6 +93,17 @@
       #ui-hurt { background:radial-gradient(circle, rgba(180,0,0,0) 42%, rgba(190,0,10,.62) 100%); }
       #ui-heal { background:radial-gradient(circle, rgba(0,180,40,0) 50%, rgba(40,210,90,.32) 100%); }
 
+      /* ダメージFXレイヤー（HUDより上・最前面の演出） */
+      #ui-fx-canvas { position:fixed; inset:0; z-index:26; pointer-events:none; }
+      #ui-fx { position:fixed; inset:0; z-index:27; pointer-events:none; overflow:hidden; }
+      .ui-pop { position:absolute; transform:translate(-50%,-50%); font-weight:900;
+        font-family: system-ui, sans-serif; white-space:nowrap; will-change:transform,opacity;
+        text-shadow:0 1px 2px #000, 0 0 4px #000; letter-spacing:.5px; }
+      .ui-pop.dmg  { color:#ffd9a0; font-size:20px; }
+      .ui-pop.crit { color:#ffec5c; font-size:30px; text-shadow:0 0 6px #ff7a00, 0 1px 2px #000; }
+      .ui-pop.heal { color:#7cff9b; font-size:18px; }
+      .ui-pop.self { color:#ff6b6b; font-size:22px; }
+
       @media (max-width:640px) {
         #ui-radar { width:96px; height:96px; }
         .ui-slot { width:42px; height:42px; }
@@ -138,11 +149,28 @@
     const hurt = el('div', '', root); hurt.id = 'ui-hurt';
     const heal = el('div', '', root); heal.id = 'ui-heal';
 
+    // ダメージFXレイヤー（HUD休止中でも動くよう root 直下に独立配置）
+    const fxCanvas = el('canvas', '', document.body); fxCanvas.id = 'ui-fx-canvas';
+    const fxLayer = el('div', '', document.body); fxLayer.id = 'ui-fx';
+
     dom = {
       root, breathRow, breathSegs, foodSegs, foodNum, hpSegs, hpNum,
       selName, hotbar, radar, rctx: radar.getContext('2d'), info, hurt, heal,
+      fxCanvas, fxctx: fxCanvas.getContext('2d'), fxLayer,
       hpSegEls: [], foodSegEls: [], breathSegEls: [], slotEls: [],
     };
+    resizeFX();
+    window.addEventListener('resize', resizeFX);
+  }
+
+  function resizeFX() {
+    if (!dom) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    dom.fxCanvas.width = Math.floor(innerWidth * dpr);
+    dom.fxCanvas.height = Math.floor(innerHeight * dpr);
+    dom.fxCanvas.style.width = innerWidth + 'px';
+    dom.fxCanvas.style.height = innerHeight + 'px';
+    dom.fxctx.setTransform(dpr, 0, 0, dpr, 0, 0); // 以降は CSS px で描ける
   }
 
   // セグメント列を必要数だけ用意して使い回す（毎フレーム再生成しない）
@@ -258,6 +286,134 @@
   }
 
   // =====================================================================
+  // ダメージポップ ＆ ヒットエフェクト
+  //   ・口は ui.js が「定義」し、1号機（戦闘）が命中時に呼ぶ:
+  //       window.spawnDamagePopup(x, y, z, amount, opts?)
+  //       window.spawnHitEffect(x, y, z, opts?)
+  //   ・world→screen 投影は window.VoxelGame.project(x,y,z) に依存。
+  //     未定義でも安全（座標が画面内とみなせる時だけ描画、それ以外は黙って捨てる）。
+  //   ・HUD（state()）が休止中でも、この演出だけは独立して動作する。
+  // =====================================================================
+  const popups = []; // {el, x, y, vy, life, ttl}
+  const hits = [];   // {x, y, life, ttl, kind, ang}
+  const MAX_POPUPS = 40, MAX_HITS = 40;
+
+  // world(x,y,z) → screen{px,py,visible}。projector が無い場合は null
+  function projectWorld(x, y, z) {
+    const vg = window.VoxelGame;
+    if (vg && typeof vg.project === 'function') {
+      try {
+        const p = vg.project(x, y, z);
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+          return { px: p.x, py: p.y, visible: p.visible !== false };
+        }
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  // 命中位置を画面座標に解決する。
+  //   ・projector があればそれを使う（推奨）
+  //   ・無くても opts.screen=true なら (x,y) を画面pxとして扱う
+  //   ・どちらも不可なら null（＝安全に無効化）
+  function resolveScreen(x, y, z, opts) {
+    const p = projectWorld(x, y, z);
+    if (p) return p.visible ? p : null;
+    if (opts && opts.screen) return { px: x, py: y, visible: true };
+    return null;
+  }
+
+  // ダメージ数字ポップ（命中位置からふわっと浮いて消える）
+  function spawnDamagePopup(x, y, z, amount, opts) {
+    opts = opts || {};
+    if (!dom) return;
+    const s = resolveScreen(x, y, z, opts);
+    if (!s) return; // 画面外/投影不可は捨てる
+    if (popups.length >= MAX_POPUPS) { const old = popups.shift(); if (old.el) old.el.remove(); }
+
+    const amt = Math.round(Number(amount) || 0);
+    const heal = opts.heal || amt < 0;
+    const self = !!opts.self; // プレイヤー被ダメ
+    const crit = !!opts.crit;
+    const e = document.createElement('div');
+    e.className = 'ui-pop ' + (heal ? 'heal' : self ? 'self' : crit ? 'crit' : 'dmg');
+    e.textContent = (heal ? '+' + Math.abs(amt) : (crit ? '✦' + Math.abs(amt) : Math.abs(amt)));
+    // 同一点の重なりを避けて少し横へ散らす（index で決め打ち＝乱数不使用）
+    const jitter = ((popups.length % 5) - 2) * 9;
+    e.style.left = (s.px + jitter) + 'px';
+    e.style.top = s.py + 'px';
+    dom.fxLayer.appendChild(e);
+    popups.push({ el: e, x: s.px + jitter, y: s.py, vy: crit ? 64 : 48, life: 0, ttl: crit ? 1.1 : 0.85 });
+
+    // 命中点の閃光も同時に（ヒットの手応え）
+    spawnHitEffect(x, y, z, { screen: opts.screen, crit, kind: heal ? 'heal' : 'hit', _resolved: s });
+    if (self) flashDamage(Math.abs(amt)); // プレイヤー被ダメは赤フラッシュと統合
+  }
+
+  // 命中点の一瞬の閃光／斬撃線
+  function spawnHitEffect(x, y, z, opts) {
+    opts = opts || {};
+    if (!dom) return;
+    const s = opts._resolved || resolveScreen(x, y, z, opts);
+    if (!s) return;
+    if (hits.length >= MAX_HITS) hits.shift();
+    // 斬撃線の角度は呼び出し位置で散らす（乱数不使用＝決定的）
+    const ang = ((hits.length * 47) % 180) * Math.PI / 180;
+    hits.push({ x: s.px, y: s.py, life: 0, ttl: opts.crit ? 0.34 : 0.24, kind: opts.kind || 'hit', crit: !!opts.crit, ang });
+  }
+
+  // 毎フレーム：ポップの浮上フェード＆ヒット閃光の描画
+  function stepFX(dt) {
+    if (!dom) return;
+    // --- ダメージ数字 ---
+    for (let i = popups.length - 1; i >= 0; i--) {
+      const p = popups[i];
+      p.life += dt;
+      const k = p.life / p.ttl;
+      if (k >= 1) { if (p.el) p.el.remove(); popups.splice(i, 1); continue; }
+      p.y -= p.vy * dt; p.vy *= (1 - dt * 1.6); // だんだん減速しながら上昇
+      const pop = k < 0.18 ? 1 + (0.18 - k) * 1.6 : 1; // 出現時に少し膨らむ
+      const op = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;     // 後半でフェード
+      p.el.style.top = p.y + 'px';
+      p.el.style.opacity = clamp01(op).toFixed(3);
+      p.el.style.transform = `translate(-50%,-50%) scale(${pop.toFixed(3)})`;
+    }
+    // --- ヒット閃光／斬撃線（canvas） ---
+    const ctx = dom.fxctx;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (let i = hits.length - 1; i >= 0; i--) {
+      const h = hits[i];
+      h.life += dt;
+      const k = h.life / h.ttl;
+      if (k >= 1) { hits.splice(i, 1); continue; }
+      const a = clamp01(1 - k);
+      const r = (h.crit ? 26 : 16) * (0.4 + k * 1.3);
+      ctx.save();
+      ctx.translate(h.x, h.y);
+      // 放射状の閃光リング
+      ctx.globalAlpha = a * 0.9;
+      ctx.strokeStyle = h.kind === 'heal' ? '#7cff9b' : (h.crit ? '#ffec5c' : '#fff2cc');
+      ctx.lineWidth = h.crit ? 3 : 2;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      // 斬撃線（クロス）
+      ctx.globalAlpha = a;
+      ctx.rotate(h.ang);
+      const len = (h.crit ? 22 : 14) * (0.6 + k);
+      ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(len, 0); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // 口を公開（1号機が hit 時に呼ぶ）。安全に何度上書きされても無害
+  function exposeFXHooks() {
+    window.spawnDamagePopup = spawnDamagePopup;
+    window.spawnHitEffect = spawnHitEffect;
+    window.UI = window.UI || {};
+    window.UI.spawnDamagePopup = spawnDamagePopup;
+    window.UI.spawnHitEffect = spawnHitEffect;
+  }
+
+  // =====================================================================
   // メインループ
   // =====================================================================
   function readState() {
@@ -272,11 +428,14 @@
     requestAnimationFrame(tick);
     const dt = lastDt ? Math.min(0.05, (t - lastDt) / 1000) : 0.016; lastDt = t;
 
+    // FX（ダメージポップ／ヒット閃光）は HUD の有無に関わらず常に駆動する
+    stepFX(dt);
+
     const st = readState();
     if (!st) {
       if (!warnedOnce) {
         warnedOnce = true;
-        console.info('[ui] 待機中: window.VoxelGame.state() 未実装のため HUD は休止します（UI_INTEGRATION.md (2) を参照）。');
+        console.info('[ui] 待機中: window.VoxelGame.state() 未実装のため HUD は休止します（UI_INTEGRATION.md (2) を参照）。FX口(spawnDamagePopup等)は有効です。');
       }
       if (dom) dom.root.style.display = 'none';
       return;
@@ -337,10 +496,11 @@
     injectStyle();
     buildDOM();
     hookDamage();
+    exposeFXHooks(); // window.spawnDamagePopup / spawnHitEffect を公開
     requestAnimationFrame(tick);
     // 後続②③④ 用のUI口（現状は枠だけ）
     window.UI = window.UI || {};
-    console.info('[ui] HUDレイヤー起動（3号機・項目①）。state() を待機します。');
+    console.info('[ui] HUD＋FXレイヤー起動（3号機）。state()=HUD / spawnDamagePopup()=戦闘演出。');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
