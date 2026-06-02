@@ -9,7 +9,7 @@
   let ctx = null, master = null, sfxBus = null, bgmBus = null;
 
   // ④ 音量状態（0..1）。UI見た目は3号機、ここは値の受け渡し口のみ。
-  const vol = { master: 1.0, sfx: 1.0, bgm: 0.6, muted: false };
+  const vol = { master: 1.0, sfx: 1.0, bgm: 0.75, muted: false };
 
   // 個別SE音量の微調整（0..4 の倍率、既定1.0）。例:「足音うるさい」→ gains.footstep=0.5
   //   window.SoundSettings.setGain('footstep', 0.5) で即変更可。playSFX 経由の音に乗る。
@@ -136,6 +136,7 @@
     const prev = curMul;
     try { curMul = prev * (gains[name] != null ? gains[name] : 1); (SFX[name] || (() => {}))(opts); }
     catch (e) {} finally { curMul = prev; }
+    maybeAutoStartMusic(); // SFXが鳴る＝ユーザー操作＆ctx稼働。BGM未起動なら確実に起動（window listener非依存）
   };
 
   // 既存トリガーをサウンドに接続
@@ -192,7 +193,7 @@
       const o = c.createOscillator(), g = c.createGain();
       o.type = name === 'combat' ? 'sawtooth' : 'sine';
       o.frequency.value = f * (1 + (i - 1) * 0.003); // 微デチューンで厚み
-      g.gain.value = 0.05;
+      g.gain.value = 0.09;
       o.connect(g).connect(node.gain); o.start();
       node.pad.push({ o });
     });
@@ -226,7 +227,7 @@
       while (nextNoteT < c.currentTime + 0.2) {
         if (Math.random() < sc.density) {
           const f = sc.scale[(Math.random() * sc.scale.length) | 0] * (Math.random() < 0.3 ? 2 : 1);
-          bgmNote(f, spb * (Math.random() < 0.5 ? 1.6 : 0.9), node.gain, 0.07, sc.wave);
+          bgmNote(f, spb * (Math.random() < 0.5 ? 1.6 : 0.9), node.gain, 0.12, sc.wave);
         }
         if (sc.drums && beat % 2 === 0) kick(node.gain);
         nextNoteT += spb; beat++;
@@ -248,11 +249,15 @@
       bgmOn = true; nextNoteT = c.currentTime + 0.1; beat = 0;
       bgmScene = s; startPad(s); fadeSceneGain(s, 1);
       scheduler();
+      try { console.info('[sound] BGM開始 scene=' + s + ' / bgmBus=' + (bgmBus ? bgmBus.gain.value.toFixed(2) : '?') + ' / ctx=' + (ctx ? ctx.state : '?')); } catch (e) {}
     } else {
       setMusicScene(s);
     }
   }
+  // 明示制御もユーザー操作も無い場合に既定 'day' を起動（playSFX/ジェスチャから呼ぶ）
+  function maybeAutoStartMusic() { if (!userMusicCtl && !bgmOn) startMusic('day'); }
   function setMusicScene(name) {
+    window.__setMusicSceneCalled = true; // 診断：コアがシーン口を呼んだか
     if (!SCENES[name] || !ac()) return;
     if (!bgmOn) { startMusic(name); return; }
     if (name === bgmScene) return;
@@ -273,13 +278,10 @@
   window.stopMusic = stopMusic;
   window.setMusicScene = setMusicScene;
   // 最初のユーザー操作で自動的に 'day' を開始（コアが明示制御したら抑止）
-  function autoStartMusic() {
-    window.removeEventListener('pointerdown', autoStartMusic);
-    window.removeEventListener('keydown', autoStartMusic);
-    if (!userMusicCtl) startMusic('day');
-  }
-  window.addEventListener('pointerdown', autoStartMusic, { once: true });
-  window.addEventListener('keydown', autoStartMusic, { once: true });
+  // capture段で拾うので、コアが bubble段で stopPropagation しても発火する
+  function autoStartMusic() { maybeAutoStartMusic(); }
+  window.addEventListener('pointerdown', autoStartMusic, { once: true, capture: true });
+  window.addEventListener('keydown', autoStartMusic, { once: true, capture: true });
 
   // === ③ 3D空間音響（PannerNode・防御的: 口が無ければ黙って無効化）===========
   //   ・コアが window.getMobPositions() / window.getPlayerPose() を実装したら自動有効化
@@ -336,8 +338,8 @@
     spatialTimer = setTimeout(spatialTick, 700);
   }
   function startSpatial() { if (!spatialTimer) spatialTick(); }
-  window.addEventListener('pointerdown', startSpatial, { once: true });
-  window.addEventListener('keydown', startSpatial, { once: true });
+  window.addEventListener('pointerdown', startSpatial, { once: true, capture: true });
+  window.addEventListener('keydown', startSpatial, { once: true, capture: true });
 
   // ④ サウンド設定の受け渡し口（UIは3号機。ここは値とロジックのみ）
   //   get() → {master,sfx,bgm,muted} / set(key,value) / setMuted(bool)
@@ -368,6 +370,18 @@
   window.isMuted         = () => vol.muted;
   window.setSfxGain      = (name, v) => window.SoundSettings.setGain(name, v); // 個別SE倍率
   window.getSfxGain      = (name) => window.SoundSettings.getGain(name);
+
+  // 診断：console で getSoundDiag() を叩けば状態が出る（H診断にも流用可）
+  window.getSoundDiag = () => ({
+    audioContext: ctx ? ctx.state : 'none(未生成)',   // running / suspended / none
+    bgmOn: bgmOn, bgmScene: bgmScene,
+    bgmBusGain: bgmBus ? +bgmBus.gain.value.toFixed(3) : null,
+    sfxBusGain: sfxBus ? +sfxBus.gain.value.toFixed(3) : null,
+    masterGain: master ? +master.gain.value.toFixed(3) : null,
+    muted: vol.muted,
+    vol: { master: vol.master, sfx: vol.sfx, bgm: vol.bgm },
+    musicSceneCalledByCore: typeof window.__setMusicSceneCalled === 'boolean' ? window.__setMusicSceneCalled : '(未計測)',
+  });
 
   // 設定の永続化（localStorage）：起動時に復元し、変更時に保存（音量＋個別倍率）
   const VOL_KEY = 'vw_sound_v1';
