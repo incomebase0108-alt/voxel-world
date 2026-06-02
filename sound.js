@@ -143,6 +143,7 @@
     try { curMul = prev * (gains[name] != null ? gains[name] : 1); (SFX[name] || (() => {}))(opts); }
     catch (e) {} finally { curMul = prev; }
     maybeAutoStartMusic(); // SFXが鳴る＝ユーザー操作＆ctx稼働。BGM未起動なら確実に起動（window listener非依存）
+    ensureScheduler();     // 万一ノート生成ループが死んでいたら自己回復（SFXのたびに健全性を担保）
   };
 
   // 既存トリガーをサウンドに接続
@@ -231,21 +232,34 @@
     g.gain.setValueAtTime(0.16, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
     o.connect(g).connect(dest); o.start(t); o.stop(t + 0.18);
   }
+  // ノート生成ループ。例外が出ても・遅れても「絶対に止まらない」設計。
   function scheduler() {
-    if (!bgmOn) return;
-    const c = ac();
-    if (c && bgmScene && SCENES[bgmScene]) {
-      const sc = SCENES[bgmScene], node = sceneGain(bgmScene), spb = 60 / sc.tempo / 2; // 8分音符
-      while (nextNoteT < c.currentTime + 0.2) {
-        if (Math.random() < sc.density) {
-          const f = sc.scale[(Math.random() * sc.scale.length) | 0] * (Math.random() < 0.3 ? 2 : 1);
-          bgmNote(f, spb * (Math.random() < 0.5 ? 1.6 : 0.9), node.gain, 0.12, sc.wave);
+    bgmTimer = null;
+    if (!bgmOn) return; // 明示停止時のみ終了（再武装しない）
+    try {
+      const c = ac();
+      if (c && bgmScene && SCENES[bgmScene]) {
+        const sc = SCENES[bgmScene], node = sceneGain(bgmScene), spb = 60 / sc.tempo / 2; // 8分音符
+        if (nextNoteT < c.currentTime) nextNoteT = c.currentTime; // 背景化等で遅れたら追従（大量生成・例外を防止）
+        let guard = 0; // 暴走ガード
+        while (nextNoteT < c.currentTime + 0.2 && guard++ < 64) {
+          if (Math.random() < sc.density) {
+            const f = sc.scale[(Math.random() * sc.scale.length) | 0] * (Math.random() < 0.3 ? 2 : 1);
+            bgmNote(f, spb * (Math.random() < 0.5 ? 1.6 : 0.9), node.gain, 0.12, sc.wave);
+          }
+          if (sc.drums && beat % 2 === 0) kick(node.gain);
+          nextNoteT += spb; beat++;
         }
-        if (sc.drums && beat % 2 === 0) kick(node.gain);
-        nextNoteT += spb; beat++;
       }
+    } catch (e) { /* 例外でループを殺さない */ }
+    if (bgmOn) bgmTimer = setTimeout(scheduler, 60); // 生きている限り必ず再武装
+  }
+  // 死んでいたら復活させる自己回復（scene切替・playSFX・タブ復帰から呼ぶ）
+  function ensureScheduler() {
+    if (bgmOn && !bgmTimer) {
+      const c = ac(); if (c && nextNoteT < c.currentTime) nextNoteT = c.currentTime;
+      scheduler();
     }
-    bgmTimer = setTimeout(scheduler, 60);
   }
   function fadeSceneGain(name, to) {
     const c = ac(), g = sceneGain(name).gain;
@@ -276,6 +290,7 @@
     const prev = bgmScene; bgmScene = name;
     startPad(name); fadeSceneGain(name, SCENES[name].level || 1);
     if (prev && sceneNodes[prev]) fadeSceneGain(prev, 0); // 旋律もpadもgainで消す。oscillatorは止めない（競合回避）
+    ensureScheduler(); // シーン切替時にループが死んでいたら必ず復活
   }
   function stopMusic() {
     userMusicCtl = true; bgmOn = false;
@@ -291,6 +306,8 @@
   function autoStartMusic() { maybeAutoStartMusic(); }
   window.addEventListener('pointerdown', autoStartMusic, { once: true, capture: true });
   window.addEventListener('keydown', autoStartMusic, { once: true, capture: true });
+  // タブ復帰時（背景化でsetTimeoutが止まった後）にループを復活
+  try { document.addEventListener('visibilitychange', () => { if (!document.hidden) ensureScheduler(); }); } catch (e) {}
 
   // === ③ 3D空間音響（PannerNode・防御的: 口が無ければ黙って無効化）===========
   //   ・コアが window.getMobPositions() / window.getPlayerPose() を実装したら自動有効化
