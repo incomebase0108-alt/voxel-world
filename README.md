@@ -36,6 +36,7 @@ index.html      ... ゲーム本体（エンジン）
 models/         ... Blender 製 GLB を置く（4号機）
 models/ASSETS.md   ... 全アセット索引（ファイル/クリップ/容量・自動生成）
 models/ASSETS.json ... 同・機械可読版（1号機/3号機が参照）
+models/LAYOUT.md   ... 構造物の配置仕様シート（1号機②自動生成の見本・グリッド座標）
 README.md       ... この文書（兼・作業ブリーフ）
 ```
 
