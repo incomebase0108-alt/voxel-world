@@ -101,6 +101,11 @@
       "name": "block_glass",
       "file": "icon_block_glass.png",
       "type": "block"
+    },
+    {
+      "name": "block_snow",
+      "file": "icon_block_snow.png",
+      "type": "block"
     }
   ]
 }

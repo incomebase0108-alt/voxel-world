@@ -26,3 +26,4 @@
 | `block_planks` | `icon_block_planks.png` | block |
 | `block_stonebrick` | `icon_block_stonebrick.png` | block |
 | `block_glass` | `icon_block_glass.png` | block |
+| `block_snow` | `icon_block_snow.png` | block |
