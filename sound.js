@@ -116,6 +116,10 @@
     splash()    { noise(0.25, 0.18, 900, 'lowpass'); tone(500, 0.2, 'sine', 0.08, 200); },  // 入水
     swim()      { noise(0.18, 0.06, 600, 'lowpass'); },                                     // 水中移動
     mob(o)      { if (o && o.x != null) playMobSpatial(o); else mobCry(o && o.type, o && o.vol); }, // モブ鳴き(座標あれば3D)
+    // 攻撃アクション（空振り・溜め）
+    whiff()       { noise(0.18, 0.06, 1200, 'bandpass'); },                                          // 空振り（風切り）
+    charge_start(){ tone(160, 0.25, 'sawtooth', 0.07, 320); },                                       // 溜め開始（上昇）
+    charge_full() { tone(880, 0.10, 'sine', 0.10, 1320); tone(1320, 0.08, 'sine', 0.07, 1760); },    // 溜め完了（チャイム）
   };
 
   // 公開API：playSFX(name, opts) ── opts は省略可（後方互換）
@@ -124,6 +128,24 @@
   // 既存トリガーをサウンドに接続
   window.onThunderSound = () => window.playSFX('thunder');
   window.onPlayerHurt   = () => window.playSFX('hurt');
+
+  // === 攻撃アクション連携（防御的: 1号機が口を呼ぶだけ・未呼出なら無音待機）=====
+  //   window.onAttackHit(weapon, isCrit) … weapon: 'sword'|'axe'|'bow'|'fist'
+  //   window.onAttackWhiff() … 空振り / window.onAttackCharge('start'|'full') … 溜め
+  function weaponHit(weapon, isCrit) {
+    const v = isCrit ? 1.5 : 1;
+    switch (weapon) {
+      case 'sword': noise(0.06, 0.10 * v, 4000, 'highpass'); tone(700, 0.10, 'square', 0.10 * v, 1100); break; // 斬撃＋金属音
+      case 'axe':   noise(0.12, 0.16 * v, 700, 'lowpass'); tone(120, 0.10, 'square', 0.14 * v, 70); break;     // 重い打撃
+      case 'bow':   window.playSFX('hit'); break;                                                              // 命中（既存音）
+      case 'fist':  noise(0.07, 0.12 * v, 900, 'lowpass'); tone(160, 0.06, 'sine', 0.10 * v, 110); break;      // パンチ
+      default:      window.playSFX('hit');
+    }
+    if (isCrit) { tone(1400, 0.12, 'square', 0.12, 2000); tone(1900, 0.10, 'sine', 0.08, 2400); }              // クリティカル強調
+  }
+  window.onAttackHit    = (weapon, isCrit) => { try { weaponHit(weapon, !!isCrit); } catch (e) {} };
+  window.onAttackWhiff  = () => window.playSFX('whiff');
+  window.onAttackCharge = (phase) => window.playSFX(phase === 'full' ? 'charge_full' : 'charge_start');
 
   // === ② BGMシステム（合成音・bgmBus経由・状況でレイヤー切替＋クロスフェード）===
   //   ・コアは window.setMusicScene('day'|'night'|'combat'|'water') を呼ぶだけ
