@@ -1246,7 +1246,8 @@ function updatePlayer(dt) {
     // ⑤ アニメ：移動中=walk / 静止=idle
     playAvatarAnim(moving);
   }
-  // (A) 騎乗：馬をプレイヤーの足元へ、アバターを鞍の高さ(≈1.42)へ
+  // (A) 騎乗：馬をプレイヤーの足元へ。アバターは「鞍に座る」高さに（立ちモデルの胴が鞍≈1.42に来るよう足元を約0.55上げる）
+  //   ※以前は足元を鞍(1.42)に上げていたため、立ち姿勢のまま馬の2階建ての高さにそびえ立っていた
   if (ridingMob) {
     const h = ridingMob.obj;
     h.position.set(player.pos.x, groundY(player.pos.x, player.pos.z), player.pos.z);
@@ -1254,7 +1255,7 @@ function updatePlayer(dt) {
     if (sp > 0.5) h.rotation.y = Math.atan2(-player.vel.x, -player.vel.z);
     setMobAnim(ridingMob, sp > 0.5 ? 'walk' : 'idle');
     if (ridingMob.mixer) ridingMob.mixer.update(dt);
-    if (playerAvatar) { playerAvatar.position.y = player.pos.y + 1.42; playerAvatar.rotation.y = h.rotation.y; }
+    if (playerAvatar) { playerAvatar.position.y = player.pos.y + 0.55; playerAvatar.rotation.y = h.rotation.y; } // 鞍に跨る高さ
   }
 }
 // 近くの馬に乗る/降りる・船に乗る/降りる（Rキー）
