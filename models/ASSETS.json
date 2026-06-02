@@ -15,8 +15,8 @@
   },
   "totals": {
     "count": 55,
-    "size_bytes": 6209632,
-    "size_mb": 5.922
+    "size_bytes": 6218608,
+    "size_mb": 5.931
   },
   "assets": [
     {
@@ -730,9 +730,11 @@
       "file": "ship_rowboat.glb",
       "name": "ship_rowboat",
       "category": "船",
-      "size_bytes": 41204,
-      "size_mb": 0.0393,
-      "clips": [],
+      "size_bytes": 45692,
+      "size_mb": 0.0436,
+      "clips": [
+        "idle"
+      ],
       "meshes": 1,
       "nodes": 1,
       "materials": 3,
@@ -742,9 +744,11 @@
       "file": "ship_sailboat.glb",
       "name": "ship_sailboat",
       "category": "船",
-      "size_bytes": 40372,
-      "size_mb": 0.0385,
-      "clips": [],
+      "size_bytes": 44860,
+      "size_mb": 0.0428,
+      "clips": [
+        "idle"
+      ],
       "meshes": 1,
       "nodes": 1,
       "materials": 4,
