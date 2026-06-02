@@ -34,6 +34,34 @@
     return e;
   };
 
+  // ---- アイコン（4号機 tools/icons/icon_*.png・128px透過PNG） -------------
+  const ICON_BASE = 'tools/icons/';
+  // state() entry.icon があれば最優先。無ければ日本語名→アイコン名でフォールバック。
+  const NAME2ICON = {
+    '草':'block_grass', '土':'block_dirt', '石':'block_stone', '原木':'block_wood',
+    '葉':'block_leaves', '砂':'block_sand', '雪':null /* 未整備=スウォッチ */,
+    '木材':'block_planks', '石レンガ':'block_stonebrick', 'ガラス':'block_glass',
+    '肉':'item_meat', '卵':'item_egg', 'コイン':'item_coin', 'りんご':'item_apple',
+  };
+  function iconUrl(entry) {
+    if (!entry) return null;
+    const base = entry.icon || NAME2ICON[entry.name];
+    return base ? ICON_BASE + 'icon_' + base + '.png' : null;
+  }
+  // コア統合済み（state()が生えている）かどうか。②のEキー有効化のゲートに使う
+  function coreIntegrated() { return !!(window.VoxelGame && typeof window.VoxelGame.state === 'function'); }
+  // 操作口（読み取りのみの原則のもと、状態変更はコアの口経由でのみ行う）
+  function callSelect(block) {
+    const vg = window.VoxelGame;
+    if (vg && typeof vg.selectBlock === 'function') { try { vg.selectBlock(block); return true; } catch (e) {} }
+    return false;
+  }
+  function callCraft(index) {
+    const vg = window.VoxelGame;
+    if (vg && typeof vg.craft === 'function') { try { vg.craft(index); return true; } catch (e) {} }
+    return false;
+  }
+
   // =====================================================================
   // スタイル注入
   // =====================================================================
@@ -104,10 +132,55 @@
       .ui-pop.heal { color:#7cff9b; font-size:18px; }
       .ui-pop.self { color:#ff6b6b; font-size:22px; }
 
+      /* スロット内アイコン（4号機 128px PNG） */
+      .ui-slot .ic { width:30px; height:30px; image-rendering:auto;
+        filter:drop-shadow(0 1px 1px rgba(0,0,0,.5)); pointer-events:none; }
+
+      /* ② インベントリ／クラフト画面 */
+      #ui-inv { position:fixed; inset:0; z-index:30; display:none; pointer-events:auto;
+        align-items:center; justify-content:center; background:rgba(8,14,26,.82);
+        backdrop-filter:blur(3px); }
+      #ui-inv.open { display:flex; }
+      .uiv-panel { width:min(720px,92vw); max-height:88vh; overflow:auto; color:#fff;
+        background:linear-gradient(180deg, rgba(28,38,58,.96), rgba(18,26,42,.96));
+        border:1px solid rgba(255,255,255,.14); border-radius:14px; padding:18px 20px;
+        box-shadow:0 18px 60px rgba(0,0,0,.5); }
+      .uiv-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+      .uiv-title { font-size:18px; font-weight:800; letter-spacing:1px; }
+      .uiv-x { pointer-events:auto; cursor:pointer; border:1px solid rgba(255,255,255,.25);
+        border-radius:8px; padding:4px 10px; font-size:13px; opacity:.85; }
+      .uiv-x:hover { opacity:1; background:rgba(255,255,255,.08); }
+      .uiv-sec { font-size:13px; opacity:.8; margin:14px 0 8px; border-bottom:1px solid rgba(255,255,255,.1); padding-bottom:4px; }
+      .uiv-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(74px,1fr)); gap:8px; }
+      .uiv-cell { position:relative; cursor:pointer; border:2px solid rgba(255,255,255,.16);
+        border-radius:10px; padding:8px 4px 6px; text-align:center; transition:border-color .1s, transform .1s, background .1s; }
+      .uiv-cell:hover { border-color:rgba(255,255,255,.5); background:rgba(255,255,255,.06); transform:translateY(-2px); }
+      .uiv-cell.active { border-color:#ffd54a; box-shadow:0 0 12px rgba(255,213,74,.5); }
+      .uiv-cell.empty { opacity:.4; }
+      .uiv-cell .ic { width:44px; height:44px; margin:0 auto 4px; display:block; }
+      .uiv-cell .sw { width:40px; height:40px; margin:0 auto 4px; border-radius:6px; border:1px solid rgba(0,0,0,.3); }
+      .uiv-cell .nm { font-size:11px; line-height:1.2; }
+      .uiv-cell .ct { position:absolute; right:5px; top:4px; font-size:12px; font-weight:bold; text-shadow:0 0 2px #000,0 0 2px #000; }
+      .uiv-craft { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:8px; }
+      .uiv-recipe { pointer-events:auto; cursor:pointer; text-align:left; color:#fff;
+        border:2px solid rgba(255,255,255,.16); border-radius:10px; padding:8px 10px;
+        background:rgba(0,0,0,.25); display:flex; align-items:center; gap:8px; transition:.1s; }
+      .uiv-recipe:hover:not(:disabled) { border-color:#9be86a; background:rgba(60,120,40,.3); }
+      .uiv-recipe:disabled { opacity:.4; cursor:not-allowed; }
+      .uiv-recipe .ic, .uiv-recipe .sw { width:32px; height:32px; border-radius:6px; flex:0 0 auto; }
+      .uiv-recipe .rt { font-size:12px; line-height:1.35; }
+      .uiv-recipe .rt b { font-size:13px; }
+      #ui-tip { position:fixed; z-index:32; pointer-events:none; display:none; max-width:220px;
+        background:rgba(0,0,0,.9); color:#fff; border:1px solid rgba(255,255,255,.2); border-radius:7px;
+        padding:6px 9px; font-size:12px; line-height:1.4; box-shadow:0 4px 16px rgba(0,0,0,.5); }
+      #ui-hint { position:fixed; right:14px; bottom:14px; z-index:16; color:#fff; font-size:12px;
+        opacity:.7; text-shadow:0 0 3px #000; pointer-events:none; }
+
       @media (max-width:640px) {
         #ui-radar { width:96px; height:96px; }
         .ui-slot { width:42px; height:42px; }
-        .ui-slot .sw { width:20px; height:20px; }
+        .ui-slot .sw, .ui-slot .ic { width:20px; height:20px; }
+        .uiv-panel { padding:14px; }
       }
     `;
     document.head.appendChild(s);
@@ -153,10 +226,19 @@
     const fxCanvas = el('canvas', '', document.body); fxCanvas.id = 'ui-fx-canvas';
     const fxLayer = el('div', '', document.body); fxLayer.id = 'ui-fx';
 
+    // ② インベントリ／クラフト画面（pointer-events を持つので body 直下）
+    const inv = el('div', '', document.body); inv.id = 'ui-inv';
+    const panel = el('div', '', inv); panel.className = 'uiv-panel';
+    inv.addEventListener('click', (e) => { if (e.target === inv) closeInv(); }); // 背景クリックで閉じる
+    const tip = el('div', '', document.body); tip.id = 'ui-tip';
+    const hint = el('div', 'display:none;', document.body); hint.id = 'ui-hint';
+    hint.textContent = 'E：インベントリ';
+
     dom = {
       root, breathRow, breathSegs, foodSegs, foodNum, hpSegs, hpNum,
       selName, hotbar, radar, rctx: radar.getContext('2d'), info, hurt, heal,
       fxCanvas, fxctx: fxCanvas.getContext('2d'), fxLayer,
+      inv, panel, tip, hint,
       hpSegEls: [], foodSegEls: [], breathSegEls: [], slotEls: [],
     };
     resizeFX();
@@ -210,8 +292,10 @@
       const slot = el('div', '', dom.hotbar); slot.className = 'ui-slot';
       const key = el('div', '', slot); key.className = 'key';
       const sw = el('div', '', slot); sw.className = 'sw';
+      const ic = el('img', 'display:none;', slot); ic.className = 'ic'; ic.alt = '';
+      ic.addEventListener('error', () => { ic.style.display = 'none'; sw.style.display = ''; }); // 取得失敗はスウォッチに退避
       const cnt = el('div', '', slot); cnt.className = 'cnt';
-      dom.slotEls.push({ slot, key, sw, cnt });
+      dom.slotEls.push({ slot, key, sw, ic, cnt });
     }
     for (let i = 0; i < dom.slotEls.length; i++) {
       const ui = dom.slotEls[i], h = hotbar[i];
@@ -219,12 +303,127 @@
       ui.slot.style.display = '';
       ui.slot.className = 'ui-slot' + (h.active ? ' active' : '');
       ui.key.textContent = (i + 1 <= 9) ? (i + 1) : '';
-      ui.sw.style.background = h.swatch || '#888';
+      const url = iconUrl(h);
+      if (url) { if (ui.ic.getAttribute('src') !== url) ui.ic.src = url; ui.ic.style.display = ''; ui.sw.style.display = 'none'; }
+      else { ui.ic.style.display = 'none'; ui.sw.style.display = ''; ui.sw.style.background = h.swatch || '#888'; }
       ui.cnt.textContent = h.count;
       ui.cnt.className = 'cnt' + (h.count > 0 ? '' : ' zero');
       ui.slot.title = h.name || '';
     }
   }
+
+  // =====================================================================
+  // ② インベントリ／クラフト画面（方針A：コア改修不要・クリック選択＋クラフト）
+  //   ・状態は state() から読む。選択/クラフトは VoxelGame.selectBlock/craft 経由。
+  //   ・Eキーでの開閉は「コア統合済み(state()有)」のときだけ有効化し、
+  //     コア内蔵インベントリとの二重オープンを避ける（dormant-safe）。
+  // =====================================================================
+  let invOpen = false, invSig = '';
+  function buildTip(html) {
+    dom.tip.innerHTML = html; dom.tip.style.display = 'block';
+  }
+  function moveTip(ev) {
+    if (dom.tip.style.display !== 'block') return;
+    const pad = 14, w = dom.tip.offsetWidth, h = dom.tip.offsetHeight;
+    let x = ev.clientX + pad, y = ev.clientY + pad;
+    if (x + w > innerWidth) x = ev.clientX - w - pad;
+    if (y + h > innerHeight) y = ev.clientY - h - pad;
+    dom.tip.style.left = Math.max(0, x) + 'px'; dom.tip.style.top = Math.max(0, y) + 'px';
+  }
+  function hideTip() { dom.tip.style.display = 'none'; }
+
+  // セル/レシピ要素を作る共通部品（アイコン or スウォッチ）
+  function fillIcon(holder, entry) {
+    const url = iconUrl(entry);
+    if (url) {
+      const img = el('img', '', holder); img.className = 'ic'; img.src = url; img.alt = '';
+      img.addEventListener('error', () => { img.replaceWith(swatchEl(entry)); });
+    } else holder.appendChild(swatchEl(entry));
+  }
+  function swatchEl(entry) {
+    const d = document.createElement('div'); d.className = 'sw';
+    d.style.background = (entry && entry.swatch) || '#888'; return d;
+  }
+
+  function renderInventory(st) {
+    // 差分が無ければ作り直さない（開いている間だけ更新）
+    const sig = JSON.stringify({
+      h: (st.hotbar || []).map(x => [x.block, x.count, x.active ? 1 : 0]),
+      it: (st.items || []).map(x => [x.key, x.count]),
+      r: (st.recipes || []).map(x => x.canCraft ? 1 : 0),
+    });
+    if (sig === invSig) return;
+    invSig = sig;
+    const p = dom.panel; p.innerHTML = '';
+
+    const head = el('div', '', p); head.className = 'uiv-head';
+    const title = el('div', '', head); title.className = 'uiv-title'; title.textContent = '🎒 インベントリ ／ クラフト';
+    const x = el('div', '', head); x.className = 'uiv-x'; x.textContent = '✕ 閉じる（E / Esc）';
+    x.addEventListener('click', closeInv);
+
+    // ブロック（クリックで選択）
+    el('div', '', p).className = 'uiv-sec';
+    p.lastChild.textContent = 'ブロック（クリックで選択）';
+    const grid = el('div', '', p); grid.className = 'uiv-grid';
+    (st.hotbar || []).forEach((h, i) => {
+      const cell = el('div', '', grid);
+      cell.className = 'uiv-cell' + (h.active ? ' active' : '') + (h.count > 0 ? '' : ' empty');
+      fillIcon(cell, h);
+      const nm = el('div', '', cell); nm.className = 'nm'; nm.textContent = h.name;
+      const ct = el('div', '', cell); ct.className = 'ct'; ct.textContent = h.count;
+      cell.addEventListener('mouseenter', () => buildTip(`<b>${h.name}</b><br>所持 ${clampN(h.count)}　/　数字キー ${i + 1 <= 9 ? i + 1 : '-'}<br><span style="opacity:.7">クリックで選択</span>`));
+      cell.addEventListener('mousemove', moveTip);
+      cell.addEventListener('mouseleave', hideTip);
+      cell.addEventListener('click', () => {
+        if (callSelect(h.block)) { window.playSFX && window.playSFX('place'); }
+        invSig = ''; // 即時に選択枠を反映
+      });
+    });
+
+    // アイテム（ドロップ品・表示のみ）
+    el('div', '', p).className = 'uiv-sec';
+    p.lastChild.textContent = 'アイテム（モブのドロップ品）';
+    const igrid = el('div', '', p); igrid.className = 'uiv-grid';
+    (st.items || []).forEach((it) => {
+      const cell = el('div', '', igrid);
+      cell.className = 'uiv-cell' + (it.count > 0 ? '' : ' empty');
+      cell.style.cursor = 'default';
+      fillIcon(cell, { name: it.name, icon: ('item_' + it.key) });
+      const nm = el('div', '', cell); nm.className = 'nm'; nm.textContent = it.name;
+      const ct = el('div', '', cell); ct.className = 'ct'; ct.textContent = it.count;
+      cell.addEventListener('mouseenter', () => buildTip(`<b>${it.name}</b><br>所持 ${clampN(it.count)}`));
+      cell.addEventListener('mousemove', moveTip);
+      cell.addEventListener('mouseleave', hideTip);
+    });
+
+    // クラフト（資源変換）
+    el('div', '', p).className = 'uiv-sec';
+    p.lastChild.textContent = 'クラフト（資源を変換・クリックで作成）';
+    const cgrid = el('div', '', p); cgrid.className = 'uiv-craft';
+    (st.recipes || []).forEach((r, i) => {
+      const btn = el('button', '', cgrid); btn.className = 'uiv-recipe'; btn.disabled = !r.canCraft;
+      fillIcon(btn, { name: r.outName, icon: r.outIcon });
+      const rt = el('div', '', btn); rt.className = 'rt';
+      rt.innerHTML = `<b>${r.outName} ×${r.n}</b><br><span style="opacity:.8">${r.inName} ×${r.cost} → 作る</span>`;
+      btn.addEventListener('mouseenter', () => buildTip(r.canCraft ? `<b>${r.outName}</b> を作成<br>${r.inName} ×${r.cost} を消費` : `素材不足：${r.inName} ×${r.cost} が必要`));
+      btn.addEventListener('mousemove', moveTip);
+      btn.addEventListener('mouseleave', hideTip);
+      btn.addEventListener('click', () => { if (!btn.disabled) { callCraft(i); invSig = ''; } });
+    });
+  }
+
+  function openInv() {
+    if (invOpen) return;
+    invOpen = true; invSig = '';
+    dom.inv.classList.add('open');
+    if (document.pointerLockElement) document.exitPointerLock(); // マウス操作のためロック解除
+  }
+  function closeInv() {
+    if (!invOpen) return;
+    invOpen = false; hideTip();
+    dom.inv.classList.remove('open');
+  }
+  function toggleInv() { invOpen ? closeInv() : openInv(); }
 
   // =====================================================================
   // レーダーミニマップ（北を上にしたシンプル版・プレイヤー中心）
@@ -486,6 +685,10 @@
     healT = Math.max(0, healT - dt * 1.6);
     dom.hurt.style.opacity = hurtT.toFixed(3);
     dom.heal.style.opacity = (healT * 0.9).toFixed(3);
+
+    // --- ② インベントリ（開いている間だけ内容を更新）＋ 操作ヒント ---
+    if (invOpen) renderInventory(st);
+    dom.hint.style.display = (coreIntegrated() && !invOpen) ? '' : 'none';
   }
 
   // =====================================================================
@@ -498,9 +701,26 @@
     hookDamage();
     exposeFXHooks(); // window.spawnDamagePopup / spawnHitEffect を公開
     requestAnimationFrame(tick);
-    // 後続②③④ 用のUI口（現状は枠だけ）
+
+    // UI操作口（1号機はEキー処理から window.UI.toggle('inventory') を呼ぶ＝委譲）
     window.UI = window.UI || {};
-    console.info('[ui] HUD＋FXレイヤー起動（3号機）。state()=HUD / spawnDamagePopup()=戦闘演出。');
+    window.UI.open = (which) => { window.UI._routed = true; if (!which || which === 'inventory') openInv(); };
+    window.UI.close = () => { closeInv(); };
+    window.UI.toggle = (which) => { window.UI._routed = true; if (!which || which === 'inventory') toggleInv(); };
+    window.UI.spawnDamagePopup = spawnDamagePopup;
+    window.UI.spawnHitEffect = spawnHitEffect;
+
+    // フォールバックのEキー（コアが委譲し始めたら _routed=true で自動停止＝二重起動回避）
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape' && invOpen) { closeInv(); return; }
+      if (e.code === 'KeyE') {
+        if (window.UI._routed) return;     // コアがEを委譲済み → ui.js側は触らない
+        if (!coreIntegrated()) return;     // 統合前はコア内蔵インベントリに任せる
+        toggleInv();
+      }
+    });
+
+    console.info('[ui] HUD＋FX＋インベントリ起動（3号機）。state()=HUD / spawnDamagePopup()=戦闘演出 / UI.toggle("inventory")。');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

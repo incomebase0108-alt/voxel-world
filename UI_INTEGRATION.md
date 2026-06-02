@@ -64,6 +64,28 @@ function updateHotbar(){ if (window.UI_TAKEOVER) return; /* …既存… */ }
 
 ---
 
+## ② インベントリ／クラフトの操作口（方針A・コア改修不要の範囲）
+
+`ui.js` が独自のインベントリ/クラフト画面（4号機アイコン込み）を描画します。読み取りは `state()`、
+**状態変更はコアの口経由のみ**（ui.js はコア変数を直接書きません）。以下を `window.VoxelGame` に追加してください。
+
+```js
+window.VoxelGame.selectBlock = (block) => { selBlock = block; updateHotbar(); };   // ブロック選択
+window.VoxelGame.craft       = (i)     => { craft(RECIPES[i]); };                   // i番目のレシピを実行
+```
+
+`state().recipes[]` に **`outIcon`**（例 `'block_planks'`）を足してもらえると、クラフト結果のアイコンが出ます
+（無ければ ui.js が日本語名→アイコンでフォールバックするので必須ではありません）。
+
+### Eキーの委譲（二重オープン回避）
+`UI_TAKEOVER` 時、コアの E は**自前の invEl を開かず** `window.UI.toggle('inventory')` を呼ぶだけにしてください。
+ui.js 側は「`window.UI.toggle` が一度でも呼ばれたら自前のフォールバックEを止める」ので二重に開きません。
+ポインタロックは ui.js が開く瞬間に `exitPointerLock()` します。閉じたあとの再ロックはコア側の既存導線（クリックで開始）でOK。
+
+> `state()` 実装後、ui.js は右下に「E：インベントリ」のヒントを自動表示します。
+
+---
+
 ## 戦闘演出の口（1号機の戦闘実装と接続）
 
 `ui.js` が **以下2つを定義・公開**します。1号機は命中時にこれを呼ぶだけ（演出の中身はUI側）。
