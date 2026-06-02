@@ -64,7 +64,7 @@
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
     <kbd>1</kbd>〜<kbd>9</kbd> ブロック選択　/　<kbd>E</kbd> インベントリ・クラフト　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断<br>
     壊して入手 → 置いて消費（所持0は置けない）　/　<kbd>左クリック</kbd>攻撃（連打でコンボ）　/　<kbd>C</kbd> 武器切替（素手/剣/斧/弓）　/　弓は左長押しで溜め<br>
-    <kbd>Q</kbd> 食べる　/　<kbd>R</kbd> 馬・船に乗る/降りる（船で水上を安全に渡れる）
+    <kbd>Q</kbd> 食べる　/　<kbd>R</kbd> 馬・船に乗る/降りる（船で水上を安全に渡れる）　/　<kbd>T</kbd> 住人と会話・取引
   </div>
   <div id="charsel"></div>
   <div class="start">クリックして開始</div>
@@ -1559,6 +1559,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyQ') eatFood(); // 食べる（肉→りんごの順に消費）
   if (e.code === 'KeyR') toggleRide(); // 近くの馬に乗る/降りる
   if (e.code === 'KeyC') cycleWeapon(); // 武器切替（素手→剣→斧→弓）
+  if (e.code === 'KeyT') talkToNPC();   // 近くの住人に話しかける/取引
   if (e.code === 'KeyE') { invOpen ? closeInventory() : openInventory(); } // インベントリ開閉
   if (e.code === 'Escape' && invOpen) closeInventory();
   if (e.code === 'Space') e.preventDefault();
@@ -2067,7 +2068,7 @@ function spawnMob(type, x, z, opts = {}) {
   obj.position.set(x, (typeof opts.y === 'number') ? opts.y : groundY(x, z), z);
   if (typeof opts.ry === 'number') obj.rotation.y = opts.ry;
   scene.add(obj);
-  let mixer = null, aIdle = null, aWalk = null, aAttack = null, aHeavy = null, aHit = null, aDie = null;
+  let mixer = null, aIdle = null, aWalk = null, aAttack = null, aHeavy = null, aHit = null, aDie = null, aTalk = null;
   if (tpl.animations.length) {
     mixer = new THREE.AnimationMixer(obj);
     const byName = {}; tpl.animations.forEach(c => byName[c.name] = c);
@@ -2077,9 +2078,10 @@ function spawnMob(type, x, z, opts = {}) {
     if (byName['heavy'])  aHeavy = mixer.clipAction(byName['heavy']);
     if (byName['hit'])  { aHit = mixer.clipAction(byName['hit']);  aHit.loop = THREE.LoopOnce; aHit.clampWhenFinished = true; } // 被弾(4号機)
     if (byName['die'])  { aDie = mixer.clipAction(byName['die']);  aDie.loop = THREE.LoopOnce; aDie.clampWhenFinished = true; } // 死亡(4号機)
+    if (byName['talk'] || byName['work']) aTalk = mixer.clipAction(byName['talk'] || byName['work']); // 会話/作業(4号機)
     aIdle.play();
   }
-  const mob = { def, obj, mixer, aIdle, aWalk, aAttack, aHeavy, aHit, aDie, cur: aIdle,
+  const mob = { def, obj, mixer, aIdle, aWalk, aAttack, aHeavy, aHit, aDie, aTalk, cur: aIdle,
     hostile: def.hostile, hp: (typeof opts.hp === 'number') ? opts.hp : (M.hp[type] || 5),
     state: opts.state || 'idle', timer: 1+Math.random()*3, vx:0, vz:0, atkCd:0, atkCnt:0,
     dying:false, dieTimer:0, hitStun:0, // 戦闘演出用（死亡・被弾硬直）
@@ -2112,7 +2114,8 @@ function setMobAnim(m, name) {
     : name === 'attack' ? (m.aAttack || m.aWalk || m.aIdle)
     : name === 'heavy' ? (m.aHeavy || m.aAttack || m.aIdle)
     : name === 'hit' ? m.aHit
-    : name === 'die' ? m.aDie : m.aIdle;
+    : name === 'die' ? m.aDie
+    : name === 'talk' ? (m.aTalk || m.aIdle) : m.aIdle;
   if (!target) return;
   if (name === 'hit' || name === 'die') { // 一発再生（先頭から）。idle等へは updateMobs が戻す
     target.reset().play();
@@ -2234,6 +2237,16 @@ function updateMobs(dt) {
       followFloor(m, dt);
       if (m.mixer) m.mixer.update(dt);
       continue;
+    }
+    // 取引中の住人：その場に立ってプレイヤーを向き会話。離れたら解除
+    if (m === currentTradeNpc) {
+      if (dist > 5) currentTradeNpc = null;
+      else {
+        m.obj.rotation.y = Math.atan2(-(player.pos.x - m.obj.position.x), -(player.pos.z - m.obj.position.z));
+        setMobAnim(m, 'talk'); followFloor(m, dt);
+        if (m.mixer) m.mixer.update(dt);
+        continue;
+      }
     }
 
     const role = m.def.role;
@@ -2558,6 +2571,70 @@ function craftEquip(id) {
   return true;
 }
 window.VoxelGame.craftEquip = (id) => craftEquip(id);
+
+// ===================================================================
+// NPC会話/取引（4号機 talkクリップ＋3号機 取引UI に接続）
+//   give/get は itemCounts キー（coin/apple/meat/egg/coal/iron/gold）。equip は装備を付与
+// ===================================================================
+const TRADE_TABLE = {
+  merchant:   [ {give:{coin:3},get:{apple:2}}, {give:{coin:4},get:{meat:2}}, {give:{apple:3},get:{coin:5}}, {give:{egg:4},get:{coin:6}} ],
+  blacksmith: [ {give:{iron:2},equip:'sword'}, {give:{iron:2},equip:'pickaxe'}, {give:{iron:3},equip:'axe'}, {give:{iron:3},equip:'armor'}, {give:{gold:4},equip:'shield'} ],
+  farmer:     [ {give:{coin:2},get:{apple:3}}, {give:{apple:2},get:{coin:3}}, {give:{coin:3},get:{egg:2}} ],
+  baker:      [ {give:{coin:3},get:{meat:2}}, {give:{coin:2},get:{apple:2}} ],
+  default:    [ {give:{coin:2},get:{apple:1}}, {give:{apple:2},get:{coin:3}} ],
+};
+const NPC_GREETING = { merchant:'いい品揃えだよ、見ていきな', blacksmith:'鉄はあるか？武器を打つぜ', farmer:'作物と交換しないか', baker:'焼きたてだよ！', guard:'通行人か、気をつけてな', elder:'よく来たな、若いの', child:'わー、ぼうけんしゃだ！', woman:'こんにちは', villager:'やあ' };
+const JOB_LABEL = { merchant:'商人', blacksmith:'鍛冶屋', farmer:'農民', baker:'パン屋', guard:'衛兵', elder:'長老', child:'子供', woman:'住人', villager:'村人' };
+let currentTradeNpc = null;
+function equipDisplayName(kind) { return (WEAPONS[kind] && WEAPONS[kind].name) || (kind === 'armor' ? '防具' : kind === 'shield' ? '盾' : kind); }
+function buildTradeSession(m) {
+  const job = m.def.type;
+  const table = TRADE_TABLE[job] || TRADE_TABLE.default;
+  const offers = table.map((o, i) => {
+    const gk = Object.keys(o.give)[0], gn = o.give[gk];
+    const getKey = o.equip || Object.keys(o.get)[0];
+    return {
+      id: i,
+      giveName: ITEM_NAMES[gk] || gk, giveIcon: 'item_' + gk, giveCount: gn,
+      getName: o.equip ? equipDisplayName(o.equip) : (ITEM_NAMES[getKey] || getKey),
+      getIcon: 'item_' + getKey, getCount: o.equip ? 1 : o.get[getKey],
+      canAfford: (itemCounts[gk] || 0) >= gn,
+    };
+  });
+  return { npc: JOB_LABEL[job] || '住人', job, greeting: NPC_GREETING[job] || '…', offers };
+}
+// 取引実行（3号機UIのボタンから）。在庫増減→更新後セッションを返して再描画させる
+window.VoxelGame.trade = (offerId) => {
+  if (!currentTradeNpc) return null;
+  const table = TRADE_TABLE[currentTradeNpc.def.type] || TRADE_TABLE.default;
+  const o = table[offerId];
+  if (o) {
+    const gk = Object.keys(o.give)[0], gn = o.give[gk];
+    if ((itemCounts[gk] || 0) >= gn) { // 在庫足りる時だけ成立
+      itemCounts[gk] -= gn;
+      if (o.equip) grantEquip(o.equip);
+      else { const k = Object.keys(o.get)[0]; itemCounts[k] = (itemCounts[k] || 0) + o.get[k]; }
+      window.playSFX && window.playSFX('trade');
+      updateHotbar(); scheduleSave();
+    }
+  }
+  return buildTradeSession(currentTradeNpc);
+};
+// 近くの住人に話しかける（Tキー）
+function talkToNPC() {
+  let best = null, bd = 3.5;
+  for (const m of mobs) {
+    if (!m.home || m.dying) continue; // 住人(home付き)のみ
+    const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
+    if (d < bd) { bd = d; best = m; }
+  }
+  if (!best) { if (typeof toast === 'function') toast('近くに住人がいません'); return; }
+  currentTradeNpc = best;
+  best.obj.rotation.y = Math.atan2(-(player.pos.x - best.obj.position.x), -(player.pos.z - best.obj.position.z)); // プレイヤーを向く
+  setMobAnim(best, 'talk');
+  if (window.UI && typeof window.UI.openTrade === 'function') window.UI.openTrade(buildTradeSession(best));
+  else if (typeof toast === 'function') toast(`${JOB_LABEL[best.def.type]||'住人'}「${NPC_GREETING[best.def.type]||'…'}」`); // UI未配線でも挨拶
+}
 function triggerHitstop(t) { hitstop = Math.max(hitstop, t); }
 // 連携口：ヒット通知（UIのダメージ数字/エフェクト用）。UI側の例外で本体を止めない
 function emitCombatHit(x, y, z, amount, isCrit, weapon, targetType, killed, comboIndex) {
