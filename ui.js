@@ -39,7 +39,7 @@
   // state() entry.icon があれば最優先。無ければ日本語名→アイコン名でフォールバック。
   const NAME2ICON = {
     '草':'block_grass', '土':'block_dirt', '石':'block_stone', '原木':'block_wood',
-    '葉':'block_leaves', '砂':'block_sand', '雪':null /* 未整備=スウォッチ */,
+    '葉':'block_leaves', '砂':'block_sand', '雪':'block_snow',
     '木材':'block_planks', '石レンガ':'block_stonebrick', 'ガラス':'block_glass',
     '肉':'item_meat', '卵':'item_egg', 'コイン':'item_coin', 'りんご':'item_apple',
   };
