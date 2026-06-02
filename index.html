@@ -1360,7 +1360,8 @@ function buildDiag() {
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗         : ${ridingMob ? '馬に騎乗中' : '徒歩'}`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
-    `モブ         : ${mobs.length}体（敵${mobs.filter(m=>m.hostile).length} / 村人${mobs.filter(m=>m.def.type==='villager').length} / テンプレ${Object.keys(mobTemplates).length}種 / 矢${arrows.length}）`,
+    `モブ         : ${mobs.length}/${MOB_CAP}体（敵${mobs.filter(m=>m.hostile).length}/${HOSTILE_CAP} 村人${mobs.filter(m=>m.def.type==='villager').length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
+    `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
     `構造物       : 村${villages.size} / スポナー${spawners.size}（発見済み）`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
   ].join('\n');
@@ -1489,8 +1490,11 @@ MOB_DEFS.forEach(def => gltfLoader.load(def.file,
 
 const mobs = [];
 const MOB_HP = { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30 }; // モブの体力
-const MOB_CAP = 10;                  // 同時存在の上限（負荷管理）
-const MOB_SPAWN_MIN = 18, MOB_SPAWN_MAX = 40; // プレイヤーから湧く距離
+const MOB_CAP = 12;                  // 同時存在の総上限（負荷管理）
+const HOSTILE_CAP = 7;               // ④ 敵性モブの同時上限
+const NEUTRAL_CAP = 8;               // ④ 中立モブの同時上限
+const MOB_SPAWN_MIN = 18, MOB_SPAWN_MAX = 40; // 地上でプレイヤーから湧く距離
+const CAVE_SPAWN_MIN = 6, CAVE_SPAWN_MAX = 18; // 地下で湧く距離（近め）
 const MOB_DESPAWN = 75;              // この距離を超えたら消す
 let mobSpawnTimer = 2;
 
@@ -1681,40 +1685,94 @@ function setMobAnim(m, name) {
     m.cur = target;
   }
 }
+// ===================================================================
+// ④ 昼夜連動の敵スポーン体系
+//   ・地上：夜のみ敵性が湧き、朝になると陽光で消滅（プレイヤーから離れた個体）
+//   ・地下（洞窟・ダンジョン）：昼夜問わず常時湧き
+//   ・カテゴリ別上限（敵性/中立）＋総上限でパフォーマンス管理
+// ===================================================================
+function sunElev() { return Math.sin(dayTime*Math.PI*2 - Math.PI/2); } // -1(深夜)..1(正午)
+function isNight() { return sunElev() < -0.05; }
+function isDay()   { return sunElev() > 0.15; }
+function playerUnderground() {
+  const s = heightAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
+  return player.pos.y < s - 2; // 頭が地表より十分下＝洞窟内
+}
+function isWaterColumnSurface(x, z) { return heightAt(Math.floor(x), Math.floor(z)) <= WATER_LEVEL; }
+// 敵性モブを近くに湧かせる（cave=地下の足場へ / 地上はリング状）
+function spawnHostileNear(cave) {
+  const types = ['zombie', 'slime', 'skeleton'];
+  if (!cave && Math.random() < 0.12) types.push('golem'); // 地上の夜はまれにボス
+  const type = types[Math.floor(Math.random()*types.length)];
+  if (!mobTemplates[type]) return;
+  const ang = Math.random()*Math.PI*2;
+  const dist = cave ? CAVE_SPAWN_MIN + Math.random()*(CAVE_SPAWN_MAX-CAVE_SPAWN_MIN)
+                    : MOB_SPAWN_MIN + Math.random()*(MOB_SPAWN_MAX-MOB_SPAWN_MIN);
+  const x = player.pos.x + Math.cos(ang)*dist, z = player.pos.z + Math.sin(ang)*dist;
+  if (cave) {
+    const fy = floorYNear(x, z, player.pos.y);
+    const surf = heightAt(Math.floor(x), Math.floor(z));
+    if (fy >= surf - 1) return;                                   // 地下でなければ却下
+    if (getBlock(Math.floor(x), fy, Math.floor(z)) === B.water) return;
+    spawnMob(type, x, z, { y: fy });
+  } else {
+    if (isWaterColumnSurface(x, z)) return;                       // 水上は不可
+    spawnMob(type, x, z);
+  }
+}
+function spawnNeutralNear() {
+  const pool = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && mobTemplates[d.type]);
+  if (!pool.length) return;
+  const def = pool[Math.floor(Math.random()*pool.length)];
+  const ang = Math.random()*Math.PI*2, dist = MOB_SPAWN_MIN + Math.random()*(MOB_SPAWN_MAX-MOB_SPAWN_MIN);
+  const x = player.pos.x + Math.cos(ang)*dist, z = player.pos.z + Math.sin(ang)*dist;
+  if (isWaterColumnSurface(x, z)) return;
+  spawnMob(def.type, x, z);
+}
+function spawnLogic(dt) {
+  mobSpawnTimer -= dt;
+  if (mobSpawnTimer > 0) return;
+  mobSpawnTimer = 2 + Math.random()*2;
+  if (!Object.keys(mobTemplates).length || mobs.length >= MOB_CAP) return;
+  let hostileN = 0, neutralN = 0, villagerN = 0;
+  for (const m of mobs) { if (m.hostile) hostileN++; else { neutralN++; if (m.def.type === 'villager') villagerN++; } }
+
+  if (playerUnderground()) {                       // 地下＝常時、敵性を近接湧き
+    if (hostileN < HOSTILE_CAP) spawnHostileNear(true);
+    return;
+  }
+  if (isNight() && hostileN < HOSTILE_CAP && Math.random() < 0.8) { // 地上・夜＝敵性湧き
+    spawnHostileNear(false);
+    return;
+  }
+  // 地上・昼（や夜の余り）＝村人優先 → 中立
+  const vil = nearestVillage(player.pos.x, player.pos.z, 44);
+  if (vil && villagerN < 3 && mobTemplates['villager']) {
+    const ang = Math.random()*Math.PI*2, rr = 2 + Math.random()*6;
+    const x = vil.x + Math.cos(ang)*rr, z = vil.z + Math.sin(ang)*rr;
+    if (!isWaterColumnSurface(x, z)) spawnMob('villager', x, z);
+    return;
+  }
+  if (neutralN < NEUTRAL_CAP) spawnNeutralNear();
+}
 function updateMobs(dt) {
   // セーブされたモブの復元（テンプレ読込が済んだら1回だけ。完了まで自動湧きは待たせる）
   if (!mobsRestored) {
     if (Object.keys(mobTemplates).length) restorePendingMobs();
     return;
   }
-  // 湧き（上限まで、夜は敵性が増える）
-  mobSpawnTimer -= dt;
-  if (mobSpawnTimer <= 0) {
-    mobSpawnTimer = 2 + Math.random()*2;
-    if (mobs.length < MOB_CAP && Object.keys(mobTemplates).length) {
-      // ② 村が近ければ村人を優先補充（村に住人がいる感じを出す）
-      const vil = nearestVillage(player.pos.x, player.pos.z, 44);
-      const villagerCount = mobs.reduce((a, m) => a + (m.def.type === 'villager' ? 1 : 0), 0);
-      if (vil && villagerCount < 3 && mobTemplates['villager']) {
-        const ang = Math.random()*Math.PI*2, rr = 2 + Math.random()*6;
-        spawnMob('villager', vil.x + Math.cos(ang)*rr, vil.z + Math.sin(ang)*rr);
-      } else {
-        const night = Math.sin(dayTime*Math.PI*2 - Math.PI/2) < 0;
-        const pool = MOB_DEFS.filter(d => mobTemplates[d.type] && (!d.hostile || night || Math.random() < 0.25));
-        const def = pool[Math.floor(Math.random()*pool.length)];
-        if (def) {
-          const ang = Math.random()*Math.PI*2, dist = MOB_SPAWN_MIN + Math.random()*(MOB_SPAWN_MAX-MOB_SPAWN_MIN);
-          spawnMob(def.type, player.pos.x + Math.cos(ang)*dist, player.pos.z + Math.sin(ang)*dist);
-        }
-      }
-    }
-  }
+  spawnLogic(dt);     // ④ 昼夜・地下を考慮した湧き
   updateSpawners(dt); // ② ダンジョンのスポナー稼働
   for (let i = mobs.length-1; i >= 0; i--) {
     const m = mobs[i];
     const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z;
     const dist = Math.hypot(dx, dz) || 0.0001;
     if (dist > MOB_DESPAWN) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
+    // ④ 朝＝地上の敵性は陽光で消滅（地下の敵は生存＝洞窟は常時湧き）。プレイヤーから離れた個体のみ
+    if (m.hostile && isDay() && dist > 18) {
+      const surf = heightAt(Math.floor(m.obj.position.x), Math.floor(m.obj.position.z));
+      if (m.obj.position.y >= surf - 1) { scene.remove(m.obj); mobs.splice(i,1); continue; }
+    }
     if (m.ridden) continue; // 騎乗中の馬はプレイヤー側で制御するためAIスキップ
 
     const role = m.def.role;
