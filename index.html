@@ -310,10 +310,10 @@ const villages = new Map(); // "gx,gz" -> { x, z, gh }（村の中心）
 const spawners = new Map(); // "wx,wy,wz" -> { x, y, z, cd }（ダンジョンの敵スポナー）
 // ② 構造物プロップ（4号機の struct_*.glb を該当位置に表示する装飾。決定論的に登録）
 //   kind: 'chest'|'spawner'|'torch'|'altar'|'well'。obj/mixer は近接時に生成・遠方で破棄
-const props = new Map(); // "wx,wy,wz" -> { x, y, z, kind, obj, mixer, actIdle, actOpen, opened }
-function addProp(x, y, z, kind) {
+const props = new Map(); // "wx,wy,wz" -> { x, y, z, kind, ry, obj, mixer, actIdle, actOpen, opened }
+function addProp(x, y, z, kind, ry = 0) {
   const k = `${x},${y},${z}`;
-  if (!props.has(k)) props.set(k, { x, y, z, kind, obj:null, mixer:null, actIdle:null, actOpen:null, opened:false });
+  if (!props.has(k)) props.set(k, { x, y, z, kind, ry, obj:null, mixer:null, actIdle:null, actOpen:null, opened:false });
 }
 
 function generateChunk(cx, cz) {
@@ -378,6 +378,8 @@ function generateChunk(cx, cz) {
 // ===================================================================
 const VILLAGE_CELL = 56; // 村の発生間隔（ブロック）
 const DUNGEON_CELL = 64; // ダンジョンの発生間隔（ブロック）
+const FORT_CELL = 140;   // 砦の発生間隔（まれ・大型）
+const SHIP_CELL = 96;    // 船/難破船の発生間隔
 function buildStructures(cx, cz, stamp) {
   const margin = 9; // 最大構造物の半径ぶん広げて候補セルを走査
   const minWX = cx*CHUNK - margin, maxWX = cx*CHUNK + CHUNK + margin;
@@ -402,6 +404,26 @@ function buildStructures(cx, cz, stamp) {
       const ox = gx*DUNGEON_CELL + 10 + Math.floor(hash2(gx+7, gz+1) * (DUNGEON_CELL-20));
       const oz = gz*DUNGEON_CELL + 10 + Math.floor(hash2(gx+4, gz+8) * (DUNGEON_CELL-20));
       buildDungeon(ox, oz, sw);
+    }
+  // --- 砦/城塞（平地・丘の攻略拠点。まれ） ---
+  for (let gx = Math.floor(minWX/FORT_CELL); gx <= Math.floor(maxWX/FORT_CELL); gx++)
+    for (let gz = Math.floor(minWZ/FORT_CELL); gz <= Math.floor(maxWZ/FORT_CELL); gz++) {
+      if (hash2(gx*53+3, gz*53+17) > 0.5) continue; // 約半数のセル候補
+      const ox = gx*FORT_CELL + 12 + Math.floor(hash2(gx+11, gz+6) * (FORT_CELL-24));
+      const oz = gz*FORT_CELL + 12 + Math.floor(hash2(gx+8, gz+13) * (FORT_CELL-24));
+      const bi = biomeAt(ox, oz);
+      if (bi !== 'plains' && bi !== 'snow') continue; // 平地/雪原（丘含む）
+      if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue;
+      buildFort(ox, oz, sw);
+    }
+  // --- 船/難破船（海・水際） ---
+  for (let gx = Math.floor(minWX/SHIP_CELL); gx <= Math.floor(maxWX/SHIP_CELL); gx++)
+    for (let gz = Math.floor(minWZ/SHIP_CELL); gz <= Math.floor(maxWZ/SHIP_CELL); gz++) {
+      if (hash2(gx*71+9, gz*71+23) > 0.45) continue;
+      const ox = gx*SHIP_CELL + 8 + Math.floor(hash2(gx+3, gz+19) * (SHIP_CELL-16));
+      const oz = gz*SHIP_CELL + 8 + Math.floor(hash2(gx+14, gz+2) * (SHIP_CELL-16));
+      if (heightAt(ox, oz) > WATER_LEVEL - 1) continue; // 水深のある海のみ
+      buildShipSpot(ox, oz, gx, gz, sw);
     }
 }
 // 村：中心の周りに数軒の家を配置し、村人スポーン地点として登録
@@ -456,6 +478,45 @@ function buildDungeon(ox, oz, sw) {
   addProp(ox+2, fy+1, oz+2, 'torch');
   addProp(ox-2, fy+1, oz,   'torch');
   addProp(ox+2, fy+1, oz,   'torch');
+}
+// 砦/城塞：石レンガの城壁(2段)で囲まれた攻略拠点。四隅に塔・南に門のGLB、中庭にスポナー＋宝箱
+function buildFort(ox, oz, sw) {
+  const base = heightAt(ox, oz);
+  if (base < 1 || base > HEIGHT - 8) return;
+  const R = 5, top = base + 2; // 城壁は base+1..base+2 の2段
+  for (let dx = -R; dx <= R; dx++) for (let dz = -R; dz <= R; dz++) {
+    const edge = Math.abs(dx) === R || Math.abs(dz) === R;
+    if (!edge) { for (let yy = base+1; yy <= base+3; yy++) sw(ox+dx, yy, oz+dz, B.air); continue; } // 中庭は空ける
+    // 南辺(dz=-R)の中央3マスは門の開口
+    if (dz === -R && Math.abs(dx) <= 1) continue;
+    for (let yy = base+1; yy <= top; yy++) sw(ox+dx, yy, oz+dz, B.stonebrick);
+  }
+  // 四隅の塔(GLB)＋旗、南門(GLB)
+  for (const [sx, sz] of [[-R,-R],[R,-R],[-R,R],[R,R]]) {
+    addProp(ox+sx, base+1, oz+sz, 'fort_tower');
+    addProp(ox+sx, base+4, oz+sz, 'fort_flag');
+  }
+  addProp(ox, base+1, oz-R, 'fort_gate', Math.PI); // 南向き
+  // 中庭の攻略要素：スポナー＋宝箱＋松明（地上拠点なので報酬は良い）
+  sw(ox, base+1, oz, B.spawner); spawners.set(`${ox},${base+1},${oz}`, { x: ox, y: base+1, z: oz, cd: 0 });
+  sw(ox+2, base+1, oz+2, B.chest);
+  addProp(ox, base+1, oz, 'spawner');
+  addProp(ox+2, base+1, oz+2, 'chest');
+  addProp(ox-2, base+1, oz-2, 'torch');
+  addProp(ox+2, base+1, oz-2, 'torch');
+}
+// 船/難破船：海に難破船(探索スポット＝宝箱)を配置。たまに小舟/帆船を浮かべる（将来の乗船用）
+function buildShipSpot(ox, oz, gx, gz, sw) {
+  const r = hash2(gx*5+1, gz*5+2);
+  if (r < 0.6) { // 難破船＋宝箱（探索報酬）
+    addProp(ox, WATER_LEVEL, oz, 'ship_wreck', hash2(gx,gz) * Math.PI * 2);
+    sw(ox, WATER_LEVEL, oz, B.chest);          // 中の宝箱（水面付近・開封可）
+    addProp(ox, WATER_LEVEL, oz, 'chest');
+  } else if (r < 0.82) {
+    addProp(ox, WATER_LEVEL, oz, 'ship_sailboat', hash2(gx+3,gz+3) * Math.PI * 2); // 帆船（浮遊・装飾／将来乗船）
+  } else {
+    addProp(ox, WATER_LEVEL, oz, 'ship_rowboat', hash2(gx+7,gz+7) * Math.PI * 2);  // 小舟
+  }
 }
 
 function getChunkData(cx, cz) {
@@ -2238,6 +2299,11 @@ const structTemplates = {}; // kind -> { scene, animations }
 STRUCT_DEFS.forEach(k => gltfLoader.load(`models/struct_${k}.glb`,
   g => { structTemplates[k] = { scene: g.scene, animations: g.animations || [] }; },
   undefined, () => {}));
+// 砦・船のプロップGLB（4号機）。kind に同名で登録（fort_tower/ship_wreck 等）。読込失敗は無視
+['fort_tower','fort_gate','fort_flag','fort_wall','fort_battlement','ship_rowboat','ship_sailboat','ship_wreck']
+  .forEach(k => gltfLoader.load(`models/${k}.glb`,
+    g => { structTemplates[k] = { scene: g.scene, animations: g.animations || [] }; },
+    undefined, () => {}));
 const PROP_VIEW = 34;            // この距離内のプロップだけ GLB を生成（負荷管理）
 const PROP_SCAN_INTERVAL = 0.25; // 全プロップの距離スキャンの間隔（秒）。毎フレーム全件走査しない
 const activeProps = [];          // 現在GLB表示中のプロップ（mixer更新を毎フレーム回す対象）
@@ -2263,6 +2329,7 @@ function scanProps() {
       if (!tpl) continue; // テンプレ未読込
       const obj = tpl.scene.clone(true);
       obj.position.set(p.x + 0.5, p.y, p.z + 0.5);
+      if (p.ry) obj.rotation.y = p.ry;
       scene.add(obj);
       p.obj = obj;
       if (tpl.animations.length) {
