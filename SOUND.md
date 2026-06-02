@@ -48,7 +48,12 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | `day` | 明るめ | 104 | 既定 |
 | `night` | 静か | 76 | |
 | `combat` | 疾走 | 148 | キックドラムあり |
-| `water` | 浮遊 | 66 | |
+| `water` | 浮遊（水中だと分かる程度に） | 72 | |
+
+各シーンは `level`（音量バランス）を持ち、water は静かめ。陸地に出れば day/night のはっきりしたBGMに切り替わります。
+
+### 診断
+コンソールで `window.getSoundDiag()` を実行すると `{audioContext, bgmOn, bgmScene, bgmBusGain, sfxBusGain, masterGain, muted, vol, musicSceneCalledByCore}` が返ります。「BGMが聞こえない」時はまず `bgmScene` を確認（`water` なら水中BGMが鳴っているだけ）。
 
 各シーンは「持続pad＋確率メロディ（combatはドラム）」のレイヤー構成。
 

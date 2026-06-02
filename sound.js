@@ -170,11 +170,12 @@
   //   ・最初のユーザー操作で 'day' を自動開始（startMusic/stopMusic で明示制御も可）
   //   ・素材は合成音。後で音楽ファイル(loop)再生に差し替え可能
   const XFADE = 1.8; // シーン間クロスフェード秒
+  // level = シーン間の音量バランス（0..1.2程度）。water は静かだが「水中だと分かる」程度に。
   const SCENES = {
-    day:    { tempo: 104, scale: [220.00, 246.94, 277.18, 329.63, 369.99], pad: [110.00, 164.81, 220.00], wave: 'triangle', density: 0.55, drums: false },
-    night:  { tempo: 76,  scale: [164.81, 196.00, 220.00, 261.63, 293.66], pad: [82.41, 123.47, 164.81],  wave: 'sine',     density: 0.36, drums: false },
-    combat: { tempo: 148, scale: [146.83, 174.61, 196.00, 220.00, 261.63], pad: [73.42, 110.00, 146.83],  wave: 'sawtooth', density: 0.85, drums: true  },
-    water:  { tempo: 66,  scale: [293.66, 329.63, 392.00, 440.00, 523.25], pad: [98.00, 146.83, 196.00],  wave: 'sine',     density: 0.28, drums: false },
+    day:    { tempo: 104, scale: [220.00, 246.94, 277.18, 329.63, 369.99], pad: [110.00, 164.81, 220.00], wave: 'triangle', density: 0.55, drums: false, level: 1.0 },
+    night:  { tempo: 76,  scale: [164.81, 196.00, 220.00, 261.63, 293.66], pad: [123.47, 164.81, 220.00], wave: 'sine',     density: 0.42, drums: false, level: 0.9 },
+    combat: { tempo: 148, scale: [146.83, 174.61, 196.00, 220.00, 261.63], pad: [110.00, 146.83, 220.00], wave: 'sawtooth', density: 0.85, drums: true,  level: 1.0 },
+    water:  { tempo: 72,  scale: [293.66, 349.23, 392.00, 440.00, 523.25], pad: [196.00, 293.66, 392.00], wave: 'sine',     density: 0.55, drums: false, level: 0.9 },
   };
   let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false;
   const sceneNodes = {}; // name -> { gain, pad:[{o}] }
@@ -247,7 +248,7 @@
     const s = SCENES[scene] ? scene : (bgmScene || 'day');
     if (!bgmOn) {
       bgmOn = true; nextNoteT = c.currentTime + 0.1; beat = 0;
-      bgmScene = s; startPad(s); fadeSceneGain(s, 1);
+      bgmScene = s; startPad(s); fadeSceneGain(s, SCENES[s].level || 1);
       scheduler();
       try { console.info('[sound] BGM開始 scene=' + s + ' / bgmBus=' + (bgmBus ? bgmBus.gain.value.toFixed(2) : '?') + ' / ctx=' + (ctx ? ctx.state : '?')); } catch (e) {}
     } else {
@@ -262,7 +263,7 @@
     if (!bgmOn) { startMusic(name); return; }
     if (name === bgmScene) return;
     const prev = bgmScene; bgmScene = name;
-    startPad(name); fadeSceneGain(name, 1);
+    startPad(name); fadeSceneGain(name, SCENES[name].level || 1);
     if (prev && sceneNodes[prev]) {
       fadeSceneGain(prev, 0);
       setTimeout(() => stopPad(prev), (XFADE + 0.2) * 1000);
