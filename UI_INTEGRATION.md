@@ -7,6 +7,62 @@
 
 ---
 
+# ★ 1号機 最短配線（これだけ・コピペ可／所要約2分）
+
+> 下の **A〜C** を入れれば *新HUD・ダメージFX・インベントリ・設定・スロット・スマホ操作* が一斉点灯します。
+> 変数名は現行 index.html（`P.maxHp` 等）に合わせ済み。既存関数 `attackMob/breakBlock/placeBlock` を流用。
+
+### A. スクリプト追加（`sound.js` の直後・1行）
+```html
+<script src="ui.js"></script>
+```
+
+### B. `window.VoxelGame = { … };`（現行 L634 付近）の **直後** にこのブロックを貼る
+```js
+Object.assign(window.VoxelGame, {
+  state: () => ({
+    hp, maxHp: P.maxHp, hunger, maxHunger: P.maxHunger, breath, maxBreath: P.breathMax,
+    inWater: breath < P.breathMax - 0.05, selBlock,
+    hotbar: HOTBAR.map(b => ({ block:b, name:NAMES[b], swatch:SWATCH[b], count:counts[b]||0, active:b===selBlock })),
+    items:  ITEM_DEFS.map(k => ({ key:k, name:ITEM_NAMES[k]||k, count:itemCounts[k]||0 })),
+    recipes: RECIPES.map(r => ({ outName:NAMES[r.out], n:r.n, inName:NAMES[r.in], cost:r.cost, canCraft:(counts[r.in]||0)>=r.cost })),
+    time: { hh:Math.floor(((dayTime+0.5)%1)*24), mm:Math.floor((((dayTime+0.5)%1)*24%1)*60), phase:isNight()?'夜':isDay()?'昼':'薄明' },
+    weather, biome: biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z)),
+    riding: !!ridingMob, thirdPerson,
+    pos: { x:player.pos.x, y:player.pos.y, z:player.pos.z }, yaw: player.yaw,
+    mobs: mobs.map(m => ({ x:m.obj.position.x, z:m.obj.position.z, hostile:!!m.hostile, type:m.def.type })),
+  }),
+  project: (x,y,z) => { const v = new THREE.Vector3(x,y,z).project(camera);
+    return { x:(v.x*0.5+0.5)*innerWidth, y:(-v.y*0.5+0.5)*innerHeight, visible:v.z < 1 }; },
+  selectBlock: (b) => { selBlock = b; updateHotbar(); },
+  craft: (i) => { craft(RECIPES[i]); },
+  input: {
+    look: (dx, dy) => { player.yaw -= dx*0.0045; player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch - dy*0.0045)); },
+    primary:   (down) => { if (down) { if (!attackMob()) breakBlock(); } },
+    secondary: (down) => { if (down) placeBlock(); },
+  },
+});
+```
+そして戦闘の命中処理で（クリティカル判定があれば `crit:true`）:
+```js
+window.spawnDamagePopup && window.spawnDamagePopup(mob.obj.position.x, mob.obj.position.y+1, mob.obj.position.z, dmg, { crit });
+```
+
+### C. inline HUD を `UI_TAKEOVER` でスキップ（既存の各所に1行ずつ）
+| 場所（現行行） | 変更 |
+|---|---|
+| `function updateHotbar() {`（L1372） | 直後に `if (window.UI_TAKEOVER) return;` |
+| HUD更新（L2485-2490 の `hpEl/hungerEl/hurtEl/breathEl` 反映） | 全体を `if (!window.UI_TAKEOVER) { …4行… }` で囲う |
+| Eキー（L1357 `if (e.code === 'KeyE') {…}`） | `if (e.code==='KeyE'){ if(window.UI_TAKEOVER&&window.UI){window.UI.toggle('inventory');} else { invOpen?closeInventory():openInventory(); } }` |
+| マウス感度（L1326 `const s = 0.0023;`） | `const s = 0.0023 * ((window.UI_SETTINGS&&window.UI_SETTINGS.sensitivity)||1);` |
+
+任意：Escでメニュー → keydown に `if (e.code==='Escape' && window.UI_TAKEOVER && window.UI) window.UI.toggle('menu');`
+
+> **据え置きでOK**（ui.js は触りません）: 診断H・宝箱トースト・セーブ表示・照準・タイトル色選択。
+> A だけ先に入れても無害（ui.js は state() 不在の間 休止）。**B で点灯、C で二重表示を解消**、の順で安全に進められます。
+
+---
+
 ## 1号機にお願いしたい3点（いずれも index.html 側・各1〜数行）
 
 ### (1) スクリプトの読み込み（1行）
