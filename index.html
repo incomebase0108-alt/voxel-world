@@ -63,7 +63,8 @@
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動　/　<kbd>Space</kbd> ジャンプ　/　<kbd>Shift</kbd> ダッシュ<br>
     マウス 視点　/　<kbd>左クリック</kbd> ブロックを壊す　/　<kbd>右クリック</kbd> 置く<br>
     <kbd>1</kbd>〜<kbd>9</kbd> ブロック選択　/　<kbd>E</kbd> インベントリ・クラフト　/　<kbd>F</kbd> 一人称⇄三人称　/　<kbd>G</kbd> 天候　/　<kbd>J</kbd> 自動天候　/　<kbd>H</kbd> 診断<br>
-    壊して入手 → 置いて消費（所持0は置けない）　/　左クリックで前方のモブを攻撃　/　<kbd>Q</kbd> 食べる　/　<kbd>R</kbd> 馬に乗る/降りる
+    壊して入手 → 置いて消費（所持0は置けない）　/　<kbd>左クリック</kbd>攻撃（連打でコンボ）　/　<kbd>C</kbd> 武器切替（素手/剣/斧/弓）　/　弓は左長押しで溜め<br>
+    <kbd>Q</kbd> 食べる　/　<kbd>R</kbd> 馬に乗る/降りる
   </div>
   <div id="charsel"></div>
   <div class="start">クリックして開始</div>
@@ -1257,8 +1258,11 @@ document.addEventListener('mousemove', (e) => {
 });
 canvas.addEventListener('mousedown', (e) => {
   if (document.pointerLockElement !== canvas) return;
-  if (e.button === 0) { if (!attackMob()) breakBlock(); } // モブが前方にいれば攻撃、なければ破壊
+  if (e.button === 0) onAttackDown();   // 攻撃（武器で挙動差。弓は溜め開始）
   else if (e.button === 2) placeBlock();
+});
+canvas.addEventListener('mouseup', (e) => {
+  if (e.button === 0) onAttackUp();      // 弓の発射・押下状態の解除
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('keydown', (e) => {
@@ -1277,6 +1281,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ') autoWeather = !autoWeather; // 自動天候 on/off
   if (e.code === 'KeyQ') eatFood(); // 食べる（肉→りんごの順に消費）
   if (e.code === 'KeyR') toggleRide(); // 近くの馬に乗る/降りる
+  if (e.code === 'KeyC') cycleWeapon(); // 武器切替（素手→剣→斧→弓）
   if (e.code === 'KeyE') { invOpen ? closeInventory() : openInventory(); } // インベントリ開閉
   if (e.code === 'Escape' && invOpen) closeInventory();
   if (e.code === 'Space') e.preventDefault();
@@ -1443,6 +1448,7 @@ function buildDiag() {
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
     `騎乗         : ${ridingMob ? '馬に騎乗中' : '徒歩'}`,
+    `武器 / 戦闘  : ${WEAPONS[currentWeapon].name}（C切替）/ コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'} / ヒットストップ${hitstop>0?'発生':'-'}`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 村人${mobs.filter(m=>m.def.type==='villager').length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
@@ -1481,15 +1487,24 @@ function loadCharacter(url, pos, opts = {}) {
 //   （4号機の本番モデルに差し替わると、そのまま自分のキャラとして見える）
 let playerAvatar = null;
 // ⑤ アニメ再生土台（クリップが無くてもエラーにならない作り）
-let mixer = null, actIdle = null, actWalk = null, curAction = null;
+let mixer = null, actIdle = null, actWalk = null, actAttack = null, curAction = null;
+let avatarAttackTimer = 0; // >0 の間は攻撃モーション再生中（idle/walk へ戻さない）
 function playAvatarAnim(moving) {
-  if (!mixer) return;
+  if (!mixer || avatarAttackTimer > 0) return; // 攻撃中は上書きしない
   const target = moving ? actWalk : actIdle;
   if (target && target !== curAction) {
     target.reset().fadeIn(0.2).play();
     if (curAction) curAction.fadeOut(0.2);
     curAction = target;
   }
+}
+// 攻撃モーションを1回再生（三人称アバター）。終了後 playAvatarAnim が idle/walk を貼り直す
+function playAvatarAttack() {
+  if (!mixer || !actAttack) return;
+  if (curAction) curAction.fadeOut(0.08);
+  actAttack.reset().fadeIn(0.05).play();
+  curAction = null;
+  avatarAttackTimer = (actAttack.getClip().duration || 0.4);
 }
 // (C) プレイヤー色選択：5色から選んでアバターを読み込む（選択は保存）
 const PLAYER_SKINS = [
@@ -1508,7 +1523,7 @@ function loadAvatar(file) {
   // 既存アバター・ミキサーを破棄
   if (playerAvatar) { scene.remove(playerAvatar); playerAvatar = null; }
   if (mixer) { mixer.stopAllAction(); mixer = null; }
-  actIdle = actWalk = curAction = null;
+  actIdle = actWalk = actAttack = curAction = null; avatarAttackTimer = 0;
   gltfLoader.load(file,
     (gltf) => {
       playerAvatar = gltf.scene;
@@ -1523,6 +1538,7 @@ function loadAvatar(file) {
         diag.glb.clips = gltf.animations.map(c => c.name);
         actIdle = mixer.clipAction(byName['idle'] || gltf.animations[0]);
         actWalk = mixer.clipAction(byName['walk'] || gltf.animations[1] || (byName['idle'] || gltf.animations[0]));
+        if (byName['attack']) { actAttack = mixer.clipAction(byName['attack']); actAttack.loop = THREE.LoopOnce; actAttack.clampWhenFinished = true; } // 攻撃モーション
         actIdle.play(); curAction = actIdle;
       }
       console.log(`[voxel] アバター読込 OK(${file})：頂点${v} / clips=[${diag.glb.clips}]`);
@@ -1730,7 +1746,7 @@ function spawnMob(type, x, z, opts = {}) {
   obj.position.set(x, (typeof opts.y === 'number') ? opts.y : groundY(x, z), z);
   if (typeof opts.ry === 'number') obj.rotation.y = opts.ry;
   scene.add(obj);
-  let mixer = null, aIdle = null, aWalk = null, aAttack = null, aHeavy = null;
+  let mixer = null, aIdle = null, aWalk = null, aAttack = null, aHeavy = null, aHit = null, aDie = null;
   if (tpl.animations.length) {
     mixer = new THREE.AnimationMixer(obj);
     const byName = {}; tpl.animations.forEach(c => byName[c.name] = c);
@@ -1738,11 +1754,14 @@ function spawnMob(type, x, z, opts = {}) {
     if (byName['walk'])   aWalk = mixer.clipAction(byName['walk']);
     if (byName['attack']) aAttack = mixer.clipAction(byName['attack']);
     if (byName['heavy'])  aHeavy = mixer.clipAction(byName['heavy']);
+    if (byName['hit'])  { aHit = mixer.clipAction(byName['hit']);  aHit.loop = THREE.LoopOnce; aHit.clampWhenFinished = true; } // 被弾(4号機)
+    if (byName['die'])  { aDie = mixer.clipAction(byName['die']);  aDie.loop = THREE.LoopOnce; aDie.clampWhenFinished = true; } // 死亡(4号機)
     aIdle.play();
   }
-  const mob = { def, obj, mixer, aIdle, aWalk, aAttack, aHeavy, cur: aIdle,
+  const mob = { def, obj, mixer, aIdle, aWalk, aAttack, aHeavy, aHit, aDie, cur: aIdle,
     hostile: def.hostile, hp: (typeof opts.hp === 'number') ? opts.hp : (M.hp[type] || 5),
     state: opts.state || 'idle', timer: 1+Math.random()*3, vx:0, vz:0, atkCd:0, atkCnt:0,
+    dying:false, dieTimer:0, hitStun:0, // 戦闘演出用（死亡・被弾硬直）
     // ③ ナビ用：希望進路(navx,navz)・経路再計算CD・徘徊方向(wx,wz)・直近の向き(flx,flz)・スタック計測
     navx:0, navz:0, navCd: Math.random()*0.5, wx:0, wz:0, flx:0, flz:0, stuck:0 };
   mobs.push(mob);
@@ -1768,8 +1787,17 @@ function setMobAnim(m, name) {
   if (!m.mixer) return;
   const target = name === 'walk' ? (m.aWalk || m.aIdle)
     : name === 'attack' ? (m.aAttack || m.aWalk || m.aIdle)
-    : name === 'heavy' ? (m.aHeavy || m.aAttack || m.aIdle) : m.aIdle;
-  if (target && target !== m.cur) {
+    : name === 'heavy' ? (m.aHeavy || m.aAttack || m.aIdle)
+    : name === 'hit' ? m.aHit
+    : name === 'die' ? m.aDie : m.aIdle;
+  if (!target) return;
+  if (name === 'hit' || name === 'die') { // 一発再生（先頭から）。idle等へは updateMobs が戻す
+    target.reset().play();
+    if (m.cur && m.cur !== target) m.cur.fadeOut(0.1);
+    m.cur = target;
+    return;
+  }
+  if (target !== m.cur) {
     target.reset().fadeIn(0.15).play();
     if (m.cur) m.cur.fadeOut(0.15);
     m.cur = target;
@@ -1855,6 +1883,14 @@ function updateMobs(dt) {
   updateSpawners(dt); // ② ダンジョンのスポナー稼働
   for (let i = mobs.length-1; i >= 0; i--) {
     const m = mobs[i];
+    // 死亡演出中：AIを止めて die クリップを再生し、終わったら除去
+    if (m.dying) {
+      m.dieTimer -= dt;
+      if (m.mixer) m.mixer.update(dt);
+      followFloor(m, dt);
+      if (m.dieTimer <= 0) { scene.remove(m.obj); mobs.splice(i,1); }
+      continue;
+    }
     const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z;
     const dist = Math.hypot(dx, dz) || 0.0001;
     if (dist > M.despawn) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
@@ -1864,6 +1900,13 @@ function updateMobs(dt) {
       if (m.obj.position.y >= surf - 1) { scene.remove(m.obj); mobs.splice(i,1); continue; }
     }
     if (m.ridden) continue; // 騎乗中の馬はプレイヤー側で制御するためAIスキップ
+    // 被弾硬直：短時間 AI を止めて hit クリップを見せる（ノックバック後の「のけぞり」感）
+    if (m.hitStun > 0) {
+      m.hitStun -= dt;
+      followFloor(m, dt);
+      if (m.mixer) m.mixer.update(dt);
+      continue;
+    }
 
     const role = m.def.role;
     let moving = false, animName = 'idle';
@@ -1942,12 +1985,17 @@ function updateSpawners(dt) {
 const arrows = [];
 const arrowGeo = new THREE.BoxGeometry(0.08, 0.08, 0.6);
 const arrowMat = new THREE.MeshBasicMaterial({ color: 0x2b2b2b });
-function shootArrow(fx, fy, fz, tx, ty, tz) {
-  const dx = tx-fx, dy = ty-fy, dz = tz-fz, d = Math.hypot(dx, dy, dz) || 1, spd = C.arrowSpeed;
+// 汎用の矢生成（friendly=true なら味方の矢＝モブに当たる / false は敵の矢＝プレイヤーに当たる）
+function shootArrowEx(fx, fy, fz, dx, dy, dz, speed, friendly, dmg, isCrit) {
+  const d = Math.hypot(dx, dy, dz) || 1;
   const obj = new THREE.Mesh(arrowGeo, arrowMat);
-  obj.position.set(fx, fy, fz); obj.lookAt(tx, ty, tz);
+  obj.position.set(fx, fy, fz); obj.lookAt(fx + dx, fy + dy, fz + dz);
   scene.add(obj);
-  arrows.push({ obj, vx: dx/d*spd, vy: dy/d*spd, vz: dz/d*spd, life: 3 });
+  arrows.push({ obj, vx: dx/d*speed, vy: dy/d*speed, vz: dz/d*speed, life: 3, friendly: !!friendly, dmg: dmg || C.arrowDmg, isCrit: !!isCrit });
+}
+// 敵モブ → プレイヤー狙いの矢（既存呼出の互換）
+function shootArrow(fx, fy, fz, tx, ty, tz) {
+  shootArrowEx(fx, fy, fz, tx-fx, ty-fy, tz-fz, C.arrowSpeed, false, C.arrowDmg, false);
   window.playSFX && window.playSFX('attack');
 }
 function updateArrows(dt) {
@@ -1956,9 +2004,20 @@ function updateArrows(dt) {
     a.vy -= 6 * dt; // 軽い重力で弧を描く
     a.obj.position.x += a.vx*dt; a.obj.position.y += a.vy*dt; a.obj.position.z += a.vz*dt;
     a.life -= dt;
-    const px = player.pos.x, py = player.pos.y+0.9, pz = player.pos.z;
-    const dd = (a.obj.position.x-px)**2 + (a.obj.position.y-py)**2 + (a.obj.position.z-pz)**2;
-    if (dd < 0.64) { damage(C.arrowDmg, 'arrow'); window.playSFX && window.playSFX('hit'); scene.remove(a.obj); arrows.splice(i,1); continue; } // 命中
+    let consumed = false;
+    if (a.friendly) { // 味方の矢：モブに命中
+      for (let j = mobs.length-1; j >= 0; j--) {
+        const m = mobs[j]; if (m.dying) continue;
+        const p = m.obj.position;
+        const dd = (a.obj.position.x-p.x)**2 + (a.obj.position.y-(p.y+0.7))**2 + (a.obj.position.z-p.z)**2;
+        if (dd < 0.8) { hitMob(m, a.dmg, a.isCrit, 'bow', 0, a.vx, a.vz, WEAPONS.bow.knock); scene.remove(a.obj); arrows.splice(i,1); consumed = true; break; }
+      }
+    } else { // 敵の矢：プレイヤーに命中
+      const px = player.pos.x, py = player.pos.y+0.9, pz = player.pos.z;
+      const dd = (a.obj.position.x-px)**2 + (a.obj.position.y-py)**2 + (a.obj.position.z-pz)**2;
+      if (dd < 0.64) { damage(a.dmg, 'arrow'); window.playSFX && window.playSFX('hit'); scene.remove(a.obj); arrows.splice(i,1); consumed = true; }
+    }
+    if (consumed) continue;
     if (a.life <= 0 || a.obj.position.y < groundY(a.obj.position.x, a.obj.position.z) - 1) { scene.remove(a.obj); arrows.splice(i,1); } // 期限・着地
   }
 }
@@ -2052,31 +2111,157 @@ function updateDrops(dt) {
     if (d.life <= 0) { scene.remove(d.obj); drops.splice(i,1); } // 時間切れで消滅
   }
 }
-// 視線の先・近接のモブを攻撃。命中したら true（左クリックでブロック破壊より優先）
-function attackMob() {
+// ===================================================================
+// 攻撃アクション（攻撃モーション・入力バッファ・コンボ・溜め・武器種・扇形マルチヒット・
+//   ヒットストップ・ノックバック・被弾/死亡アニメ）。連携口は宣言済みの契約に準拠
+// ===================================================================
+// 武器ごとの挙動差：dmg=威力 / reach=間合い / dot=扇の狭さ(小さいほど広い) / swing=振り時間 / knock=ノックバック
+const WEAPONS = {
+  fist:  { name:'素手', dmg:3, reach:2.6, dot:0.45, swing:0.30, knock:0.35, ranged:false },
+  sword: { name:'剣',   dmg:5, reach:3.3, dot:0.30, swing:0.38, knock:0.5,  ranged:false }, // 範囲広め
+  axe:   { name:'斧',   dmg:9, reach:3.0, dot:0.55, swing:0.72, knock:0.9,  ranged:false }, // 高威力・遅い
+  bow:   { name:'弓',   dmg:7, reach:0,   dot:0,    swing:0.5,  knock:0.25, ranged:true  }, // 遠距離・溜め
+};
+const WEAPON_ORDER = ['fist','sword','axe','bow'];
+let currentWeapon = 'sword';
+let swingTimer = 0;        // 振り中の残り時間（>0で振り中）
+let attackBuffered = false; // 振り中に押された次の入力
+let comboIndex = 0, comboTimer = 0; // 3連コンボ（3発目が会心）
+let mouseDown = false, drawTime = 0; // 弓の溜め
+let hitstop = 0;           // ヒットストップ残り秒（>0でほぼ静止）
+const CHARGE_FULL = 0.85;  // 弓のフル溜め秒
+const COMBO_WINDOW = 0.9;  // 連撃が繋がる猶予秒
+
+function cycleWeapon() {
+  const i = WEAPON_ORDER.indexOf(currentWeapon);
+  currentWeapon = WEAPON_ORDER[(i + 1) % WEAPON_ORDER.length];
+}
+function triggerHitstop(t) { hitstop = Math.max(hitstop, t); }
+// 連携口：ヒット通知（UIのダメージ数字/エフェクト用）。UI側の例外で本体を止めない
+function emitCombatHit(x, y, z, amount, isCrit, weapon, targetType, killed, comboIndex) {
+  if (typeof window.onCombatHit === 'function') {
+    try { window.onCombatHit({ x, y, z, amount, isCrit, weapon, targetType, killed, comboIndex }); } catch (e) {}
+  }
+}
+function emitPlayerAttack(weapon, charged, comboIndex) {
+  if (typeof window.onPlayerAttack === 'function') {
+    try { window.onPlayerAttack({ weapon, charged, comboIndex }); } catch (e) {}
+  }
+}
+// 連携口：ワールド→画面座標（UIがDOMで数字/エフェクトを置くため）
+const _projV = new THREE.Vector3();
+window.worldToScreen = (x, y, z) => {
+  _projV.set(x, y, z).project(camera);
+  return {
+    x: (_projV.x * 0.5 + 0.5) * innerWidth,
+    y: (-_projV.y * 0.5 + 0.5) * innerHeight,
+    onScreen: _projV.z < 1 && _projV.x >= -1 && _projV.x <= 1 && _projV.y >= -1 && _projV.y <= 1,
+  };
+};
+
+// 入力：押下（弓は溜め開始 / 近接は振り。振り中はバッファ）
+function onAttackDown() {
+  mouseDown = true;
+  const w = WEAPONS[currentWeapon];
+  if (w.ranged) { drawTime = 0; return; }
+  if (swingTimer > 0) { attackBuffered = true; return; } // 振り切るまでバッファ
+  startSwing();
+}
+function onAttackUp() {
+  const wasDown = mouseDown;
+  mouseDown = false;
+  if (wasDown && WEAPONS[currentWeapon].ranged) shootPlayerArrow(Math.min(1, drawTime / CHARGE_FULL)); // 溜め分を発射
+}
+function startSwing() {
+  const w = WEAPONS[currentWeapon];
+  const isCrit = (comboIndex % 3 === 2); // 3発目が会心
+  swingTimer = w.swing;
+  comboTimer = COMBO_WINDOW;
+  emitPlayerAttack(currentWeapon, isCrit, comboIndex);
+  playAvatarAttack();
+  window.playSFX && window.playSFX('swing');
+  resolveMeleeHit(isCrit);
+  comboIndex++;
+}
+// 前方扇形のマルチヒット。命中ゼロならブロック破壊（採掘）にフォールバック
+function resolveMeleeHit(isCrit) {
+  const w = WEAPONS[currentWeapon];
   const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
   const ox = player.pos.x, oy = player.pos.y + EYE, oz = player.pos.z;
-  let best = -1, bestD = C.playerReach;
-  for (let i = 0; i < mobs.length; i++) {
-    const p = mobs[i].obj.position;
-    const vx = p.x-ox, vy = (p.y+0.6)-oy, vz = p.z-oz;
+  const reach = w.reach * (isCrit ? 1.15 : 1);
+  const dot = Math.max(0, w.dot - (isCrit ? 0.15 : 0)); // 会心は扇を広げる
+  let any = false;
+  for (let i = mobs.length - 1; i >= 0; i--) {
+    const m = mobs[i]; if (m.dying) continue;
+    const p = m.obj.position;
+    const vx = p.x - ox, vy = (p.y + 0.6) - oy, vz = p.z - oz;
     const d = Math.hypot(vx, vy, vz);
-    if (d > C.playerReach) continue;
-    if ((vx*dir.x + vy*dir.y + vz*dir.z) / (d||1) < 0.5) continue; // 視線から外れている
-    if (d < bestD) { bestD = d; best = i; }
+    if (d > reach) continue;
+    if ((vx*dir.x + vy*dir.y + vz*dir.z) / (d || 1) < dot) continue; // 扇の外
+    const dmg = w.dmg * (isCrit ? 1.6 : 1) * (1 + comboIndex * 0.05);
+    hitMob(m, dmg, isCrit, currentWeapon, comboIndex, p.x - ox, p.z - oz, w.knock * (isCrit ? 1.6 : 1));
+    any = true;
   }
-  if (best < 0) return false;
-  const m = mobs[best];
-  m.hp -= C.playerDmg;
-  window.playSFX && window.playSFX('attack');
-  // ノックバック
-  const kx = m.obj.position.x-ox, kz = m.obj.position.z-oz, kl = Math.hypot(kx,kz)||1;
-  m.obj.position.x += kx/kl*0.4; m.obj.position.z += kz/kl*0.4;
-  if (m.hp <= 0) { // 撃破→ドロップ
-    spawnDrop(MOB_DROP[m.def.type], m.obj.position.x, m.obj.position.y, m.obj.position.z);
-    scene.remove(m.obj); mobs.splice(best, 1);
+  if (!any) breakBlock(); // 空振り＝採掘
+  return any;
+}
+// 共通のモブ被弾処理（近接・弓の両方から）。ノックバック＋被弾/死亡アニメ＋ヒットストップ＋通知
+function hitMob(m, dmg, isCrit, weapon, combo, kdirx, kdirz, knock) {
+  if (m.dying) return;
+  dmg = Math.max(1, Math.round(dmg));
+  m.hp -= dmg;
+  const kl = Math.hypot(kdirx, kdirz) || 1;
+  m.obj.position.x += kdirx / kl * knock;
+  m.obj.position.z += kdirz / kl * knock;
+  const killed = m.hp <= 0;
+  emitCombatHit(m.obj.position.x, m.obj.position.y + 0.9, m.obj.position.z, dmg, isCrit, weapon, m.def.type, killed, combo);
+  window.playSFX && window.playSFX(isCrit ? 'crit' : 'hit');
+  triggerHitstop(isCrit ? 0.10 : 0.06);
+  if (killed) killMob(m);
+  else { setMobAnim(m, 'hit'); m.hitStun = 0.22; } // 被弾アニメ＋小硬直
+}
+function killMob(m) {
+  m.dying = true; m.hp = 0;
+  spawnDrop(MOB_DROP[m.def.type], m.obj.position.x, m.obj.position.y, m.obj.position.z);
+  if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); }
+  else m.dieTimer = 0; // dieクリップ無ければ次フレーム除去
+}
+// 弓：溜め(power 0..1)に応じて速度・威力が上がる味方の矢を放つ
+function shootPlayerArrow(power) {
+  const w = WEAPONS.bow;
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+  const ox = player.pos.x, oy = player.pos.y + EYE, oz = player.pos.z;
+  const speed = 14 + power * 16;
+  const isCrit = power >= 0.99;
+  const dmg = w.dmg * (0.5 + power * 0.8);
+  shootArrowEx(ox + dir.x, oy + dir.y, oz + dir.z, dir.x, dir.y, dir.z, speed, true, dmg, isCrit);
+  emitPlayerAttack('bow', isCrit, 0);
+  playAvatarAttack();
+  window.playSFX && window.playSFX('bow');
+}
+// 攻撃状態の更新（振り時間・コンボ猶予・弓の溜め・アバター攻撃モーション）。ループから gdt で呼ぶ
+function updateAttack(dt) {
+  if (swingTimer > 0) {
+    swingTimer -= dt;
+    if (swingTimer <= 0 && attackBuffered) { attackBuffered = false; startSwing(); } // バッファ分を継続
   }
-  return true;
+  if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) comboIndex = 0; }
+  if (avatarAttackTimer > 0) avatarAttackTimer -= dt;
+  if (WEAPONS[currentWeapon].ranged && mouseDown) drawTime += dt;
+}
+// 戦闘BGM：近くに敵がいれば combat、水中は water、それ以外は時間帯。切替時だけ口を叩く
+let musicScene = '', musicTimer = 0;
+function updateCombatMusic(dt) {
+  musicTimer -= dt;
+  if (musicTimer > 0) return;
+  musicTimer = 0.5;
+  let combat = false;
+  for (const m of mobs) {
+    if (m.hostile && !m.dying && Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z) < 14) { combat = true; break; }
+  }
+  const headWater = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + PH - 0.1), Math.floor(player.pos.z)) === B.water;
+  const sc = combat ? 'combat' : headWater ? 'water' : isNight() ? 'night' : 'day';
+  if (sc !== musicScene) { musicScene = sc; if (typeof window.setMusicScene === 'function') { try { window.setMusicScene(sc); } catch (e) {} } }
 }
 
 // ===================================================================
@@ -2107,8 +2292,15 @@ function loop(now) {
   pathSecTimer -= dt;
   if (pathSecTimer <= 0) { pathSecTimer = 1; pathCallsPerSec = pathCallsAcc; pathNodesPerSec = pathNodesAcc; pathCallsAcc = 0; pathNodesAcc = 0; }
 
+  // ヒットストップ：命中の瞬間ごく短くアクションをほぼ静止させて「手応え」を出す
+  const inHitstop = hitstop > 0;
+  hitstop = Math.max(0, hitstop - dt);
+  const gdt = inHitstop ? dt * 0.04 : dt; // アクション系に渡す減速dt（環境は通常dtのまま）
+
   if (document.pointerLockElement === canvas) {
-    updatePlayer(dt); updateHealth(dt); updateMobs(dt); updateArrows(dt); updateDrops(dt);
+    updateAttack(gdt); // 攻撃の振り・コンボ・溜め
+    updatePlayer(gdt); updateHealth(dt); updateMobs(gdt); updateArrows(gdt); updateDrops(dt);
+    updateCombatMusic(dt); // 戦闘/水中/時間帯でBGMシーン切替（2号機の口）
     // 定期オートセーブ：時刻天候・モブ・位置の進行も一定間隔で残す（編集イベント時の scheduleSave とは別系統）
     autoSaveAccum += dt;
     if (autoSaveAccum >= AUTOSAVE_INTERVAL) { autoSaveAccum = 0; saveWorld(); }
@@ -2118,7 +2310,7 @@ function loop(now) {
   updateParticles(dt);
   updateClouds(dt);
   updateProps(dt); // ② 構造物プロップ(GLB)の表示・アニメ
-  if (mixer) mixer.update(dt); // アバターのアニメ再生
+  if (mixer) mixer.update(gdt); // アバターのアニメ再生（ヒットストップに同期）
   updateChunks();
   renderer.render(scene, camera);
 
@@ -2126,10 +2318,12 @@ function loop(now) {
   const hh = Math.floor(((dayTime + 0.5) % 1) * 24);
   const mm = Math.floor((((dayTime + 0.5) % 1) * 24 % 1) * 60);
   const WNAME = { clear:'晴れ', rain:'雨', snow:'雪', thunder:'雷' };
+  const wpn = WEAPONS[currentWeapon];
+  const draw = (wpn.ranged && mouseDown) ? `　弓溜め:${Math.round(Math.min(1, drawTime/CHARGE_FULL)*100)}%` : '';
   hud.innerHTML =
     `XYZ: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>` +
     `時刻: ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}　読込チャンク: ${meshes.size}　FPS: ${fpsEMA.toFixed(0)}<br>` +
-    `天候: ${WNAME[weather]}${autoWeather ? '(自動)' : ''}（G切替/J自動）　H:診断`;
+    `天候: ${WNAME[weather]}${autoWeather ? '(自動)' : ''}（G切替/J自動）　武器: ${wpn.name}（C切替）${draw}　H:診断`;
   if (diagVisible) diagEl.textContent = buildDiag();
 
   // 体力・空腹・息・被ダメージ表示
