@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 77 ファイル / 10.02 MB
+**合計**: 78 ファイル / 10.38 MB
 
 
 ## プレイヤー
@@ -32,6 +32,7 @@
 | `mob_pig.glb` | 0.1115 | `walk`, `idle`, `die`, `hit` | 7/7 |
 | `mob_sheep.glb` | 0.2026 | `walk`, `idle`, `die`, `hit` | 7/7 |
 | `mob_skeleton.glb` | 0.2962 | `idle`, `walk`, `attack` | 5/5 |
+| `mob_skeleton_king.glb` | 0.3635 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_slime.glb` | 0.0429 | `attack`, `walk`, `idle`, `die`, `hit` | 1/1 |
 | `mob_zombie.glb` | 0.2767 | `idle`, `walk`, `attack` | 5/5 |
 
