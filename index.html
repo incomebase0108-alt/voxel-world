@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03i'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-03j'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -2736,6 +2736,19 @@ window.getEquipment = () => equipState();
 window.equipWeapon = (type) => { if (!ownedWeapons.has(type) || !WEAPONS[type]) return false; currentWeapon = type; emitEquipChange(); updateHeldWeapon(); return true; };
 window.toggleShield = () => { if (!ownedShield) return false; equip.shield = !equip.shield; window.playSFX && window.playSFX('equip'); emitEquipChange(); updateHeldShield(); scheduleSave(); return equip.shield; };
 window.unequipArmor = (slot) => { if (equip.armor[slot]) { equip.armor[slot] = false; emitEquipChange(); scheduleSave(); return true; } return false; };
+// 手持ち表示の実測口（3号機のequip確認overlay・自動検証用）。装着中の剣/盾のworld位置と向きを返す
+window.getHeldDebug = () => {
+  const info = (obj) => {
+    if (!obj || !obj.parent) return null;
+    const p = obj.getWorldPosition(new THREE.Vector3());
+    const q = obj.getWorldQuaternion(new THREE.Quaternion());
+    const up    = new THREE.Vector3(0, 1, 0).applyQuaternion(q);  // モデル+Y（剣=刃の向き）
+    const front = new THREE.Vector3(0, 0, -1).applyQuaternion(q); // モデル-Z（盾=面の向き）
+    const r2 = v => [+v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2)];
+    return { pos: r2(p), up: r2(up), front: r2(front) };
+  };
+  return { weapon: currentWeapon, shieldOn: !!equip.shield, sword: info(heldWeapon), shield: info(heldShield) };
+};
 
 // 採掘素材→装備のクラフト（鉱石と装備システムを連結）。mats=itemCounts素材 / blocks=設置ブロック
 const EQUIP_RECIPES = [
