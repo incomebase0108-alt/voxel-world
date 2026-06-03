@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03k'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-03l'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -725,6 +725,15 @@ function loadWorld(slot = currentSlot) {
     if (obj.player && Number.isFinite(obj.player.x) && Number.isFinite(obj.player.y) && Number.isFinite(obj.player.z)) {
       player.pos.set(obj.player.x, obj.player.y, obj.player.z);
       player.yaw = num(obj.player.yaw, 0); player.pitch = num(obj.player.pitch, 0);
+      // 旧セーブの水没/水際座標を救済：頭/足が水中、または ocean バイオーム(海・水際)で
+      // ロードすると「動くと泳ぎ・溺れる・最寄り船まで遠い」悪循環になるため、スポーン拠点(陸地)へ退避。
+      // ※星野さん報告のケース：接地はしていても周囲が海で、移動すると水に落ちて泳ぎ姿勢になる。
+      //   ocean は水際なので開始点にしない（陸地 plains/desert/snow のセーブは一切触らない）。
+      const lbx = Math.floor(player.pos.x), lbz = Math.floor(player.pos.z);
+      if (playerHeadInWater() || waterAtPlayer(0.2) || biomeAt(lbx, lbz) === 'ocean') {
+        const s = findSpawn(); player.pos.set(s.x, s.y, s.z); player.vel.set(0, 0, 0);
+        console.log('[voxel] ロード位置が水際/水中→スポーン拠点へ退避', s);
+      }
     }
     if (Number.isFinite(obj.level) && obj.level >= 1) playerLevel = Math.floor(obj.level); // Lvを先に復元（実効HP上限に影響）
     if (Number.isFinite(obj.exp) && obj.exp >= 0) playerExp = obj.exp;
@@ -1873,7 +1882,7 @@ function buildDiag() {
     `攻撃の特性   : ${WEAPONS[currentWeapon].ranged?'遠距離(溜め)':'近接'} 威力${WEAPONS[currentWeapon].dmg} 間合${WEAPONS[currentWeapon].reach} 振り${WEAPONS[currentWeapon].swing}s 動作x${WEAPONS[currentWeapon].anim} 止${WEAPONS[currentWeapon].hitstop}s（装備武器で変化）`,
     `手持ち表示   : 武器モデル${heldWeapon?'装着○':'なし(素手/未読込)'} / 盾${heldShield?'装着○':'-'} / 武器テンプレ読込${Object.keys(equipTemplates).length}種`,
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
-    `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
+    `再生アニメ   : ${curAction === actSwim ? 'swim' : curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : curAction === actAttack ? 'attack' : '-'}（前傾${(avatarPitch*180/Math.PI).toFixed(0)}° / swim選択=${(!ridingBoat && !ridingMob && playerHeadInWater())?'○頭水中':'-陸'}）/ clips:[${(diag.glb.clips||[]).join(',')}]`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 住人${mobs.filter(m=>m.home).length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
     `モブ地中埋没  : ${mobs.filter(m=>m.buried).length}体（透明な敵の監視。0が正常／復帰処理が毎フレーム作動）`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
