@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03m'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-03n'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1354,10 +1354,18 @@ function updatePlayer(dt) {
     playerAvatar.visible = thirdPerson;
     // 水中うつ伏せ：★物理と同じ「頭水中」基準で発火（浅瀬で腹だけ浸かる時に陸で泳ぐ誤発火を防ぐ＝判定一本化）。
     //   頭が水中＝潜水/遊泳の時だけ前傾90°。水面より上に出たら立ち姿勢へ。swimクリップがあればクリップ再生に委譲。
-    const swimming = !ridingBoat && !ridingMob && playerHeadInWater();
+    const swimming = !ridingBoat && !ridingMob && playerHeadInWater(); // ★swim/walk の選択は playerHeadInWater() の即値のみで決める
     const targetPitch = (swimming && !actSwim) ? -Math.PI/2 : 0;
     avatarPitch += (targetPitch - avatarPitch) * Math.min(1, dt * 10); // 立ち⇄泳ぎを滑らかに補間
     playerAvatar.rotation.x = avatarPitch;
+    // ★移動開始の瞬間に「陸なのに swim が残っている」状態を断つ（歩き始めの泳ぎ固着の最終ガード）。
+    if (moving && !wasMoving && !swimming) {
+      if (actSwim && actSwim.isRunning()) actSwim.stop();
+      if (curAction === actSwim) curAction = null; // 次の playAvatarAnim で walk を貼り直させる
+      avatarPitch = 0; playerAvatar.rotation.x = 0; // 前傾も即リセット
+    }
+    if (moving && !wasMoving) moveStartAnimName = swimming ? 'swim(水中)' : 'walk(陸)'; // 歩き始めの選択を診断へ記録
+    wasMoving = moving;
     // ⑤ アニメ：水中=swim(あれば) / 移動中=walk / 静止=idle
     playAvatarAnim(moving, swimming);
   }
@@ -1884,7 +1892,8 @@ function buildDiag() {
     `攻撃の特性   : ${WEAPONS[currentWeapon].ranged?'遠距離(溜め)':'近接'} 威力${WEAPONS[currentWeapon].dmg} 間合${WEAPONS[currentWeapon].reach} 振り${WEAPONS[currentWeapon].swing}s 動作x${WEAPONS[currentWeapon].anim} 止${WEAPONS[currentWeapon].hitstop}s（装備武器で変化）`,
     `手持ち表示   : 武器モデル${heldWeapon?'装着○':'なし(素手/未読込)'} / 盾${heldShield?'装着○':'-'} / 武器テンプレ読込${Object.keys(equipTemplates).length}種`,
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
-    `再生アニメ   : ${curAction === actSwim ? 'swim' : curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : curAction === actAttack ? 'attack' : '-'}（前傾${(avatarPitch*180/Math.PI).toFixed(0)}° / swim選択=${(!ridingBoat && !ridingMob && playerHeadInWater())?'○頭水中':'-陸'}）/ clips:[${(diag.glb.clips||[]).join(',')}]`,
+    `再生アニメ   : ${curAction === actSwim ? 'swim' : curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : curAction === actAttack ? 'attack' : '-'}（前傾${(avatarPitch*180/Math.PI).toFixed(0)}° / 歩き始め=${moveStartAnimName}）/ clips:[${(diag.glb.clips||[]).join(',')}]`,
+    `swim選択理由 : ${ridingBoat ? '-乗船中(swim無効)' : ridingMob ? '-騎乗中(swim無効)' : playerHeadInWater() ? '○頭が水中→swim' : '-頭は空気→walk/idle'}（actSwim=${actSwim ? (actSwim.isRunning()?'再生中':'停止') : '無'}）`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 住人${mobs.filter(m=>m.home).length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
     `モブ地中埋没  : ${mobs.filter(m=>m.buried).length}体（透明な敵の監視。0が正常／復帰処理が毎フレーム作動）`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
@@ -1927,9 +1936,14 @@ let playerAvatar = null;
 let mixer = null, actIdle = null, actWalk = null, actAttack = null, actSwim = null, curAction = null;
 let avatarAttackTimer = 0; // >0 の間は攻撃モーション再生中（idle/walk へ戻さない）
 let avatarPitch = 0;       // 三人称アバターの前傾（0=立ち / -PI/2=うつ伏せ＝泳ぎ姿勢）。滑らかに補間
+let wasMoving = false;            // 前フレームの移動状態（移動開始の立ち上がり検出用）
+let moveStartAnimName = '-';      // 直近の「歩き始め」で選ばれたアニメ名（H診断用＝開始時に泳いでないか確認）
 function playAvatarAnim(moving, swimming) {
   if (!mixer || avatarAttackTimer > 0) return; // 攻撃中は上書きしない
   const target = (swimming && actSwim) ? actSwim : moving ? actWalk : actIdle; // swimクリップがあれば優先（4号機到着で自動）
+  // ★swim を選んでいないのに actSwim が動いていれば即 stop（陸での泳ぎ固着の残渣を毎フレーム断つ）。
+  //   fadeOut は weight=0 でも running が残りうるため、陸では hard stop で確実に消す。
+  if (target !== actSwim && actSwim && actSwim.isRunning()) actSwim.stop();
   if (target && target !== curAction) {
     target.reset().fadeIn(0.15).play();
     // ★切替時は target 以外の待機/歩行/泳ぎを「全て」確実にフェードアウト。
@@ -1972,24 +1986,41 @@ const HOLD = {
 const SHIELD_HOLD = { hand:'L', rotX:0, offset:[0.02, 0.32, -0.16] }; // 左前腕に・正面(-Z)外向き（Blender(0.02,0.16,0.32)→glTF）
 const HAND_LOCAL = { R:[-0.37, 0.73, 0.0], L:[0.37, 0.73, 0.0] };     // アバター(glTF)ローカルの手アンカー（rest実測）
 let heldWeapon = null, heldShield = null;
-// obj を hand の腕ノードに装着。位置=手アンカー(+offset)を腕ローカルへ逆変換／向き=アバター基準のグリップ回転を
-//   腕ローカルへ変換（腕の rest 姿勢に依存せず「刃=上＋前傾」を保証）／スケール=ワールドで原寸。
+// 腕ボーンの rest（bind pose）変換を「アバター根基準」で保持＝装着計算の不変基準。
+//   ※player.glb の ArmR/ArmL・Body は 非一様スケール(0.3/0.3/0.17 等)＋回転(ArmR 180°X / Body -82°X) を持つため、
+//     getWorldQuaternion/getWorldScale の decompose は破綻する（剣/盾が肩・背中へ飛ぶ既知バグの真因）。
+//     よって rest 行列をそのまま保持し、装着は行列合成のみで行う（分解を一切使わない）。
+let armRestLocal = { R: null, L: null };
+// アバター読込直後（bind pose・mixer 未更新）に腕 rest を採取。switch/equip 変更時もこの基準で当て直す。
+function captureArmRest() {
+  armRestLocal = { R: null, L: null };
+  if (!playerAvatar) return;
+  playerAvatar.updateWorldMatrix(true, true); // 子(腕ボーン)まで bind pose の world を確定
+  const invAv = new THREE.Matrix4().copy(playerAvatar.matrixWorld).invert();
+  for (const h of ['R', 'L']) {
+    const arm = playerAvatar.getObjectByName(h === 'R' ? 'ArmR' : 'ArmL');
+    if (arm) { arm.updateWorldMatrix(true, false); armRestLocal[h] = new THREE.Matrix4().multiplyMatrices(invAv, arm.matrixWorld); } // M_rest = inv(avatar)*ArmWorld
+  }
+}
+// obj を hand の腕ボーンに装着。ボーンローカルの「固定行列」を行列合成で与える（matrixAutoUpdate=false）。
+//   L = inv(M_rest) * localDesired。localDesired = アバター根空間で 手アンカー(+offset)位置・グリップ角・原寸(1)。
+//   weaponWorld = ArmWorld(動) * L となり、rest 時は demo(build_hold_demo.py の正解レンダー)と完全一致。
+//   ボーンの非一様スケール+回転があっても、同じ ArmWorld を逆行列で打ち消すので歪み・位置ズレが起きない。
 function attachToHand(obj, hand, rotX, offset) {
   if (!playerAvatar) return false;
-  playerAvatar.updateWorldMatrix(true, false);
-  const parent = playerAvatar.getObjectByName(hand === 'R' ? 'ArmR' : 'ArmL') || playerAvatar; // 腕ノードが無ければroot
-  parent.updateWorldMatrix(true, false);
+  const arm = playerAvatar.getObjectByName(hand === 'R' ? 'ArmR' : 'ArmL');
+  const parent = arm || playerAvatar; // 腕ノードが無ければ root（静的だが正位置）
   const hl = HAND_LOCAL[hand], o = offset || [0,0,0];
-  const handWorld = playerAvatar.localToWorld(new THREE.Vector3(hl[0]+o[0], hl[1]+o[1], hl[2]+o[2]));
+  const localDesired = new THREE.Matrix4().compose(
+    new THREE.Vector3(hl[0]+o[0], hl[1]+o[1], hl[2]+o[2]),                 // 手アンカー(+offset)＝右手の握り/左前腕
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX || 0, 0, 0)), // グリップ角（剣=刃を上やや前 -18° / 盾=0）
+    new THREE.Vector3(1, 1, 1));                                          // アバター根基準で原寸
+  const mRest = (arm && armRestLocal[hand]) ? armRestLocal[hand] : new THREE.Matrix4();
+  const L = new THREE.Matrix4().copy(mRest).invert().multiply(localDesired);
   parent.add(obj);
-  obj.position.copy(parent.worldToLocal(handWorld.clone())); // 腕ローカルでの手位置
-  // 向き：weaponLocal = inv(armWorld) * avatarWorld * grip(rotX) ＝ アバター基準でグリップ角を保つ
-  const armWorldQ = new THREE.Quaternion(); parent.getWorldQuaternion(armWorldQ);
-  const avatarWorldQ = new THREE.Quaternion(); playerAvatar.getWorldQuaternion(avatarWorldQ);
-  const gripQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX || 0, 0, 0));
-  obj.quaternion.copy(armWorldQ.invert().multiply(avatarWorldQ).multiply(gripQ));
-  const ws = new THREE.Vector3(); parent.getWorldScale(ws);
-  obj.scale.setScalar(1 / (ws.x || 1));                       // ワールドで原寸に
+  obj.matrixAutoUpdate = false; // 親(腕)が動いても自前の position/quat/scale で上書きさせない
+  obj.matrix.copy(L);
+  obj.matrixWorldNeedsUpdate = true;
   return true;
 }
 // 装備中の武器/盾をアバターの手に反映（装備変更・アバター読込・武器モデル読込後に呼ぶ）
@@ -2051,6 +2082,7 @@ function loadAvatar(file) {
       playerAvatar.rotation.order = 'YXZ'; // ヨー(向き)→ピッチ(前傾)の順＝うつ伏せ時も頭が進行方向を向く
       playerAvatar.visible = thirdPerson; // 三人称なら即表示
       scene.add(playerAvatar);
+      captureArmRest(); // ★装着の rest 基準を bind pose で採取（mixer 更新前＝rest）。武器/盾の装着はこれを使う
       let v = 0, mc = 0;
       playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
       diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc, clips:[] };
@@ -2063,6 +2095,7 @@ function loadAvatar(file) {
         if (byName['attack']) { actAttack = mixer.clipAction(byName['attack']); actAttack.loop = THREE.LoopOnce; actAttack.clampWhenFinished = true; } // 攻撃モーション
         if (byName['swim']) actSwim = mixer.clipAction(byName['swim']); // 泳ぎモーション（4号機。あれば前傾の代わりに再生）
         actIdle.play(); curAction = actIdle;
+        resetAvatarAnim(); // ★ロード/開始直後は明示的に idle へ（swim 等の引きずりを断つ・星野さん報告の固着対策）
       }
       updateHeldWeapon(); // 装備中の武器/盾を手に反映（読込直後・セーブ復元の武器も）
       console.log(`[voxel] アバター読込 OK(${file})：頂点${v} / clips=[${diag.glb.clips}]`);
