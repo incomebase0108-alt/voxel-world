@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03j'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-03k'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -299,17 +299,33 @@ function oreAt(wx, wy, wz) {
   else               { if (r > 0.955) return B.coal; }                                                           // 浅層=石炭
   return 0;
 }
-// 開始/復活地点：水面より上の固体地面を (8,8) 付近からリング状に探す
+// 開始/復活地点：水際(ocean)を避けた「水面より十分上の固体地面」を (8,8) 付近からリング状に探す。
+//   一度決めた拠点を spawnPoint に記憶し、死亡復活・奈落復帰・初回スポーンは常に同じ安全地点へ。
+//   ・草原(plains)を最優先で即採用（村が湧きやすく、水際でない開けた陸地）
+//   ・無ければ砂漠/雪原でも「水面+2以上」の陸地を確保
+//   ・それも無ければ探索範囲で最も高い地点（＝絶対に水没スタートさせない最終フォールバック）
+let spawnPoint = null;
 function findSpawn() {
-  for (let r = 0; r <= 80; r++) {
+  if (spawnPoint) return { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z };
+  let land = null;                          // ocean以外の最初の陸地（砂漠/雪原含む）
+  let highest = null, highestH = -Infinity; // 最終フォールバック（最も高い地点）
+  for (let r = 0; r <= 256; r++) {
     for (let a = 0; a < Math.max(1, r*4); a++) {
       const ang = a / Math.max(1, r*4) * Math.PI * 2;
       const x = Math.round(Math.cos(ang) * r) + 8, z = Math.round(Math.sin(ang) * r) + 8;
       const h = heightAt(x, z);
-      if (h > WATER_LEVEL) return { x: x + 0.5, y: h + 2, z: z + 0.5 }; // 陸地（水面より上）
+      if (h > highestH) { highestH = h; highest = { x: x + 0.5, y: h + 2, z: z + 0.5 }; }
+      if (h >= WATER_LEVEL + 2) {           // 水面より2以上＝ocean/水際でない固体地面
+        if (biomeAt(x, z) === 'plains') {   // 草原を最優先で即採用
+          spawnPoint = { x: x + 0.5, y: h + 2, z: z + 0.5 };
+          return { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z };
+        }
+        if (!land) land = { x: x + 0.5, y: h + 2, z: z + 0.5 };
+      }
     }
   }
-  return { x: 8.5, y: heightAt(8, 8) + 2, z: 8.5 };
+  spawnPoint = land || highest || { x: 8.5, y: heightAt(8, 8) + 2, z: 8.5 };
+  return { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z };
 }
 
 // ===================================================================
@@ -1849,6 +1865,7 @@ function buildDiag() {
     `BGMシーン     : ${musicScene||'-'}（近接敵${dbgNearEnemies} / 水中${dbgMusicWater?'○':'-'} / combat保持${combatHold.toFixed(1)}s）`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
+    `スポーン拠点 : ${spawnPoint ? `${spawnPoint.x.toFixed(0)},${spawnPoint.y.toFixed(0)},${spawnPoint.z.toFixed(0)}（${biomeAt(Math.floor(spawnPoint.x), Math.floor(spawnPoint.z))}）` : '未決定'}　※死亡/奈落で常にここへ復帰（oceanなら水際スポーンの兆候）`,
     `騎乗/乗船    : ${ridingMob ? '馬に騎乗中' : ridingBoat ? `船に乗船中(${ridingBoat.kind}/obj${ridingBoat.obj?'有':'無'})` : '徒歩'}　速度vel: ${player.vel.x.toFixed(1)},${player.vel.z.toFixed(1)}`,
     `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
     `最寄り乗れる船: ${nearBoat}`,
