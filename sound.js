@@ -16,7 +16,7 @@
   const gains = {
     footstep: 1, jump: 1, land: 1, break: 1, place: 1, eat: 1, pickup: 1, craft: 1,
     splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
-    whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1,
+    whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1,
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
 
@@ -164,6 +164,20 @@
           break;
       }
     },
+    // ② ボス撃破の勝利ファンファーレ。1号機 window.onBossDefeat(type) 連携（達成感の音）。
+    //   上昇ブラス分散和音(D-G-B-D) → 解決する長三和音(G major) → 高域きらめきの余韻＋ティンパニ風の一撃。
+    boss_defeat() {
+      const brass = (f, dur, g, at) => tone(f, dur, 'sawtooth', g, f, null, at); // 持続ブラス（スライド無し）
+      brass(293.66, 0.16, 0.11, 0.00); // D4
+      brass(392.00, 0.16, 0.11, 0.12); // G4
+      brass(493.88, 0.16, 0.11, 0.24); // B4
+      brass(587.33, 0.42, 0.13, 0.36); // D5（伸ばし）
+      [392.00, 493.88, 587.33].forEach((f) => tone(f, 0.90, 'sawtooth', 0.09, f, null, 0.42)); // 解決のG長三和音
+      tone(98.00, 1.00, 'triangle', 0.11, 98.00, null, 0.42);                                   // 低音の土台（G2トニック）
+      tone(180, 0.18, 'sine', 0.15, 60, null, 0.00); tone(180, 0.18, 'sine', 0.13, 60, null, 0.24); // ティンパニ風の一撃×2
+      tone(1174.66, 0.55, 'sine', 0.06, 1567.98, null, 0.55);  // きらめき(D6→G6)
+      tone(1567.98, 0.50, 'triangle', 0.05, 1567.98, null, 0.72); // 締めの高域
+    },
   };
 
   // 公開API：playSFX(name, opts) ── opts は省略可（後方互換）
@@ -205,7 +219,10 @@
   // === ① ボス連携（防御的: 1号機が口を呼ぶだけ・未呼出なら無音待機）=====
   //   window.onBossAppear(type) … ボス出現の威圧音。type='golem'|'dragon'|'skeleton_king'（省略=汎用咆哮）
   //   戦闘BGMは既存 window.setMusicScene('boss') で combat より重厚な boss シーンへ（口は②で公開済み）
-  window.onBossAppear = (type) => window.playSFX('boss_roar', { type });
+  window.onBossAppear  = (type) => window.playSFX('boss_roar', { type });
+  //   window.onBossDefeat(type) … ② ボス撃破の勝利ファンファーレ（達成感）。撃破確定時に1回呼ぶだけ。
+  //   撃破後は戦闘継続でなければコアが setMusicScene を day/night 等へ戻せばBGMも平常へ（既存挙動）。
+  window.onBossDefeat  = (type) => window.playSFX('boss_defeat', { type });
 
   // === ② BGMシステム（合成音・bgmBus経由・状況でレイヤー切替＋クロスフェード）===
   //   ・コアは window.setMusicScene('day'|'night'|'combat'|'water') を呼ぶだけ
@@ -481,6 +498,9 @@
     cave:    { f: 130,  q: 1.6, g: 0.05, chirp: { type: 'drip',    rate: 0.3 } },
     night:   { f: 620,  q: 0.6, g: 0.035, chirp: { type: 'cricket', rate: 0.7 } },
     village: { f: 500,  q: 0.5, g: 0.045, chirp: { type: 'murmur',  rate: 0.45 } },
+    // ③ 特別な場所の荘厳な環境音。1号機が window.getBiome() で 'castle'/'shrine' を返せば連動（無くても他biomeは不変）。
+    castle:  { f: 180,  q: 1.2, g: 0.05,  chirp: { type: 'choir',   rate: 0.16 } }, // 王国城: 低い大広間のうなり＋荘厳な聖歌/オルガンの swell
+    shrine:  { f: 760,  q: 0.8, g: 0.035, chirp: { type: 'chime',   rate: 0.22 } }, // 祠: 静謐な空気＋ときおりの清らかな鈴
   };
   let ambBed = null, ambFilter = null, ambBedGain = null, ambType = null, ambTimer = null;
   function startAmbienceBed() {
@@ -505,6 +525,19 @@
       case 'cricket': for (let i = 0; i < 3; i++) tone(4000, 0.02, 'square', 0.02, 4000, ambBus, i * 0.03); break;
       case 'drip':    tone(900, 0.05, 'sine', 0.05, 300, ambBus); break;
       case 'murmur':  tone(170 + Math.random() * 60, 0.18, 'sawtooth', 0.03, 150, ambBus); break;
+      // ③ 荘厳系: ゆっくり立ち上がる聖歌/オルガンの和音 swell（王国城）と、清らかな鈴（祠）
+      case 'choir': { // G major のロング三和音をやわらかく重ねる（オルガン/聖歌の swell）
+        [196.00, 293.66, 392.00].forEach((f, i) => tone(f, 2.2, 'triangle', 0.030, f, ambBus, i * 0.05));
+        tone(98.00, 2.4, 'sine', 0.024, 98.00, ambBus); // 根音1oct下のドローンで荘厳さ
+        break;
+      }
+      case 'chime': { // 倍音つきの澄んだ鈴（非整数倍音でベル感・長い余韻）
+        const f0 = 880 * (Math.random() < 0.5 ? 1 : 1.5); // たまに5度上
+        tone(f0,        1.6, 'sine', 0.040, f0,        ambBus);
+        tone(f0 * 2.76, 1.2, 'sine', 0.016, f0 * 2.76, ambBus); // 金属的な倍音
+        tone(f0 * 1.5,  1.0, 'sine', 0.014, f0 * 1.5,  ambBus);
+        break;
+      }
     }
   }
   function ambScheduler() {

@@ -36,6 +36,7 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | `charge_full` | 溜め完了 | — | `onAttackCharge('full')` |
 | `levelup` | レベルアップ（上昇アルペジオ） | — | 1号機が `playSFX('levelup')` を呼出（配線済） |
 | `boss_roar` | ボス出現の威圧音（地響き+咆哮+三全音） | `{type}` | `onBossAppear(type)` 経由・**1号機へ依頼中** |
+| `boss_defeat` | ② ボス撃破の勝利ファンファーレ（達成感） | — | `onBossDefeat(type)` 経由・**1号機へ依頼中** |
 
 - 材質 `block`: `grass / dirt / sand / stone / stonebrick / planks / glass / water`（未知は default）
 - モブ `type`: `cow / sheep / chicken / pig / horse / villager / slime / zombie / skeleton / golem`
@@ -78,6 +79,26 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 
 ---
 
+## 環境音アンビエンス（①／ambバス・BGMの下）
+連続音の「寝床」（bandpassノイズ）＋散発の単発音を biome で切替。コアが `window.getBiome()` を実装すれば連動、無ければ `bgmScene` から代替推定（防御的・事故ゼロ）。音量は `setAmbVolume()`／`amb` バス。
+
+| biome | 雰囲気 | 散発音 |
+|---|---|---|
+| `plains` | 草原 | bird |
+| `desert` | 砂漠 | — |
+| `snow` | 雪原 | — |
+| `ocean` | 海 | — |
+| `water` | 水中こもり | — |
+| `cave` | 洞窟 | drip |
+| `night` | 夜 | cricket |
+| `village` | 村 | murmur |
+| `castle` | ③ 王国城・**荘厳**（低い大広間のうなり） | choir（聖歌/オルガンのswell） |
+| `shrine` | ③ 祠・**静謐** | chime（清らかな鈴） |
+
+> **1号機へ依頼（③）**: `window.getBiome()` が王国城内で `'castle'`、祠で `'shrine'` を返せば、その場の荘厳な環境音に自動で切り替わります（口が無くても他biomeは不変）。
+
+---
+
 ## 攻撃アクション連携
 1号機が以下を呼ぶだけ（未呼出なら無音待機）。
 - `window.onAttackHit(weapon, isCrit)` … `weapon`=`sword`(斬撃+金属) / `axe`(重い打撃) / `bow`(命中) / `fist`(パンチ)。`isCrit=true` でクリティカル強調音
@@ -92,8 +113,9 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 - **出現の威圧音**: `window.onBossAppear(type)` を1回呼ぶ → 威圧音 `boss_roar` が鳴る。`type` はボス種（省略可）。
   例: `window.onBossAppear('dragon')`
 - **ボス戦BGM**: combatより重厚な `boss` シーンを用意済み。1号機が `window.setMusicScene('boss')` を呼べば切替（1.8sクロス）。
+- **撃破の勝利音**（②）: `window.onBossDefeat(type)` を1回呼ぶ → ファンファーレ `boss_defeat`（上昇ブラス→解決長三和音→きらめき＋ティンパニ）。撃破後は通常の `setMusicScene('day'|'night'|…)` でBGMを平常へ戻せばOK。
 
-> **1号機へ依頼**: コアの `updateCombatMusic()`（index.html）は現在 `water>combat>night>day` のみ送出。近接敵にボス（role:`boss`）が含まれる場合に `'combat'` の代わりに `'boss'` を送れば、自動でボスBGMへ。出現/aggro時に `onBossAppear(m.def.type)` も1回呼んでください。**sound.js側は受け口を実装済み・呼ぶだけで動作**します。
+> **1号機へ依頼**: コアの `updateCombatMusic()`（index.html）は現在 `water>combat>night>day` のみ送出。近接敵にボス（role:`boss`）が含まれる場合に `'combat'` の代わりに `'boss'` を送れば、自動でボスBGMへ。出現/aggro時に `onBossAppear(m.def.type)`、撃破確定時に `onBossDefeat(m.def.type)` も1回呼んでください。**sound.js側は受け口を実装済み・呼ぶだけで動作**します。
 
 ---
 
@@ -118,7 +140,7 @@ window.setSfxGain('thunder', 1.5);    // 雷を強調
 window.getSfxGain('footstep');        // 現在の倍率
 window.SoundSettings.getGains();       // 全倍率の一覧
 ```
-対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar`）。
+対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat`）。
 
 > 体感後に「この音だけ大きい/小さい」が出たら、上記 `setSfxGain` で1行調整 → そのまま保存されます。
 
