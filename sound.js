@@ -6,10 +6,10 @@
 //   ・音量は master / sfx / bgm の3バス構成（④設定の受け渡し口 window.SoundSettings）
 // ===================================================================
 (function () {
-  let ctx = null, master = null, sfxBus = null, bgmBus = null;
+  let ctx = null, master = null, sfxBus = null, bgmBus = null, ambBus = null;
 
   // ④ 音量状態（0..1）。UI見た目は3号機、ここは値の受け渡し口のみ。
-  const vol = { master: 1.0, sfx: 1.0, bgm: 0.75, muted: false };
+  const vol = { master: 1.0, sfx: 1.0, bgm: 0.75, amb: 0.5, muted: false };
 
   // 個別SE音量の微調整（0..4 の倍率、既定1.0）。例:「足音うるさい」→ gains.footstep=0.5
   //   window.SoundSettings.setGain('footstep', 0.5) で即変更可。playSFX 経由の音に乗る。
@@ -29,7 +29,8 @@
       master = ctx.createGain();
       sfxBus = ctx.createGain();
       bgmBus = ctx.createGain();
-      sfxBus.connect(master); bgmBus.connect(master); master.connect(ctx.destination);
+      ambBus = ctx.createGain(); // ① 環境音アンビエンス（BGMの下）
+      sfxBus.connect(master); bgmBus.connect(master); ambBus.connect(master); master.connect(ctx.destination);
       applyVolumes();
     }
     if (ctx.state === 'suspended') ctx.resume(); // ユーザー操作起点で再開
@@ -41,6 +42,7 @@
     master.gain.value = m;
     sfxBus.gain.value = vol.sfx;
     bgmBus.gain.value = vol.bgm;
+    if (ambBus) ambBus.gain.value = vol.amb;
   }
 
   // 単音（周波数スライド可）
@@ -144,6 +146,7 @@
     catch (e) {} finally { curMul = prev; }
     maybeAutoStartMusic(); // SFXが鳴る＝ユーザー操作＆ctx稼働。BGM未起動なら確実に起動（window listener非依存）
     ensureScheduler();     // 万一ノート生成ループが死んでいたら自己回復（SFXのたびに健全性を担保）
+    if (bgmOn) startAmbience(); // 環境音も起動を担保
   };
 
   // 既存トリガーをサウンドに接続
@@ -277,7 +280,7 @@
     if (!bgmOn) {
       bgmOn = true; nextNoteT = c.currentTime + 0.1; beat = 0;
       bgmScene = s; startPad(s); fadeSceneGain(s, SCENES[s].level || 1);
-      scheduler();
+      scheduler(); startAmbience();
       try { console.info('[sound] BGM開始 scene=' + s + ' / bgmBus=' + (bgmBus ? bgmBus.gain.value.toFixed(2) : '?') + ' / ctx=' + (ctx ? ctx.state : '?')); } catch (e) {}
     } else {
       setMusicScene(s);
@@ -370,12 +373,68 @@
   window.addEventListener('pointerdown', startSpatial, { once: true, capture: true });
   window.addEventListener('keydown', startSpatial, { once: true, capture: true });
 
+  // === ① 環境音アンビエンス（ambバス・BGMの下・防御的: biome口優先/無ければsceneで代替）===
+  //   ・連続音の「寝床(bed)」=ループノイズ→bandpass で 風/波/吹雪/こもり を表現
+  //   ・単発音(bird/cricket/drip/murmur)を散発スケジュール。biome で切替
+  const AMB = {
+    plains:  { f: 520,  q: 0.7, g: 0.05, chirp: { type: 'bird',    rate: 0.5 } },
+    desert:  { f: 950,  q: 0.4, g: 0.06, chirp: null },
+    snow:    { f: 1500, q: 0.3, g: 0.07, chirp: null },
+    ocean:   { f: 320,  q: 0.9, g: 0.07, chirp: null },
+    water:   { f: 220,  q: 1.4, g: 0.08, chirp: null },                          // 水中こもり
+    cave:    { f: 130,  q: 1.6, g: 0.05, chirp: { type: 'drip',    rate: 0.3 } },
+    night:   { f: 620,  q: 0.6, g: 0.035, chirp: { type: 'cricket', rate: 0.7 } },
+    village: { f: 500,  q: 0.5, g: 0.045, chirp: { type: 'murmur',  rate: 0.45 } },
+  };
+  let ambBed = null, ambFilter = null, ambBedGain = null, ambType = null, ambTimer = null;
+  function startAmbienceBed() {
+    const c = ac(); if (!c || ambBed) return;
+    const n = Math.floor(c.sampleRate * 2), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    let last = 0; for (let i = 0; i < n; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last; } // ピンクっぽい
+    ambBed = c.createBufferSource(); ambBed.buffer = buf; ambBed.loop = true;
+    ambFilter = c.createBiquadFilter(); ambFilter.type = 'bandpass'; ambFilter.frequency.value = 520; ambFilter.Q.value = 0.7;
+    ambBedGain = c.createGain(); ambBedGain.gain.value = 0.0001;
+    ambBed.connect(ambFilter).connect(ambBedGain).connect(ambBus);
+    ambBed.start();
+  }
+  function currentAmbience() {
+    try { if (typeof window.getBiome === 'function') { const b = window.getBiome(); if (b && AMB[b]) return b; } } catch (e) {}
+    if (bgmScene === 'water') return 'ocean';   // 代替: シーンから推定
+    if (bgmScene === 'night') return 'night';
+    return 'plains';
+  }
+  function ambChirp(kind) {
+    switch (kind) {
+      case 'bird':    tone(2200 + Math.random() * 800, 0.08, 'sine', 0.05, 2600, ambBus); break;
+      case 'cricket': for (let i = 0; i < 3; i++) tone(4000, 0.02, 'square', 0.02, 4000, ambBus, i * 0.03); break;
+      case 'drip':    tone(900, 0.05, 'sine', 0.05, 300, ambBus); break;
+      case 'murmur':  tone(170 + Math.random() * 60, 0.18, 'sawtooth', 0.03, 150, ambBus); break;
+    }
+  }
+  function ambScheduler() {
+    ambTimer = null;
+    try {
+      const c = ac();
+      if (c) {
+        const t = currentAmbience(), cfg = AMB[t] || AMB.plains;
+        if (t !== ambType) { // 切替時に寝床のフィルタ/音量をクロスで変える
+          ambType = t;
+          if (ambFilter) { ambFilter.frequency.setTargetAtTime(cfg.f, c.currentTime, 0.6); ambFilter.Q.value = cfg.q; }
+          if (ambBedGain) ambBedGain.gain.setTargetAtTime(cfg.g, c.currentTime, 0.8);
+        }
+        if (cfg.chirp && Math.random() < cfg.chirp.rate * 0.25) ambChirp(cfg.chirp.type);
+      }
+    } catch (e) { /* 口未実装・想定外は黙って無視 */ }
+    ambTimer = setTimeout(ambScheduler, 250);
+  }
+  function startAmbience() { startAmbienceBed(); if (!ambTimer) ambScheduler(); }
+
   // ④ サウンド設定の受け渡し口（UIは3号機。ここは値とロジックのみ）
   //   get() → {master,sfx,bgm,muted} / set(key,value) / setMuted(bool)
   const clampGain = (v) => Math.max(0, Math.min(4, Number(v))); // 個別倍率は 0..4
   function emitChange() { try { window.dispatchEvent(new CustomEvent('soundsettingschange', { detail: window.SoundSettings.get() })); } catch (e) {} }
   window.SoundSettings = {
-    get: () => ({ master: vol.master, sfx: vol.sfx, bgm: vol.bgm, muted: vol.muted, gains: Object.assign({}, gains) }),
+    get: () => ({ master: vol.master, sfx: vol.sfx, bgm: vol.bgm, amb: vol.amb, muted: vol.muted, gains: Object.assign({}, gains) }),
     set: (key, value) => {
       if (key === 'muted') { vol.muted = !!value; }
       else if (key in vol) { vol[key] = clamp01(Number(value)); }
@@ -395,6 +454,8 @@
   window.getSfxVolume    = () => vol.sfx;
   window.setBgmVolume    = (v) => window.SoundSettings.set('bgm', v);
   window.getBgmVolume    = () => vol.bgm;
+  window.setAmbVolume    = (v) => window.SoundSettings.set('amb', v); // 環境音
+  window.getAmbVolume    = () => vol.amb;
   window.setMuted        = (b) => window.SoundSettings.set('muted', b);
   window.isMuted         = () => vol.muted;
   window.setSfxGain      = (name, v) => window.SoundSettings.setGain(name, v); // 個別SE倍率
@@ -426,6 +487,8 @@
       totalPadOscillators: totalPad,
       activeSceneGain: node ? +node.gain.gain.value.toFixed(4) : null, // ←0なら原因確定（gainで消えてる）
       lastNoteAgoSec: (ctx && lastNoteTime) ? +(ctx.currentTime - lastNoteTime).toFixed(2) : null, // 直近ノートから何秒
+      ambType: ambType,                                     // 現在の環境音タイプ
+      ambBusGain: ambBus ? +ambBus.gain.value.toFixed(3) : null,
       bgmBusGain: bgmBus ? +bgmBus.gain.value.toFixed(3) : null,
       sfxBusGain: sfxBus ? +sfxBus.gain.value.toFixed(3) : null,
       masterGain: master ? +master.gain.value.toFixed(3) : null,
@@ -437,12 +500,12 @@
 
   // 設定の永続化（localStorage）：起動時に復元し、変更時に保存（音量＋個別倍率）
   const VOL_KEY = 'vw_sound_v1';
-  function saveVol() { try { localStorage.setItem(VOL_KEY, JSON.stringify({ master: vol.master, sfx: vol.sfx, bgm: vol.bgm, muted: vol.muted, gains: gains })); } catch (e) {} }
+  function saveVol() { try { localStorage.setItem(VOL_KEY, JSON.stringify({ master: vol.master, sfx: vol.sfx, bgm: vol.bgm, amb: vol.amb, muted: vol.muted, gains: gains })); } catch (e) {} }
   (function loadVol() {
     try {
       const s = JSON.parse(localStorage.getItem(VOL_KEY) || 'null');
       if (s) {
-        ['master', 'sfx', 'bgm'].forEach((k) => { if (typeof s[k] === 'number') vol[k] = clamp01(s[k]); });
+        ['master', 'sfx', 'bgm', 'amb'].forEach((k) => { if (typeof s[k] === 'number') vol[k] = clamp01(s[k]); });
         vol.muted = !!s.muted;
         if (s.gains) Object.keys(gains).forEach((k) => { if (typeof s.gains[k] === 'number') gains[k] = Math.max(0, Math.min(4, s.gains[k])); });
       }
