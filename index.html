@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04q'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04r'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -162,8 +162,9 @@ const CFG = {
     spawnMin: 18, spawnMax: 40, caveMin: 6, caveMax: 18, despawn: 75, // 地上/地下の湧き距離・消滅距離
     spawnEveryMin: 2, spawnEveryRand: 2,               // 湧き判定の間隔（最小＋ランダム秒）
     speedBoss: 1.4, speedHostile: 2.2, speedNeutral: 1.3, speedVillager: 1.0, // 移動速度
-    hp: { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30, dragon:50, skeleton_king:60,
-          blacksmith:8, merchant:6, farmer:6, guard:14, child:4, elder:5, woman:6, baker:6 }, // 種別ごとの体力
+    hp: { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30, dragon:50, skeleton_king:60, demon:80,
+          blacksmith:8, merchant:6, farmer:6, guard:14, child:4, elder:5, woman:6, baker:6,
+          fish:3, fish_koi:3, fish_tropical:3, fish_puffer:4, soldier_spear:16, soldier_sword:18, soldier_captain:26 }, // 種別ごとの体力
   },
   level: {
     baseExp: 12, curve: 1.6,    // 次Lvまでの必要EXP = round(baseExp * Lv^curve)
@@ -336,6 +337,8 @@ const edits = new Map();   // "wx,wy,wz" -> ブロック種別（プレイヤー
 const idx = (x,y,z) => x + z*CHUNK + y*CHUNK*CHUNK;
 // ② 構造物レジストリ（決定論的生成中に発見・登録。実行時の村人/敵スポーンに使う）
 const villages = new Map(); // "gx,gz" -> { x, z, gh }（村の中心）
+const garrisons = new Map(); // "gx,gz" -> { x, z, captain, r }（城/砦の兵士駐留地）
+const bossSpots = new Map(); // "wx,wy,wz" -> { x, y, z, type, cd, mob, trig }（城/砦/特定地のボス出現点）
 const spawners = new Map(); // "wx,wy,wz" -> { x, y, z, cd }（ダンジョンの敵スポナー）
 // ② 構造物プロップ（4号機の struct_*.glb を該当位置に表示する装飾。決定論的に登録）
 //   kind: 'chest'|'spawner'|'torch'|'altar'|'well'。obj/mixer は近接時に生成・遠方で破棄
@@ -409,6 +412,9 @@ const VILLAGE_CELL = 56; // 村の発生間隔（ブロック）
 const DUNGEON_CELL = 64; // ダンジョンの発生間隔（ブロック）
 const FORT_CELL = 140;   // 砦の発生間隔（まれ・大型）
 const SHIP_CELL = 88;    // 船/難破船の発生間隔（やや密に＝乗れる船に出会いやすく）
+const CASTLE_CELL = 360; // 王国城の発生間隔（最希少・探索の最終目標ランドマーク。広域に1〜2基）
+const SHRINE_CELL = 104; // 祠の発生間隔（低頻度で散在）
+const CAVEPROP_CELL = 26; // 洞窟装飾の発生間隔（地下大空洞に結晶/キノコ/岩を散らす）
 function buildStructures(cx, cz, stamp) {
   const margin = 9; // 最大構造物の半径ぶん広げて候補セルを走査
   const minWX = cx*CHUNK - margin, maxWX = cx*CHUNK + CHUNK + margin;
@@ -455,6 +461,86 @@ function buildStructures(cx, cz, stamp) {
       if (wh > WATER_LEVEL || wh < WATER_LEVEL - 4) continue; // 岸の浅瀬〜やや深め＝徒歩/泳ぎで到達可能（深海の孤立を防ぐ）
       buildShipSpot(ox, oz, gx, gz, sw);
     }
+  // --- 王国城（最終目標ランドマーク・最希少。平地に1基＋近衛兵＋最奥にボス＋特別報酬） ---
+  for (let gx = Math.floor(minWX/CASTLE_CELL); gx <= Math.floor(maxWX/CASTLE_CELL); gx++)
+    for (let gz = Math.floor(minWZ/CASTLE_CELL); gz <= Math.floor(maxWZ/CASTLE_CELL); gz++) {
+      if (hash2(gx*131+19, gz*131+41) > 0.42) continue; // セルの一部にのみ（最希少）
+      const ox = gx*CASTLE_CELL + 20 + Math.floor(hash2(gx+17, gz+23) * (CASTLE_CELL-40));
+      const oz = gz*CASTLE_CELL + 20 + Math.floor(hash2(gx+29, gz+11) * (CASTLE_CELL-40));
+      const bi = biomeAt(ox, oz);
+      if (bi !== 'plains' && bi !== 'snow') continue;
+      if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue;
+      buildCastle(ox, oz, gx, gz, sw);
+    }
+  // --- 祠（聖域。低頻度で散在。中に小宝箱） ---
+  for (let gx = Math.floor(minWX/SHRINE_CELL); gx <= Math.floor(maxWX/SHRINE_CELL); gx++)
+    for (let gz = Math.floor(minWZ/SHRINE_CELL); gz <= Math.floor(maxWZ/SHRINE_CELL); gz++) {
+      if (hash2(gx*83+7, gz*83+29) > 0.22) continue; // 低頻度
+      const ox = gx*SHRINE_CELL + 10 + Math.floor(hash2(gx+6, gz+15) * (SHRINE_CELL-20));
+      const oz = gz*SHRINE_CELL + 10 + Math.floor(hash2(gx+12, gz+4) * (SHRINE_CELL-20));
+      const bi = biomeAt(ox, oz);
+      if (bi === 'ocean') continue;
+      if (heightAt(ox, oz) <= WATER_LEVEL) continue; // 水際は不可
+      buildShrine(ox, oz, gx, gz, sw);
+    }
+  // --- 洞窟装飾（地下大空洞の床に結晶/キノコ/岩のGLBを散らす。結晶系は深部のみ） ---
+  for (let gx = Math.floor(minWX/CAVEPROP_CELL); gx <= Math.floor(maxWX/CAVEPROP_CELL); gx++)
+    for (let gz = Math.floor(minWZ/CAVEPROP_CELL); gz <= Math.floor(maxWZ/CAVEPROP_CELL); gz++) {
+      if (hash2(gx*97+5, gz*97+13) > 0.32) continue; // 一部セルに装飾
+      const ox = gx*CAVEPROP_CELL + 4 + Math.floor(hash2(gx+1, gz+9) * (CAVEPROP_CELL-8));
+      const oz = gz*CAVEPROP_CELL + 4 + Math.floor(hash2(gx+8, gz+2) * (CAVEPROP_CELL-8));
+      placeCaveProp(ox, oz);
+    }
+}
+// 王国城：石レンガの基壇＋外周城壁。中央に天守(GLB)・近衛兵駐留・最奥にボス(ドラゴン)＋宝箱
+function buildCastle(ox, oz, gx, gz, sw) {
+  const base = heightAt(ox, oz);
+  if (base < 2 || base > HEIGHT - 14) return;
+  const R = 8, top = base + 3;
+  for (let dx=-R; dx<=R; dx++) for (let dz=-R; dz<=R; dz++) {
+    sw(ox+dx, base, oz+dz, B.stonebrick); // 基壇（中庭の床を平らに）
+    const edge = Math.abs(dx)===R || Math.abs(dz)===R;
+    if (edge) {
+      if (dz===-R && Math.abs(dx)<=1) continue; // 南門の開口
+      for (let yy=base+1; yy<=top; yy++) sw(ox+dx, yy, oz+dz, B.stonebrick);
+    } else {
+      for (let yy=base+1; yy<=base+11; yy++) sw(ox+dx, yy, oz+dz, B.air); // 天守の立つ中庭空間を空ける
+    }
+  }
+  addProp(ox, base+1, oz, 'castle_keep');                  // 天守（GLB・最終目標）
+  for (const [sx,sz] of [[-R,-R],[R,-R],[-R,R],[R,R]]) addProp(ox+sx, base+4, oz+sz, 'fort_flag'); // 四隅に王旗
+  addProp(ox, base+1, oz-R, 'fort_gate', Math.PI);         // 南門
+  addProp(ox-3, base+1, oz-3, 'torch'); addProp(ox+3, base+1, oz-3, 'torch');
+  garrisons.set('C'+gx+','+gz, { x: ox, z: oz, captain: true, r: R-1 }); // 近衛兵（隊長＋兵士）駐留
+  bossSpots.set(`${ox},${base+1},${oz}`, { x: ox, y: base+2, z: oz, type: 'dragon', cd: 0, mob: null, trig: 22 }); // 最奥のボス
+  sw(ox, base+1, oz+R-1, B.chest); addProp(ox, base+1, oz+R-1, 'chest'); // 特別報酬の宝箱
+}
+// 祠：聖域のGLB＋小宝箱＋松明（低頻度で散在）
+function buildShrine(ox, oz, gx, gz, sw) {
+  const base = heightAt(ox, oz);
+  if (base <= WATER_LEVEL || base > HEIGHT - 4) return;
+  addProp(ox, base+1, oz, 'shrine', hash2(gx,gz)*Math.PI*2);
+  sw(ox+1, base+1, oz+1, B.chest); addProp(ox+1, base+1, oz+1, 'chest'); // 小宝箱（小報酬/回復）
+  addProp(ox-1, base+1, oz-1, 'torch');
+}
+// 洞窟装飾：(ox,oz) 列を地表下へ走査し、最初の大空洞の床にGLBを1つ置く。結晶/晶洞は深部のみ。
+function placeCaveProp(ox, oz) {
+  const surf = heightAt(ox, oz);
+  if (surf <= WATER_LEVEL) return; // 海底直下は避ける
+  for (let y = surf - 6; y > 4; y--) {
+    const here = isBigCavern(ox, y, oz);
+    const floorBelow = !isBigCavern(ox, y-1, oz) && !isCave(ox, y-1, oz); // y-1 が固体＝床
+    const headroom = isBigCavern(ox, y+1, oz) || isCave(ox, y+1, oz);     // y+1 が空＝高さ確保
+    if (here && floorBelow && headroom && y > LAKE_DEPTH) {               // 地下湖(水)より上のみ
+      const deep = y < 20; // 深部のみ結晶/晶洞
+      const variants = deep
+        ? ['cave_crystal','cave_crystal_purple','cave_geode','cave_mushroom','cave_boulder']
+        : ['cave_mushroom','cave_boulder','cave_boulder'];
+      const v = variants[Math.floor(hash2(ox+y*3, oz-y*5) * variants.length) % variants.length];
+      addProp(ox, y, oz, v, hash2(ox+1, oz+1) * Math.PI * 2);
+      return;
+    }
+  }
 }
 // 村：中心の周りに数軒の家を配置し、村人スポーン地点として登録
 function buildVillage(ox, oz, gx, gz, sw) {
@@ -508,6 +594,8 @@ function buildDungeon(ox, oz, sw) {
   sw(ox-2, fy+1, oz-2, B.chest);   // 宝箱
   sw(ox,   fy+1, oz,   B.spawner); // 敵スポナー
   spawners.set(`${ox},${fy+1},${oz}`, { x: ox, y: fy+1, z: oz, cd: 0 });
+  if (hash2(ox*11+1, oz*11+9) < 0.18) // 一部のダンジョンは「魔窟」＝デーモンの巣（※mob_demon.glb 到着で出現）
+    bossSpots.set(`${ox},${fy+2},${oz}`, { x: ox, y: fy+1, z: oz, type: 'demon', cd: 0, mob: null, trig: 14 });
   // 装飾プロップ（GLB表示）：宝箱・スポナー・壁際の松明4本・奥の祭壇
   addProp(ox-2, fy+1, oz-2, 'chest');
   addProp(ox,   fy+1, oz,   'spawner');
@@ -542,6 +630,9 @@ function buildFort(ox, oz, sw) {
   addProp(ox+2, base+1, oz+2, 'chest');
   addProp(ox-2, base+1, oz-2, 'torch');
   addProp(ox+2, base+1, oz-2, 'torch');
+  garrisons.set('F'+ox+','+oz, { x: ox, z: oz, captain: false, r: R-1 }); // 砦は兵士が駐留・警戒
+  if (hash2(ox*7+3, oz*7+5) < 0.4) // 一部の砦は守護ボス（スケルトンキング）
+    bossSpots.set(`${ox},${base+2},${oz}`, { x: ox, y: base+2, z: oz, type: 'skeleton_king', cd: 0, mob: null, trig: 20 });
 }
 // 船/難破船：海に難破船(探索スポット＝宝箱)を配置。たまに小舟/帆船を浮かべる（将来の乗船用）
 function buildShipSpot(ox, oz, gx, gz, sw) {
@@ -2169,6 +2260,16 @@ const MOB_DEFS = [
   { type:'golem',    file:'models/mob_golem.glb',    role:'boss'   },
   { type:'dragon',   file:'models/mob_dragon.glb',   role:'boss'   }, // ⑤ ボス（4号機・golem骨格/clips一致＝role:bossで完全動作）
   { type:'skeleton_king', file:'models/mob_skeleton_king.glb', role:'boss' }, // ⑤ ボス第2弾（4号機・大剣の薙ぎ=attack/叩き付け=heavy）
+  { type:'demon',    file:'models/mob_demon.glb',    role:'boss'   }, // ⑥ ボス第3弾（※models/mob_demon.glb 未配置なら読込失敗→静かにスキップ＝配線のみ先行・モデル到着で自動有効）
+  // 海の魚（4号機・群れで海バイオームに湧く中立。aquatic=水中専用AI）
+  { type:'fish',          file:'models/mob_fish.glb',          role:'neutral', aquatic:true },
+  { type:'fish_koi',      file:'models/mob_fish_koi.glb',      role:'neutral', aquatic:true },
+  { type:'fish_tropical', file:'models/mob_fish_tropical.glb', role:'neutral', aquatic:true },
+  { type:'fish_puffer',   file:'models/mob_fish_puffer.glb',   role:'neutral', aquatic:true },
+  // 王国軍 兵士NPC（4号機・villager骨格＝idle/walk/attack）。resident=城/砦/村に駐留・警戒徘徊
+  { type:'soldier_spear',   file:'models/npc_soldier_spear.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
+  { type:'soldier_sword',   file:'models/npc_soldier_sword.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
+  { type:'soldier_captain', file:'models/npc_soldier_captain.glb', role:'neutral', resident:true, job:'隊長', soldier:true },
   // 住人NPC（4号機・villager骨格流用 idle/walk）。resident=村/砦に定住・ランダム湧き対象外
   { type:'blacksmith', file:'models/npc_blacksmith.glb', role:'neutral', resident:true, job:'鍛冶屋' },
   { type:'merchant',   file:'models/npc_merchant.glb',   role:'neutral', resident:true, job:'商人' },
@@ -2353,7 +2454,7 @@ function spawnMob(type, x, z, opts = {}) {
     mixer = new THREE.AnimationMixer(obj);
     const byName = {}; tpl.animations.forEach(c => byName[c.name] = c);
     aIdle = mixer.clipAction(byName['idle'] || tpl.animations[0]);
-    if (byName['walk'])   aWalk = mixer.clipAction(byName['walk']);
+    if (byName['walk'] || byName['swim']) aWalk = mixer.clipAction(byName['walk'] || byName['swim']); // 魚は swim を walk 枠で再生
     if (byName['attack']) aAttack = mixer.clipAction(byName['attack']);
     if (byName['heavy'])  aHeavy = mixer.clipAction(byName['heavy']);
     if (byName['hit'])  { aHit = mixer.clipAction(byName['hit']);  aHit.loop = THREE.LoopOnce; aHit.clampWhenFinished = true; } // 被弾(4号機)
@@ -2447,8 +2548,8 @@ function spawnHostileNear(cave) {
   }
 }
 function spawnNeutralNear() {
-  // 動物のみ（villager・住人NPCは村/砦に定住＝ここでは湧かせない）
-  const pool = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && !d.resident && mobTemplates[d.type]);
+  // 動物のみ（villager・住人NPCは村/砦に定住／魚は水中専用＝ここ(地上)では湧かせない）
+  const pool = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && !d.resident && !d.aquatic && mobTemplates[d.type]);
   if (!pool.length) return;
   const def = pool[Math.floor(Math.random()*pool.length)];
   const ang = Math.random()*Math.PI*2, dist = M.spawnMin + Math.random()*(M.spawnMax-M.spawnMin);
@@ -2461,13 +2562,28 @@ function spawnLogic(dt) {
   if (mobSpawnTimer > 0) return;
   mobSpawnTimer = M.spawnEveryMin + Math.random()*M.spawnEveryRand;
   if (!Object.keys(mobTemplates).length || mobs.length >= M.totalCap) return;
-  let hostileN = 0, neutralN = 0, residentN = 0;
-  for (const m of mobs) { if (m.hostile) hostileN++; else { neutralN++; if (m.home) residentN++; } }
+  let hostileN = 0, neutralN = 0, residentN = 0, aquaticN = 0;
+  for (const m of mobs) { if (m.hostile) hostileN++; else { neutralN++; if (m.home) residentN++; if (m.def.aquatic) aquaticN++; } }
 
   if (playerUnderground()) {                       // 地下＝常時、敵性を近接湧き
     if (hostileN < M.hostileCap) spawnHostileNear(true);
     return;
   }
+  // 城/砦の駐留兵士（警戒徘徊）。村の住人より先に判定（拠点に居る間は兵士を優先）
+  const gar = nearestGarrison(player.pos.x, player.pos.z, 42);
+  if (gar && residentN < 6 && Math.random() < 0.6) {
+    const types = (gar.captain ? ['soldier_captain','soldier_spear','soldier_sword','soldier_sword']
+                               : ['soldier_spear','soldier_sword','guard']).filter(t => mobTemplates[t]);
+    const type = types[Math.floor(Math.random()*types.length)];
+    if (type) {
+      const ang = Math.random()*Math.PI*2, rr = 2 + Math.random()*(gar.r || 5);
+      const x = gar.x + Math.cos(ang)*rr, z = gar.z + Math.sin(ang)*rr;
+      if (!isWaterColumnSurface(x, z)) spawnMob(type, x, z, { home: { x: gar.x, z: gar.z } });
+    }
+    return;
+  }
+  // 海の魚：水辺なら群れで湧く（昼夜問わず・中立）
+  if (aquaticN < 6 && Math.random() < 0.5 && spawnFishSchool()) return;
   if (isNight() && hostileN < M.hostileCap && Math.random() < 0.8) { // 地上・夜＝敵性湧き
     spawnHostileNear(false);
     return;
@@ -2494,6 +2610,7 @@ function updateMobs(dt) {
   }
   spawnLogic(dt);     // ④ 昼夜・地下を考慮した湧き
   updateSpawners(dt); // ② ダンジョンのスポナー稼働
+  updateBossSpots(dt); // ⑥ 城/砦/魔窟のボス出現点
   for (let i = mobs.length-1; i >= 0; i--) {
     const m = mobs[i];
     updateMobFlash(m, dt); // ③ 被弾の白フラッシュ減衰（死亡中も継続）
@@ -2542,6 +2659,8 @@ function updateMobs(dt) {
         continue;
       }
     }
+
+    if (m.def.aquatic) { updateFishAI(m, dt); continue; } // 海の魚は水中専用AI（地上の徘徊AIに乗せない）
 
     const role = m.def.role;
     let moving = false, animName = 'idle';
@@ -2604,6 +2723,72 @@ function nearestVillage(px, pz, maxD) {
     if (d < bd) { bd = d; best = v; }
   }
   return best;
+}
+// 最寄りの駐留地（城/砦・半径 maxD 内）を返す
+function nearestGarrison(px, pz, maxD) {
+  let best = null, bd = maxD;
+  for (const g of garrisons.values()) {
+    const d = Math.hypot(g.x - px, g.z - pz);
+    if (d < bd) { bd = d; best = g; }
+  }
+  return best;
+}
+// ⑥ ボス出現点：プレイヤー接近で守護ボスを1体出現。撃破/離脱後に再武装（クールダウン付き）。
+//   モデル未読込(demon 等)の type は静かにスキップ＝モデル到着で自動有効化。
+function updateBossSpots(dt) {
+  if (mobs.length >= M.totalCap) return;
+  for (const s of bossSpots.values()) {
+    const d = Math.hypot(s.x - player.pos.x, s.z - player.pos.z) + Math.abs(s.y - player.pos.y) * 0.5;
+    if (d > 80) { s.mob = null; continue; }                 // 遠方で再武装
+    if (s.mob && mobs.includes(s.mob) && !s.mob.dying) continue; // 生存中はスキップ
+    if (d > (s.trig || 22)) continue;                       // 接近で起動
+    s.cd -= dt;
+    if (s.cd > 0) continue;
+    s.cd = 30;                                              // 連続湧き防止
+    if (!mobTemplates[s.type]) continue;                    // モデル未読込（demon 等）は静かにスキップ
+    s.mob = spawnMob(s.type, s.x, s.z, { y: s.y });
+  }
+}
+// ④ 海の魚：水辺で群れ(3〜5匹)を湧かせる（中立・水中専用AI）。湧けたら true
+function spawnFishSchool() {
+  const fishTypes = MOB_DEFS.filter(d => d.aquatic && mobTemplates[d.type]);
+  if (!fishTypes.length) return false;
+  for (let tries = 0; tries < 6; tries++) {
+    const ang = Math.random()*Math.PI*2, dist = M.spawnMin + Math.random()*(M.spawnMax-M.spawnMin);
+    const cx = player.pos.x + Math.cos(ang)*dist, cz = player.pos.z + Math.sin(ang)*dist;
+    if (heightAt(Math.floor(cx), Math.floor(cz)) > WATER_LEVEL - 2) continue; // 十分な水深がない
+    const def = fishTypes[Math.floor(Math.random()*fishTypes.length)];
+    const n = 3 + Math.floor(Math.random()*3); // 3〜5匹の群れ
+    let spawned = 0;
+    for (let i = 0; i < n && mobs.length < M.totalCap; i++) {
+      const fx = cx + (Math.random()*4-2), fz = cz + (Math.random()*4-2);
+      const sea = heightAt(Math.floor(fx), Math.floor(fz));
+      if (sea > WATER_LEVEL - 1) continue;
+      const y = sea + 0.8 + Math.random()*Math.max(0.4, WATER_LEVEL - sea - 1.4); // 海底+0.8〜水面下
+      const m = spawnMob(def.type, fx, fz, { y });
+      if (m) { m.fishYaw = Math.random()*Math.PI*2; m.fishRise = 0; m.timer = Math.random()*2; spawned++; }
+    }
+    return spawned > 0;
+  }
+  return false;
+}
+// ④ 魚の遊泳AI：水中をゆっくり巡り、水から出ない・海底に潜らない。たまに向き/上下を変える。
+function updateFishAI(m, dt) {
+  m.timer -= dt;
+  if (m.timer <= 0) { m.timer = 1.5 + Math.random()*3; m.fishYaw = (m.fishYaw||0) + (Math.random()*2-1)*1.2; m.fishRise = (Math.random()*2-1)*0.25; }
+  const yaw = m.fishYaw || 0, spd = 1.0;
+  const nx = m.obj.position.x - Math.sin(yaw)*spd*dt; // 正面 -Z 基準（mob と同じ向き規約）
+  const nz = m.obj.position.z - Math.cos(yaw)*spd*dt;
+  const sea = heightAt(Math.floor(nx), Math.floor(nz));
+  if (sea > WATER_LEVEL - 1) { m.fishYaw = yaw + Math.PI + (Math.random()*0.6-0.3); } // 陸/浅瀬へ向かったら反転
+  else {
+    let ny = m.obj.position.y + (m.fishRise||0)*dt;
+    ny = Math.max(sea + 0.7, Math.min(WATER_LEVEL - 0.4, ny)); // 海底+0.7〜水面下0.4 に収める
+    m.obj.position.set(nx, ny, nz);
+    m.obj.rotation.y = yaw;
+  }
+  setMobAnim(m, 'walk'); // swim クリップ（aWalk に swim をマップ済み）
+  if (m.mixer) m.mixer.update(dt);
 }
 // ② ダンジョンのスポナー：近くにプレイヤーが居ると敵を周期的に湧かせる（昼夜問わず＝地下は暗い）
 function updateSpawners(dt) {
@@ -2679,7 +2864,9 @@ STRUCT_DEFS.forEach(k => gltfLoader.load(`models/struct_${k}.glb`,
   undefined, () => {}));
 // 砦・船のプロップGLB（4号機）。kind に同名で登録（fort_tower/ship_wreck 等）。読込失敗は無視
 ['fort_tower','fort_gate','fort_flag','fort_wall','fort_battlement','ship_rowboat','ship_sailboat','ship_wreck',
- 'prop_stall','prop_bench','prop_lamp','prop_brazier','prop_cart','prop_barrel','prop_crate','prop_sign','prop_laundry']
+ 'prop_stall','prop_bench','prop_lamp','prop_brazier','prop_cart','prop_barrel','prop_crate','prop_sign','prop_laundry',
+ 'castle_keep','shrine', // ①王国城の天守 / ②祠（4号機 世界拡張）
+ 'cave_crystal','cave_crystal_purple','cave_geode','cave_mushroom','cave_boulder'] // ⑤洞窟装飾（深部=結晶/晶洞）
   .forEach(k => gltfLoader.load(`models/${k}.glb`,
     g => { structTemplates[k] = { scene: g.scene, animations: g.animations || [] }; },
     undefined, () => {}));
