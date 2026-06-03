@@ -35,14 +35,16 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | `charge_start` | 溜め開始 | — | `onAttackCharge('start')` |
 | `charge_full` | 溜め完了 | — | `onAttackCharge('full')` |
 | `levelup` | レベルアップ（上昇アルペジオ） | — | 1号機が `playSFX('levelup')` を呼出（配線済） |
+| `boss_roar` | ボス出現の威圧音（地響き+咆哮+三全音） | `{type}` | `onBossAppear(type)` 経由・**1号機へ依頼中** |
 
 - 材質 `block`: `grass / dirt / sand / stone / stonebrick / planks / glass / water`（未知は default）
 - モブ `type`: `cow / sheep / chicken / pig / horse / villager / slime / zombie / skeleton / golem`
+- ボス `type`（`boss_roar`）: `golem`（石の巨像/地響き）/ `dragon`（金切り咆哮+炎ブレス）/ `skeleton_king`（骨カタカタ+不協和な鐘）。未指定でも汎用咆哮として鳴る
 
 ---
 
 ## BGM（②）
-`window.setMusicScene('day'|'night'|'combat'|'water')` でシーン切替（1.8sクロスフェード）。初回ユーザー操作で `day` を自動開始。`window.startMusic()` / `window.stopMusic()` で明示制御も可。
+`window.setMusicScene('day'|'night'|'combat'|'water'|'boss')` でシーン切替（1.8sクロスフェード）。初回ユーザー操作で `day` を自動開始。`window.startMusic()` / `window.stopMusic()` で明示制御も可。
 
 | シーン | 雰囲気 | テンポ | 備考 |
 |---|---|---|---|
@@ -50,8 +52,9 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | `night` | 静か | 76 | |
 | `combat` | 疾走 | 148 | キックドラムあり |
 | `water` | 浮遊（水中だと分かる程度に） | 72 | |
+| `boss` | ① ボス戦・**重厚**（低音域+三全音テンション+重いサブベース） | 132 | キックドラム＋鋸波pad。combatより低く・重い |
 
-各シーンは `level`（音量バランス）を持ち、water は静かめ。陸地に出れば day/night のはっきりしたBGMに切り替わります。
+各シーンは `level`（音量バランス）を持ち、water は静かめ。陸地に出れば day/night のはっきりしたBGMに切り替わります。`boss` は combat より低い音域・重いサブベース・三全音(G#3 vs 根音D)の不協和で威圧感を出しています。
 
 ### 診断
 コンソールで `window.getSoundDiag()` を実行すると状態一式が返ります。「BGMが聞こえない」時の切り分け順：
@@ -83,6 +86,17 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 
 ---
 
+## ① ボス戦の音（世界拡張・王国城/ボス三系統 連携）
+1号機のボス三系統（`golem` / `dragon` / `skeleton_king`、role:`boss`）に対応。口は防御的（未呼出なら無音待機）。
+
+- **出現の威圧音**: `window.onBossAppear(type)` を1回呼ぶ → 威圧音 `boss_roar` が鳴る。`type` はボス種（省略可）。
+  例: `window.onBossAppear('dragon')`
+- **ボス戦BGM**: combatより重厚な `boss` シーンを用意済み。1号機が `window.setMusicScene('boss')` を呼べば切替（1.8sクロス）。
+
+> **1号機へ依頼**: コアの `updateCombatMusic()`（index.html）は現在 `water>combat>night>day` のみ送出。近接敵にボス（role:`boss`）が含まれる場合に `'combat'` の代わりに `'boss'` を送れば、自動でボスBGMへ。出現/aggro時に `onBossAppear(m.def.type)` も1回呼んでください。**sound.js側は受け口を実装済み・呼ぶだけで動作**します。
+
+---
+
 ## 音量・バランス調整（④）
 全体音量・個別SE倍率はいつでも変更でき、`localStorage`（`vw_sound_v1`）に永続化されます。変更時に `window` へ `soundsettingschange` イベントを発火。
 
@@ -104,7 +118,7 @@ window.setSfxGain('thunder', 1.5);    // 雷を強調
 window.getSfxGain('footstep');        // 現在の倍率
 window.SoundSettings.getGains();       // 全倍率の一覧
 ```
-対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full`）。
+対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar`）。
 
 > 体感後に「この音だけ大きい/小さい」が出たら、上記 `setSfxGain` で1行調整 → そのまま保存されます。
 

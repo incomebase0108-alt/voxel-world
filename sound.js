@@ -16,7 +16,7 @@
   const gains = {
     footstep: 1, jump: 1, land: 1, break: 1, place: 1, eat: 1, pickup: 1, craft: 1,
     splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
-    whiff: 1, charge_start: 1, charge_full: 1, levelup: 1,
+    whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1,
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
 
@@ -137,6 +137,33 @@
       seq.forEach((f, i) => tone(f, 0.20, 'square', 0.12, f, null, i * 0.09));
       tone(1318.51, 0.30, 'sine', 0.10, 1568.00, null, 0.40); // 締め(E6→G6きらめき)
     },
+    // ① ボス出現の威圧音。1号機 window.onBossAppear(type) 連携。type=ボス三系統で個性付与（未指定でも汎用咆哮として成立）。
+    //   共通土台＝地響きサブ＋低域うなり＋デチューン咆哮(うなり)＋三全音上(不協和)で「威圧」を作る。
+    boss_roar(o) {
+      const type = o && o.type;
+      tone(60,   1.10, 'sine',     0.32, 34);            // 地響き（felt-bass・下降）
+      noise(0.90, 0.20, 240, 'lowpass');                 // 低域のうなり（咆哮の胴体）
+      tone(82,   0.95, 'sawtooth', 0.15, 66);            // 咆哮（低）
+      tone(86.5, 0.95, 'sawtooth', 0.13, 70);            // デチューン（うなり感）
+      tone(116,  0.70, 'sawtooth', 0.09, 98);            // 三全音上（威圧の不協和）
+      switch (type) {
+        case 'golem':         // 石の巨像：さらに低く・岩の崩れ
+          tone(44, 1.00, 'sine', 0.18, 30);
+          noise(0.55, 0.16, 180, 'lowpass');
+          for (let i = 0; i < 4; i++) noise(0.06, 0.10, 320, 'lowpass'); // ゴロゴロ崩れ
+          break;
+        case 'dragon':        // 竜：高域へ駆け上がる金切り咆哮＋炎のブレス
+          tone(300,  0.60, 'sawtooth', 0.10, 1400);      // 立ち上がる咆哮
+          tone(1500, 0.50, 'sawtooth', 0.05, 600);       // 金切り（下降）
+          noise(0.70, 0.11, 2600, 'highpass');           // 炎のブレス（高域ノイズ）
+          break;
+        case 'skeleton_king': // 骸骨王：骨のカタカタ＋中空の不協和な鐘
+          for (let i = 0; i < 8; i++) noise(0.03, 0.06, 2800, 'bandpass'); // 骨カタカタ
+          tone(220, 0.90, 'square', 0.06, 110);          // 中空の不気味音
+          tone(370, 1.00, 'sine', 0.05, 370); tone(392, 1.00, 'sine', 0.04, 392); // 短2度ずれの鐘
+          break;
+      }
+    },
   };
 
   // 公開API：playSFX(name, opts) ── opts は省略可（後方互換）
@@ -175,6 +202,11 @@
   window.onAttackWhiff  = () => window.playSFX('whiff');
   window.onAttackCharge = (phase) => window.playSFX(phase === 'full' ? 'charge_full' : 'charge_start');
 
+  // === ① ボス連携（防御的: 1号機が口を呼ぶだけ・未呼出なら無音待機）=====
+  //   window.onBossAppear(type) … ボス出現の威圧音。type='golem'|'dragon'|'skeleton_king'（省略=汎用咆哮）
+  //   戦闘BGMは既存 window.setMusicScene('boss') で combat より重厚な boss シーンへ（口は②で公開済み）
+  window.onBossAppear = (type) => window.playSFX('boss_roar', { type });
+
   // === ② BGMシステム（合成音・bgmBus経由・状況でレイヤー切替＋クロスフェード）===
   //   ・コアは window.setMusicScene('day'|'night'|'combat'|'water') を呼ぶだけ
   //   ・最初のユーザー操作で 'day' を自動開始（startMusic/stopMusic で明示制御も可）
@@ -189,6 +221,9 @@
     night:  { tempo: 76,  scale: [164.81, 196.00, 220.00, 261.63, 293.66], pad: [123.47, 164.81, 220.00], wave: 'sine',     density: 0.42, drums: false, level: 0.9, bassG: 0.045, shimmer: true,  bassline: false, tremHz: 0.09, tremDepth: 0.14 },
     combat: { tempo: 148, scale: [146.83, 174.61, 196.00, 220.00, 261.63], pad: [110.00, 146.83, 220.00], wave: 'sawtooth', density: 0.85, drums: true,  level: 1.0, bassG: 0.07,  shimmer: false, bassline: true,  tremHz: 0.6,  tremDepth: 0.10 },
     water:  { tempo: 58,  scale: [261.63, 311.13, 349.23, 392.00, 466.16], pad: [130.81, 196.00, 261.63], wave: 'sine',     density: 0.26, drums: false, level: 0.6, bassG: 0.035, shimmer: true,  bassline: false, tremHz: 0.07, tremDepth: 0.16 },
+    // ① ボス戦専用シーン（combatより重厚）。1号機のボス三系統(golem/dragon/skeleton_king)接近時に setMusicScene('boss')。
+    //   combatより低い音域＋三全音テンション(G#3=207.65 vs 根音D)＋重いサブベース(bassG高)で威圧感。テンポはやや遅く=重い。
+    boss:   { tempo: 132, scale: [146.83, 174.61, 207.65, 220.00, 261.63], pad: [73.42,  87.31,  110.00], wave: 'sawtooth', density: 0.90, drums: true,  level: 1.1, bassG: 0.11,  shimmer: false, bassline: true,  tremHz: 0.5,  tremDepth: 0.13 },
   };
   let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false, lastNoteTime = 0;
   let xfadeUntil = 0; // クロスフェード進行中の終了時刻（この間はscheduler の stuck回復ガードを抑止＝自動化の衝突回避）
@@ -218,7 +253,7 @@
     // 多層化②: 和音パッド（既存・微デチューンで厚み）。呼吸レイヤー経由で接続。
     sc.pad.forEach((f, i) => {
       const o = c.createOscillator(), g = c.createGain();
-      o.type = name === 'combat' ? 'sawtooth' : 'sine';
+      o.type = (name === 'combat' || name === 'boss') ? 'sawtooth' : 'sine'; // boss も鋸波で攻撃的に
       o.frequency.value = f * (1 + (i - 1) * 0.003);
       g.gain.value = 0.09;
       o.connect(g).connect(layerGain); o.start();
