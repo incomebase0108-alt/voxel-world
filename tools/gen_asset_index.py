@@ -48,6 +48,7 @@ def category(name):
     if name.startswith("fort_"): return ("砦・城塞", 7)
     if name.startswith("ship_"): return ("船", 8)
     if name.startswith("prop_"): return ("町小物", 25)
+    if name.startswith("fx_"):    return ("演出（ボス出現FX）", 10)
     if name.startswith("item_") and name in EQUIP: return ("装備・道具", 5)
     if name.startswith("item_"):  return ("アイテム", 4)
     return ("その他", 9)
@@ -86,11 +87,12 @@ meta = {
         "origin": {
             "player/mob/npc/struct": "足元中心 z=0",
             "item_(消費)": "形状中心",
-            "item_(装備:sword/pickaxe/axe)": "柄の最下端（握り基部）",
+            "item_(装備:sword/pickaxe/axe)": "握り（拳が巻く点。2026-06-04に柄基部から移動）",
             "item_bow": "握り中央",
             "item_(装備:shield/armor)": "形状中心",
+            "fx_(ボス出現FX)": "footprint中心・接地 z=0",
         },
-        "clip_naming": "idle / walk（敵性=+attack, ボス=+heavy）。構造物は idle ＋ 固有(chest:open 等)。",
+        "clip_naming": "idle / walk（敵性=+attack, ボス=+heavy）。構造物は idle ＋ 固有(chest:open 等)。FX=loop。",
         "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）",
     },
     "totals": {"count": len(rows), "size_bytes": total_bytes, "size_mb": round(total_bytes/1048576, 3)},
