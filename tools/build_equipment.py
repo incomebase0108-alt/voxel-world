@@ -4,11 +4,14 @@
 #   出力: models/item_sword.glb / item_pickaxe.glb / item_axe.glb /
 #         item_bow.glb / item_shield.glb / item_armor.glb
 #   規約: Y-up / 正面 Blender+Y(=glTF -Z) / 1ブロック≒1m。アニメ無し・軽量。
-#   手持ち＋地面ドロップ両対応。原点(=ノード基準点)は装備ごとの「握り/中心」に統一:
-#     sword/pickaxe/axe : 柄の最下端（握り基部）。刃/頭は +Z 方向へ伸びる。
-#     bow               : 握り中央（弓の中点）。
-#     shield/armor      : 形状中心（背面の握り＝中心）。
-#   → 1号機は origin を手ボーンに付ければ自然に持てる。ドロップ時は origin 周りで回転表示でOK。
+#   手持ち＋地面ドロップ両対応。原点(=ノード基準点)は装備ごとの「実際に握る点」に統一:
+#     sword            : 握り中央（拳が巻く位置。z=0.13。鍔のすぐ下・柄頭は下に出る）。刃は +Z へ伸びる。
+#     pickaxe/axe      : 握り（柄を握る点。z=0.14。柄尻は少し下に出る）。頭は +Z 上端へ。
+#     bow              : 握り中央（弓の中点）。
+#     shield/armor     : 形状中心（背面の握り＝中心。表面ボス側＝+Y＝glTF -Z=前）。
+#   → 1号機は origin を手ボーンに付ければ拳が握り点に来る。ドロップ時は origin 周りで回転表示でOK。
+#   ※2026-06-04 修正: 旧版は sword/pickaxe/axe の原点が柄の最下端(z=0)＝握り中央でなく柄頭にあり、
+#     手に付けると長い刀身が拳の根元から生えて回転で大きく振れた(実機で「背中に刺さる」)。原点を握りへ移動。
 
 import bpy, os, math, mathutils
 V=mathutils.Vector
@@ -86,7 +89,7 @@ cube("Guard",(0,0,0.215),(0.13,0.035,0.025),GD)              # 鍔
 cube("Blade",(0,0,0.57),(0.045,0.012,0.34),ST)              # 刀身 0.23..0.91
 cube("Fuller",(0,0,0.57),(0.012,0.014,0.33),ST2)            # 樋（中央溝）
 cone("Tip",(0,0,0.93),0.045,0.10,ST,verts=8)                # 切先
-finish("item_sword", grip=(0,0,0.0), bevel=0.004)
+finish("item_sword", grip=(0,0,0.13), bevel=0.004)   # 原点=握り中央(拳が巻く位置・鍔のすぐ下)
 
 # ============ item_pickaxe（柄基部=原点・頭が+Z上端で横向き）============
 reset()
@@ -98,7 +101,7 @@ cube("HeadL",(0.22,0,0.685),(0.18,0.04,0.04),IR,rot=(0,math.radians(12),0))
 cube("HeadR",(-0.22,0,0.685),(0.18,0.04,0.04),IR,rot=(0,math.radians(-12),0))
 cone("PtL",(0.40,0,0.665),0.04,0.10,ST2,verts=8,rot=(0,math.radians(102),0))
 cone("PtR",(-0.40,0,0.665),0.04,0.10,ST2,verts=8,rot=(0,math.radians(-102),0))
-finish("item_pickaxe", grip=(0,0,0.0), bevel=0.004)
+finish("item_pickaxe", grip=(0,0,0.14), bevel=0.004)   # 原点=握り(柄尻は少し下に出る)
 
 # ============ item_axe（柄基部=原点・斧頭が片側）============
 reset()
@@ -107,7 +110,7 @@ cyl("Handle",(0,0,0.34),0.026,0.68,WD,verts=12)             # 柄 z0..0.68
 cube("HeadBack",(0,0,0.66),(0.05,0.05,0.10),IR)             # 頭の基部
 cube("Blade",(0.17,0,0.66),(0.14,0.045,0.13),IR)            # 斧身
 cube("Edge",(0.27,0,0.66),(0.02,0.05,0.15),ST)             # 刃先（やや広い）
-finish("item_axe", grip=(0,0,0.0), bevel=0.004)
+finish("item_axe", grip=(0,0,0.14), bevel=0.004)   # 原点=握り(柄尻は少し下に出る)
 
 # ============ item_bow（握り中央=原点・縦の弓・木が+Yへ湾曲＝D字・弦は-Y側の直線）============
 reset()
