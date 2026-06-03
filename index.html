@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03l'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-03m'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -732,6 +732,7 @@ function loadWorld(slot = currentSlot) {
       const lbx = Math.floor(player.pos.x), lbz = Math.floor(player.pos.z);
       if (playerHeadInWater() || waterAtPlayer(0.2) || biomeAt(lbx, lbz) === 'ocean') {
         const s = findSpawn(); player.pos.set(s.x, s.y, s.z); player.vel.set(0, 0, 0);
+        resetAvatarAnim(); // 退避後に idle へ（スロット切替ロードで mixer 在る場合の swim 引きずり防止）
         console.log('[voxel] ロード位置が水際/水中→スポーン拠点へ退避', s);
       }
     }
@@ -1480,6 +1481,7 @@ function respawn() {
   player.vel.set(0, 0, 0);
   hp = maxHpEff(); breath = P.breathMax; hunger = P.maxHunger;
   fallPeakY = player.pos.y; prevOnGround = true;
+  resetAvatarAnim(); // 復活直後に idle へ。swim 等の引きずりを断つ
   scheduleSave();
 }
 
@@ -1929,10 +1931,21 @@ function playAvatarAnim(moving, swimming) {
   if (!mixer || avatarAttackTimer > 0) return; // 攻撃中は上書きしない
   const target = (swimming && actSwim) ? actSwim : moving ? actWalk : actIdle; // swimクリップがあれば優先（4号機到着で自動）
   if (target && target !== curAction) {
-    target.reset().fadeIn(0.2).play();
-    if (curAction) curAction.fadeOut(0.2);
+    target.reset().fadeIn(0.15).play();
+    // ★切替時は target 以外の待機/歩行/泳ぎを「全て」確実にフェードアウト。
+    //   curAction だけ消す旧実装だと、過去に再生した swim 等が weight>0 のまま残り
+    //   「陸なのに泳ぎ姿勢が固着・攻撃でしか抜けない」不具合になっていた（星野さん報告の根治）。
+    for (const a of [actIdle, actWalk, actSwim]) if (a && a !== target) a.fadeOut(0.15);
     curAction = target;
   }
+}
+// ロード/スポーン/復活の直後にアバターのアニメ状態を idle へ明示リセット（swim等の引きずりを断つ）。
+//   mixer 未読込（アバター読込前）なら no-op＝loadAvatar 側の初期 idle に委ねる。
+function resetAvatarAnim() {
+  if (!mixer) return;
+  for (const a of [actIdle, actWalk, actSwim, actAttack]) if (a) a.stop();
+  avatarAttackTimer = 0; avatarPitch = 0;
+  if (actIdle) { actIdle.reset().play(); curAction = actIdle; } else curAction = null;
 }
 // 攻撃モーションを1回再生（三人称アバター）。終了後 playAvatarAnim が idle/walk を貼り直す
 function playAvatarAttack() {
