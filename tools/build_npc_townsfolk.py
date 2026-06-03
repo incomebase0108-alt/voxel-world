@@ -51,9 +51,18 @@ def build_npc(name, cfg):
     SP(BODY,"ShoulderR",(-0.26,0,1.40),(0.10,0.11,0.10),cloth)
     if cfg.get('apron'):
         CB(BODY,"Apron",(0,-0.16,1.00),(0.20,0.03,0.28),mat("Ap",cfg['apron'],0.8))
-    if cfg.get('armor'):   # 衛兵：胸甲＋肩当て
+    if cfg.get('armor'):   # 衛兵/兵士：胸甲＋肩当て
         CB(BODY,"Plate",(0,-0.16,1.14),(0.26,0.04,0.30),metal)
         SP(BODY,"PauldL",(0.27,0,1.42),(0.12,0.12,0.10),metal); SP(BODY,"PauldR",(-0.27,0,1.42),(0.12,0.12,0.10),metal)
+    if cfg.get('tabard'):  # 兵士：王国色の陣羽織（胸甲の上に紋）
+        tb=mat("Tabard",cfg['tabard'],0.7)
+        CB(BODY,"Tabard",(0,-0.19,1.06),(0.16,0.03,0.34),tb)
+        CB(BODY,"TabEmblem",(0,-0.21,1.14),(0.06,0.02,0.07),mat("Emb",cfg.get('emblem',(0.86,0.68,0.24)),0.3,0.7))
+    if cfg.get('cape'):    # 隊長：背の長マント
+        cp=mat("Cape",cfg['cape'],0.7)
+        CB(BODY,"Cape",(0,0.16,1.04),(0.24,0.03,0.40),cp)
+        CB(BODY,"CapeLow",(0,0.17,0.66),(0.20,0.03,0.18),cp)
+        CB(BODY,"CapeClasp",(0,0,1.40),(0.06,0.10,0.04),mat("Clasp",(0.86,0.68,0.24),0.3,0.7))
     if cfg.get('back'):    # 商人：背負い荷
         CB(BODY,"Pack",(0,0.20,1.12),(0.20,0.10,0.22),leather)
         CB(BODY,"PackTie",(0,0.0,1.30),(0.04,0.20,0.03),leather)
@@ -81,9 +90,13 @@ def build_npc(name, cfg):
     if hat=='straw':       # 農民：麦わら帽
         CY(BODY,"Brim",(0,0,1.80),0.26,0.03,mat("Straw",(0.82,0.68,0.34),0.85),verts=20)
         CY(BODY,"Dome",(0,0,1.86),0.13,0.10,mat("Straw2",(0.78,0.63,0.30),0.85),verts=16)
-    elif hat=='helmet':    # 衛兵：兜
+    elif hat=='helmet':    # 衛兵/兵士：兜（plume指定で前立ての羽根）
         SP(BODY,"Helm",(0,0,1.74),(0.15,0.155,0.16),metal,segs=18,rings=12)
         CB(BODY,"NoseGuard",(0,FY,1.66),(0.025,0.05,0.10),metal)
+        if cfg.get('plume'):
+            pl=mat("Plume",cfg['plume'],0.7)
+            CB(BODY,"Crest",(0,-0.02,1.90),(0.02,0.16,0.10),pl)
+            CB(BODY,"CrestF",(0,0.10,1.86),(0.02,0.06,0.06),pl,rot=(math.radians(40),0,0))
     elif hat=='cap':       # 商人：柔帽
         SP(BODY,"Cap",(0,-0.01,1.78),(0.15,0.15,0.10),mat("Cap",cfg.get('accent',(0.4,0.2,0.2))),segs=16,rings=10)
         CB(BODY,"CapBrim",(0,0.12,1.74),(0.13,0.06,0.02),mat("Cap2",cfg.get('accent',(0.4,0.2,0.2))))
@@ -114,6 +127,19 @@ def build_npc(name, cfg):
     elif prop=='cane':
         CY(ARMR,"Cane",(hx-0.02,0.10,0.55),0.02,0.95,wood,verts=8)
         SP(ARMR,"CaneTop",(hx-0.02,0.10,1.02),(0.04,0.04,0.04),wood)
+    elif prop=='sword':   # 兵士：直剣（柄を握る・刃は上）
+        CY(ARMR,"SwGrip",(hx,0.06,0.74),0.022,0.16,leather,verts=8)
+        CB(ARMR,"SwGuard",(hx,0.06,0.84),(0.10,0.03,0.025),gold)
+        CB(ARMR,"SwBlade",(hx,0.06,1.16),(0.025,0.018,0.34),metal)
+        CB(ARMR,"SwPommel",(hx,0.06,0.64),(0.03,0.03,0.03),gold)
+    # 左手の盾（ARMLに内包＝腕に追従。カイトシールド・正面+Yを向く）
+    if cfg.get('shield'):
+        sc=mat("ShieldF",cfg.get('shield_col',cfg.get('accent',(0.30,0.30,0.55))),0.5)
+        sx=0.30
+        CB(ARML,"ShieldBody",(sx,0.16,0.92),(0.20,0.04,0.26),sc)
+        CB(ARML,"ShieldLow",(sx,0.16,0.66),(0.12,0.04,0.10),sc,rot=(0,0,0))
+        CB(ARML,"ShieldBoss",(sx,0.20,0.94),(0.05,0.03,0.05),metal)
+        CB(ARML,"ShieldRim",(sx,0.18,0.92),(0.21,0.02,0.27),gold)
 
     # ---- 脚（股 z=0.84）----
     def leg(g,sgn):
@@ -212,6 +238,18 @@ def build_npc(name, cfg):
     new_action(body,"body_talk")
     for f,z in [(1,BZ),(30,BZ+0.008*s),(60,BZ)]: kz(body,f,z)
     push(body,"talk")
+    # ---- attack（兵士のみ・武器を前へ突き／振り。frame1=最終=中立で自己完結＝rest連動維持）----
+    #   敵性骨格(zombie等)とはノード階層が違うが、クリップ名=attack で1号機の発火契機を統一。
+    if cfg.get('combat'):
+        new_action(armR,"ArmR_attack")
+        for f,d in [(1,0),(4,-26),(9,78),(14,34),(20,0)]: krx(armR,f,d)   # 引き→前へ突き出し→戻し
+        push(armR,"attack")
+        new_action(armL,"ArmL_attack")
+        for f,d in [(1,0),(9,-12),(20,0)]: krx(armL,f,d)                  # 盾腕で受け構え
+        push(armL,"attack")
+        new_action(body,"body_attack")
+        for f,d in [(1,0),(6,7),(12,-11),(20,0)]: krx(body,f,d)           # コイル→踏み込み前傾
+        push(body,"attack")
 
     scene.frame_set(1)   # rest=frame1（全クリップ中立）でノード基準姿勢を確定
     out=os.path.join(models,name+".glb")
@@ -242,6 +280,22 @@ NPCS = {
     "accent":(0.80,0.78,0.72),"belt":(0.45,0.30,0.20)},
  "npc_baker": {"skin":(0.85,0.64,0.50),"cloth":(0.85,0.84,0.80),"cloth2":(0.40,0.30,0.22),
     "apron":(0.92,0.90,0.86),"hat":"bakerhat","accent":(0.80,0.30,0.24),"hair":(0.25,0.16,0.08),"build":1.05},
+ # ===== 兵士（王国軍・villager骨格＋装甲/武器/盾、combat=attackクリップ内包）=====
+ # 王国色=青(屋根)＋金。隊長は深紅マント＋羽根前立てで格付け。骨格/ピボット/クリップ名は他NPCと完全同一。
+ "npc_soldier_spear": {"skin":(0.82,0.62,0.48),"cloth":(0.22,0.24,0.30),"cloth2":(0.20,0.20,0.24),
+    "armor":True,"hat":"helmet","prop":"spear","shield":True,"shield_col":(0.16,0.26,0.55),
+    "tabard":(0.16,0.26,0.55),"emblem":(0.86,0.68,0.24),"combat":True,"no_hair":True,"build":1.08,"belt":(0.25,0.20,0.14)},
+ "npc_soldier_sword": {"skin":(0.80,0.60,0.46),"cloth":(0.24,0.24,0.28),"cloth2":(0.20,0.20,0.24),
+    "armor":True,"hat":"helmet","prop":"sword","shield":True,"shield_col":(0.55,0.14,0.14),
+    "tabard":(0.55,0.14,0.14),"emblem":(0.90,0.88,0.84),"combat":True,"no_hair":True,"build":1.10,"belt":(0.25,0.20,0.14)},
+ "npc_soldier_captain": {"skin":(0.83,0.63,0.49),"cloth":(0.20,0.22,0.28),"cloth2":(0.18,0.18,0.22),
+    "armor":True,"hat":"helmet","plume":(0.78,0.16,0.14),"prop":"sword","cape":(0.50,0.12,0.12),
+    "tabard":(0.16,0.26,0.55),"emblem":(0.90,0.74,0.28),"combat":True,"no_hair":True,"build":1.15,"belt":(0.30,0.24,0.14)},
 }
-for nm,cfg in NPCS.items(): build_npc(nm,cfg)
-print("[voxel] all townsfolk done (%d)"%len(NPCS))
+import sys as _sys
+ONLY=os.environ.get("ONLY","")
+built=0
+for nm,cfg in NPCS.items():
+    if ONLY and ONLY not in nm: continue
+    build_npc(nm,cfg); built+=1
+print("[voxel] townsfolk built: %d / %d (ONLY=%r)"%(built,len(NPCS),ONLY))

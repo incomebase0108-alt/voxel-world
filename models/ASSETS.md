@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 80 ファイル / 11.19 MB
+**合計**: 93 ファイル / 12.89 MB
 
 
 ## プレイヤー
@@ -28,6 +28,10 @@
 | `mob_cow.glb` | 0.2493 | `walk`, `idle`, `die`, `hit` | 26/26 |
 | `mob_demon.glb` | 0.4007 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_dragon.glb` | 0.3086 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
+| `mob_fish.glb` | 0.1255 | `idle`, `swim` | 2/2 |
+| `mob_fish_koi.glb` | 0.1258 | `idle`, `swim` | 2/2 |
+| `mob_fish_puffer.glb` | 0.1325 | `idle`, `swim` | 2/2 |
+| `mob_fish_tropical.glb` | 0.1290 | `idle`, `swim` | 2/2 |
 | `mob_golem.glb` | 0.2460 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_horse.glb` | 0.1591 | `walk`, `idle`, `die`, `hit` | 6/6 |
 | `mob_pig.glb` | 0.1115 | `walk`, `idle`, `die`, `hit` | 7/7 |
@@ -48,6 +52,9 @@
 | `npc_farmer.glb` | 0.2132 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 | `npc_guard.glb` | 0.2306 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 | `npc_merchant.glb` | 0.2144 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
+| `npc_soldier_captain.glb` | 0.2459 | `idle`, `walk`, `sit`, `work`, `talk`, `attack` | 5/5 |
+| `npc_soldier_spear.glb` | 0.2424 | `idle`, `walk`, `sit`, `work`, `talk`, `attack` | 5/5 |
+| `npc_soldier_sword.glb` | 0.2427 | `idle`, `walk`, `sit`, `work`, `talk`, `attack` | 5/5 |
 | `npc_villager.glb` | 0.2112 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 | `npc_woman.glb` | 0.2017 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 
@@ -99,6 +106,11 @@
 
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
+| `cave_boulder.glb` | 0.0707 | —（静物） | 1/1 |
+| `cave_crystal.glb` | 0.0360 | —（静物） | 1/1 |
+| `cave_crystal_purple.glb` | 0.0360 | —（静物） | 1/1 |
+| `cave_geode.glb` | 0.0748 | —（静物） | 1/1 |
+| `cave_mushroom.glb` | 0.0760 | —（静物） | 1/1 |
 | `cave_pillar.glb` | 0.0215 | —（静物） | 1/1 |
 | `cave_stalactite.glb` | 0.0109 | —（静物） | 1/1 |
 | `cave_stalagmite.glb` | 0.0109 | —（静物） | 1/1 |
@@ -130,6 +142,12 @@
 | `ship_rowboat.glb` | 0.0436 | `idle` | 1/1 |
 | `ship_sailboat.glb` | 0.0428 | `idle` | 1/1 |
 | `ship_wreck.glb` | 0.0375 | —（静物） | 1/1 |
+
+## 祠・聖域
+
+| ファイル | 容量(MB) | クリップ | mesh/node |
+|---|---|---|---|
+| `shrine.glb` | 0.1651 | —（静物） | 1/1 |
 
 ## 町小物
 

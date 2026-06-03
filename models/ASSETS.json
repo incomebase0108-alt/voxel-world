@@ -14,9 +14,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 80,
-    "size_bytes": 11735336,
-    "size_mb": 11.192
+    "count": 93,
+    "size_bytes": 13520380,
+    "size_mb": 12.894
   },
   "assets": [
     {
@@ -170,6 +170,66 @@
       "meshes": 5,
       "nodes": 5,
       "materials": 9,
+      "error": null
+    },
+    {
+      "file": "mob_fish.glb",
+      "name": "mob_fish",
+      "category": "モブ",
+      "size_bytes": 131640,
+      "size_mb": 0.1255,
+      "clips": [
+        "idle",
+        "swim"
+      ],
+      "meshes": 2,
+      "nodes": 2,
+      "materials": 6,
+      "error": null
+    },
+    {
+      "file": "mob_fish_koi.glb",
+      "name": "mob_fish_koi",
+      "category": "モブ",
+      "size_bytes": 131948,
+      "size_mb": 0.1258,
+      "clips": [
+        "idle",
+        "swim"
+      ],
+      "meshes": 2,
+      "nodes": 2,
+      "materials": 6,
+      "error": null
+    },
+    {
+      "file": "mob_fish_puffer.glb",
+      "name": "mob_fish_puffer",
+      "category": "モブ",
+      "size_bytes": 138952,
+      "size_mb": 0.1325,
+      "clips": [
+        "idle",
+        "swim"
+      ],
+      "meshes": 2,
+      "nodes": 2,
+      "materials": 6,
+      "error": null
+    },
+    {
+      "file": "mob_fish_tropical.glb",
+      "name": "mob_fish_tropical",
+      "category": "モブ",
+      "size_bytes": 135264,
+      "size_mb": 0.129,
+      "clips": [
+        "idle",
+        "swim"
+      ],
+      "meshes": 2,
+      "nodes": 2,
+      "materials": 6,
       "error": null
     },
     {
@@ -431,6 +491,63 @@
       "meshes": 5,
       "nodes": 5,
       "materials": 11,
+      "error": null
+    },
+    {
+      "file": "npc_soldier_captain.glb",
+      "name": "npc_soldier_captain",
+      "category": "NPC",
+      "size_bytes": 257856,
+      "size_mb": 0.2459,
+      "clips": [
+        "idle",
+        "walk",
+        "sit",
+        "work",
+        "talk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 15,
+      "error": null
+    },
+    {
+      "file": "npc_soldier_spear.glb",
+      "name": "npc_soldier_spear",
+      "category": "NPC",
+      "size_bytes": 254144,
+      "size_mb": 0.2424,
+      "clips": [
+        "idle",
+        "walk",
+        "sit",
+        "work",
+        "talk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 13,
+      "error": null
+    },
+    {
+      "file": "npc_soldier_sword.glb",
+      "name": "npc_soldier_sword",
+      "category": "NPC",
+      "size_bytes": 254480,
+      "size_mb": 0.2427,
+      "clips": [
+        "idle",
+        "walk",
+        "sit",
+        "work",
+        "talk",
+        "attack"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 13,
       "error": null
     },
     {
@@ -826,6 +943,66 @@
       "error": null
     },
     {
+      "file": "cave_boulder.glb",
+      "name": "cave_boulder",
+      "category": "洞窟・鉱石",
+      "size_bytes": 74132,
+      "size_mb": 0.0707,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "cave_crystal.glb",
+      "name": "cave_crystal",
+      "category": "洞窟・鉱石",
+      "size_bytes": 37744,
+      "size_mb": 0.036,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "cave_crystal_purple.glb",
+      "name": "cave_crystal_purple",
+      "category": "洞窟・鉱石",
+      "size_bytes": 37756,
+      "size_mb": 0.036,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "cave_geode.glb",
+      "name": "cave_geode",
+      "category": "洞窟・鉱石",
+      "size_bytes": 78412,
+      "size_mb": 0.0748,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 5,
+      "error": null
+    },
+    {
+      "file": "cave_mushroom.glb",
+      "name": "cave_mushroom",
+      "category": "洞窟・鉱石",
+      "size_bytes": 79640,
+      "size_mb": 0.076,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 6,
+      "error": null
+    },
+    {
       "file": "cave_pillar.glb",
       "name": "cave_pillar",
       "category": "洞窟・鉱石",
@@ -1019,6 +1196,18 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 4,
+      "error": null
+    },
+    {
+      "file": "shrine.glb",
+      "name": "shrine",
+      "category": "祠・聖域",
+      "size_bytes": 173076,
+      "size_mb": 0.1651,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 13,
       "error": null
     },
     {
