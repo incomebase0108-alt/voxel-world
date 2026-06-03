@@ -177,7 +177,8 @@ for sx in (-1,1):
     cube("WallBanner",(sx*1.0,1.66,2.0),(0.22,0.02,0.8),BN)
     cube("WallBannerT",(sx*1.0,1.66,1.55),(0.22,0.02,0.12),GD)
 
-OUT = work if "--render" in sys.argv or "--preview" in sys.argv or True else os.path.join(repo,"models")
+OUT = work if "--preview" in sys.argv else os.path.join(repo,"models")   # 本採用済み: 通常は models/ 出力。--preview で _work
+os.makedirs(OUT,exist_ok=True)
 keep=finish("castle_keep", OUT, ratio=0.55, bevel=0.012)
 
 # ---- プレビュー描画（昼光・建物 / --render 時のみ）----

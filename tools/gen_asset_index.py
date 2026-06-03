@@ -43,6 +43,8 @@ def category(name):
     if name.startswith("npc_"):   return ("NPC", 2)
     if name.startswith("struct_"):return ("構造物", 3)
     if name.startswith("ore_") or name.startswith("cave_"): return ("洞窟・鉱石", 6)
+    if name.startswith("castle"): return ("王国城（ランドマーク）", 7)
+    if name.startswith("shrine"): return ("祠・聖域", 8)
     if name.startswith("fort_"): return ("砦・城塞", 7)
     if name.startswith("ship_"): return ("船", 8)
     if name.startswith("prop_"): return ("町小物", 25)

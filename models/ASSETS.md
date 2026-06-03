@@ -7,18 +7,18 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 78 ファイル / 10.38 MB
+**合計**: 80 ファイル / 11.19 MB
 
 
 ## プレイヤー
 
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
-| `player.glb` | 1.0135 | `idle`, `walk`, `attack`, `swim` | 5/5 |
-| `player_azure.glb` | 1.0130 | `idle`, `walk`, `attack`, `swim` | 5/5 |
-| `player_crimson.glb` | 1.0131 | `idle`, `walk`, `attack`, `swim` | 5/5 |
-| `player_emerald.glb` | 1.0139 | `idle`, `walk`, `attack`, `swim` | 5/5 |
-| `player_gold.glb` | 1.0128 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player.glb` | 1.0230 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_azure.glb` | 1.0224 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_crimson.glb` | 1.0224 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_emerald.glb` | 1.0226 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_gold.glb` | 1.0224 | `idle`, `walk`, `attack`, `swim` | 5/5 |
 
 ## モブ
 
@@ -26,6 +26,7 @@
 |---|---|---|---|
 | `mob_chicken.glb` | 0.1079 | `walk`, `idle`, `die`, `hit` | 7/7 |
 | `mob_cow.glb` | 0.2493 | `walk`, `idle`, `die`, `hit` | 26/26 |
+| `mob_demon.glb` | 0.4007 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_dragon.glb` | 0.3086 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_golem.glb` | 0.2460 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_horse.glb` | 0.1591 | `walk`, `idle`, `die`, `hit` | 6/6 |
@@ -105,6 +106,12 @@
 | `ore_gem.glb` | 0.0266 | —（静物） | 1/1 |
 | `ore_gold.glb` | 0.0356 | —（静物） | 1/1 |
 | `ore_iron.glb` | 0.0332 | —（静物） | 1/1 |
+
+## 王国城（ランドマーク）
+
+| ファイル | 容量(MB) | クリップ | mesh/node |
+|---|---|---|---|
+| `castle_keep.glb` | 0.3656 | —（静物） | 1/1 |
 
 ## 砦・城塞
 

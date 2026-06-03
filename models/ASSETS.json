@@ -14,17 +14,17 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 78,
-    "size_bytes": 10882924,
-    "size_mb": 10.379
+    "count": 80,
+    "size_bytes": 11735336,
+    "size_mb": 11.192
   },
   "assets": [
     {
       "file": "player.glb",
       "name": "player",
       "category": "プレイヤー",
-      "size_bytes": 1062688,
-      "size_mb": 1.0135,
+      "size_bytes": 1072644,
+      "size_mb": 1.023,
       "clips": [
         "idle",
         "walk",
@@ -40,8 +40,8 @@
       "file": "player_azure.glb",
       "name": "player_azure",
       "category": "プレイヤー",
-      "size_bytes": 1062184,
-      "size_mb": 1.013,
+      "size_bytes": 1072112,
+      "size_mb": 1.0224,
       "clips": [
         "idle",
         "walk",
@@ -57,8 +57,8 @@
       "file": "player_crimson.glb",
       "name": "player_crimson",
       "category": "プレイヤー",
-      "size_bytes": 1062300,
-      "size_mb": 1.0131,
+      "size_bytes": 1072036,
+      "size_mb": 1.0224,
       "clips": [
         "idle",
         "walk",
@@ -74,8 +74,8 @@
       "file": "player_emerald.glb",
       "name": "player_emerald",
       "category": "プレイヤー",
-      "size_bytes": 1063124,
-      "size_mb": 1.0139,
+      "size_bytes": 1072244,
+      "size_mb": 1.0226,
       "clips": [
         "idle",
         "walk",
@@ -91,8 +91,8 @@
       "file": "player_gold.glb",
       "name": "player_gold",
       "category": "プレイヤー",
-      "size_bytes": 1061948,
-      "size_mb": 1.0128,
+      "size_bytes": 1072100,
+      "size_mb": 1.0224,
       "clips": [
         "idle",
         "walk",
@@ -139,11 +139,11 @@
       "error": null
     },
     {
-      "file": "mob_golem.glb",
-      "name": "mob_golem",
+      "file": "mob_demon.glb",
+      "name": "mob_demon",
       "category": "モブ",
-      "size_bytes": 257948,
-      "size_mb": 0.246,
+      "size_bytes": 420144,
+      "size_mb": 0.4007,
       "clips": [
         "idle",
         "walk",
@@ -152,7 +152,7 @@
       ],
       "meshes": 5,
       "nodes": 5,
-      "materials": 6,
+      "materials": 11,
       "error": null
     },
     {
@@ -170,6 +170,23 @@
       "meshes": 5,
       "nodes": 5,
       "materials": 9,
+      "error": null
+    },
+    {
+      "file": "mob_golem.glb",
+      "name": "mob_golem",
+      "category": "モブ",
+      "size_bytes": 257948,
+      "size_mb": 0.246,
+      "clips": [
+        "idle",
+        "walk",
+        "attack",
+        "heavy"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 6,
       "error": null
     },
     {
@@ -890,6 +907,18 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 2,
+      "error": null
+    },
+    {
+      "file": "castle_keep.glb",
+      "name": "castle_keep",
+      "category": "王国城（ランドマーク）",
+      "size_bytes": 383376,
+      "size_mb": 0.3656,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 10,
       "error": null
     },
     {
