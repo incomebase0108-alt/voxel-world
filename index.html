@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04r'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04s'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -2135,8 +2135,11 @@ function placeHeld(obj) {
   _hl.applyQuaternion(_avQ).add(player.pos);
   _off.set(hd.offset[0], hd.offset[1], hd.offset[2]).applyQuaternion(_avQ); // オフセットは体フレーム（-Z=前）
   obj.position.copy(_hl).add(_off);
-  // 姿勢：avatarQ * D * grip ＝中立で体フレーム grip・腕の振りに追従。較正は回転のみ。
-  obj.quaternion.copy(_avQ).multiply(_D).multiply(hd.gripQ);
+  // 姿勢：体フレームの grip のみ（武器は標準 Y-up＝刃/高さ=+Y・表面=-Z）。
+  //   ★腕の回転デルタ D は「位置追従」にだけ使い、姿勢には掛けない。D を姿勢に掛けると idle「戦士の構え」で
+  //     腕が前へ約90°回るぶん刃が寝る（＝4号機 §6 指摘の 90°/X・右手180°(B) の実体）。
+  //     grip のみなら 剣 up≈(0,+0.95,-0.31)・盾 up≈(0,+1,0)＝刃が上前向き・盾の表が前、で左右とも正。
+  obj.quaternion.copy(_avQ).multiply(hd.gripQ);
 }
 function updateHeldTransforms() {
   if (!playerAvatar) return;
