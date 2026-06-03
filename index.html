@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04o'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04p'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1989,9 +1989,12 @@ const SHIELD_HOLD = { hand:'L', rotX:0, offset:[0.02, 0.32, -0.16] }; // 左前�
 const HAND_LOCAL = { R:[-0.43, 0.72, 0.0], L:[0.43, 0.72, 0.0] };     // §1 手アンカー(中立・player.glbノード実測 2026-06-04)
 let heldWeapon = null, heldShield = null;
 // 腕の装着リグ（bind pose で採取＝アニメポーズ・アバター向きに非依存の不変基準）。
-//   handLocal: 手アンカーを腕ローカルへ移したもの（applyMatrix4(arm.matrixWorld) で現在の手ワールドへ戻る＝振りに追従）。
-//   armRelQInv: inv(腕のアバター相対回転)。体フレームの grip 角を腕フレームへ較正する（中立で体フレーム grip に一致させる）。
+//   shoulder/armToHand: §1 の肩ピボットと「中立 肩→手ベクトル」（アバターローカル・全長~0.74m）。
+//   relQbindInv: inv(腕のアバター相対回転 R_rel_bind)。振りデルタ D の算出と grip 較正に共用。
+//   ※手位置は「肩＋D・(肩→手)」で出す（腕中心の素直な回転）。腕ローカル点を使う旧方式は腕の非一様スケールで
+//     ローカル座標が巨大化(±12)し、ポーズ差で数m暴れた（剣が空中・盾が地面の主因）→ 肩中心方式で安定化。
 let handRig = { R: null, L: null };
+const SHOULDER = { R: [-0.30, 1.46, 0.0], L: [0.30, 1.46, 0.0] }; // §1 肩ピボット（アバターローカル・腕の回転中心）
 function captureHandRig() {
   handRig = { R: null, L: null };
   if (!playerAvatar) return;
@@ -2001,12 +2004,15 @@ function captureHandRig() {
     const node = playerAvatar.getObjectByName(h === 'R' ? 'ArmR' : 'ArmL');
     if (!node) continue;
     node.updateWorldMatrix(true, false);
-    const a = HAND_LOCAL[h];
-    const handWorldBind = new THREE.Vector3(a[0], a[1], a[2]).applyMatrix4(playerAvatar.matrixWorld); // 手アンカー(アバターローカル)→world
-    const handLocal = handWorldBind.clone().applyMatrix4(new THREE.Matrix4().copy(node.matrixWorld).invert()); // →腕ローカル（avatar向きは打ち消され不変）
     const armQ = new THREE.Quaternion(); node.getWorldQuaternion(armQ);
-    const armRelQInv = armQ.clone().invert().multiply(avQ); // inv(R_rel_bind) = inv(armQ)*avQ
-    handRig[h] = { node, handLocal, armRelQInv };
+    const relQbind = avQ.clone().invert().multiply(armQ); // R_rel_bind = inv(avQ)*armQ
+    const a = HAND_LOCAL[h], s = SHOULDER[h];
+    handRig[h] = {
+      node,
+      shoulder: new THREE.Vector3(s[0], s[1], s[2]),                          // 肩ピボット（アバターローカル）
+      armToHand: new THREE.Vector3(a[0]-s[0], a[1]-s[1], a[2]-s[2]),          // 中立 肩→手（アバターローカル・~0.74m）
+      relQbindInv: relQbind.invert(),                                         // inv(R_rel_bind)
+    };
   }
 }
 // 装着：シーン直下に追加し hold 設定を持たせる（位置/姿勢は updateHeldTransforms が毎フレーム決める）。
@@ -2018,20 +2024,26 @@ function attachWorldFollow(obj, hand, rotX, offset) {
   obj.visible = thirdPerson;
 }
 // 毎フレーム：手のワールド変換だけを写して武器/盾を配置（§3）。mixer.update の後に呼ぶ＝腕ポーズ最新。
-const _avQ = new THREE.Quaternion(), _armQ = new THREE.Quaternion(), _hw = new THREE.Vector3(), _off = new THREE.Vector3();
+const _avQ = new THREE.Quaternion(), _armQ = new THREE.Quaternion(), _relNow = new THREE.Quaternion(),
+      _D = new THREE.Quaternion(), _hl = new THREE.Vector3(), _off = new THREE.Vector3();
 function placeHeld(obj) {
   if (!obj) return;
   const hd = obj.userData.hold, rig = hd && handRig[hd.hand];
   if (!rig) { obj.visible = false; return; }
   obj.visible = thirdPerson; // シーン直下＝アバターの visible を継承しないので明示（一人称では非表示）
-  rig.node.updateWorldMatrix(true, false);
+  rig.node.updateWorldMatrix(true, false);  // 親(Body/avatar)も含め最新化
   playerAvatar.getWorldQuaternion(_avQ);
   rig.node.getWorldQuaternion(_armQ);
-  _hw.copy(rig.handLocal).applyMatrix4(rig.node.matrixWorld);              // 現在の手ワールド位置（振りに追従）
+  // 腕の振りデルタ D（アバターローカル）= R_rel_now * inv(R_rel_bind)。位置・姿勢はこの D で追従。
+  _relNow.copy(_avQ).invert().multiply(_armQ);   // R_rel_now = inv(avQ)*armQ
+  _D.copy(_relNow).multiply(rig.relQbindInv);     // D
+  // 位置：肩 + D・(中立 肩→手) をアバターローカルで作り、ワールドへ。手は肩から常に~0.74mで暴れない。
+  _hl.copy(rig.armToHand).applyQuaternion(_D).add(rig.shoulder);
+  playerAvatar.localToWorld(_hl);                 // アバターローカル → ワールド
   _off.set(hd.offset[0], hd.offset[1], hd.offset[2]).applyQuaternion(_avQ); // オフセットは体フレーム（-Z=前）
-  obj.position.copy(_hw).add(_off);
-  // 姿勢：腕ワールド回転 × inv(R_rel_bind) × grip ＝中立で体フレーム grip に一致し、腕の振りに追従
-  obj.quaternion.copy(_armQ).multiply(rig.armRelQInv).multiply(hd.gripQ);
+  obj.position.copy(_hl).add(_off);
+  // 姿勢：armQ * inv(R_rel_bind) * grip （= avatarQ * D * grip）＝中立で体フレーム grip・腕の振りに追従。較正は回転のみ。
+  obj.quaternion.copy(_armQ).multiply(rig.relQbindInv).multiply(hd.gripQ);
 }
 function updateHeldTransforms() {
   if (!playerAvatar) return;
