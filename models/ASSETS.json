@@ -6,17 +6,18 @@
     "origin": {
       "player/mob/npc/struct": "足元中心 z=0",
       "item_(消費)": "形状中心",
-      "item_(装備:sword/pickaxe/axe)": "柄の最下端（握り基部）",
+      "item_(装備:sword/pickaxe/axe)": "握り（拳が巻く点。2026-06-04に柄基部から移動）",
       "item_bow": "握り中央",
-      "item_(装備:shield/armor)": "形状中心"
+      "item_(装備:shield/armor)": "形状中心",
+      "fx_(ボス出現FX)": "footprint中心・接地 z=0"
     },
-    "clip_naming": "idle / walk（敵性=+attack, ボス=+heavy）。構造物は idle ＋ 固有(chest:open 等)。",
+    "clip_naming": "idle / walk（敵性=+attack, ボス=+heavy）。構造物は idle ＋ 固有(chest:open 等)。FX=loop。",
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 93,
-    "size_bytes": 13520380,
-    "size_mb": 12.894
+    "count": 96,
+    "size_bytes": 14313144,
+    "size_mb": 13.65
   },
   "assets": [
     {
@@ -934,7 +935,7 @@
       "file": "item_sword.glb",
       "name": "item_sword",
       "category": "装備・道具",
-      "size_bytes": 13784,
+      "size_bytes": 13780,
       "size_mb": 0.0131,
       "clips": [],
       "meshes": 1,
@@ -1208,6 +1209,48 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 13,
+      "error": null
+    },
+    {
+      "file": "fx_collapse.glb",
+      "name": "fx_collapse",
+      "category": "演出（ボス出現FX）",
+      "size_bytes": 77360,
+      "size_mb": 0.0738,
+      "clips": [
+        "loop"
+      ],
+      "meshes": 3,
+      "nodes": 3,
+      "materials": 3,
+      "error": null
+    },
+    {
+      "file": "fx_magic_circle.glb",
+      "name": "fx_magic_circle",
+      "category": "演出（ボス出現FX）",
+      "size_bytes": 399136,
+      "size_mb": 0.3806,
+      "clips": [
+        "loop"
+      ],
+      "meshes": 3,
+      "nodes": 3,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "fx_miasma.glb",
+      "name": "fx_miasma",
+      "category": "演出（ボス出現FX）",
+      "size_bytes": 316272,
+      "size_mb": 0.3016,
+      "clips": [
+        "loop"
+      ],
+      "meshes": 3,
+      "nodes": 3,
+      "materials": 4,
       "error": null
     },
     {
