@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04p'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04q'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -2024,26 +2024,28 @@ function attachWorldFollow(obj, hand, rotX, offset) {
   obj.visible = thirdPerson;
 }
 // 毎フレーム：手のワールド変換だけを写して武器/盾を配置（§3）。mixer.update の後に呼ぶ＝腕ポーズ最新。
+//   ★平行移動は playerAvatar.matrixWorld に依存せず、権威ある player.pos を直接基準にする（移動追従の確実化）。
+//   向きは avatarYaw/avatarPitch から再構成（アバターは scene 直下＝回転は Euler(YXZ) と一致）。
 const _avQ = new THREE.Quaternion(), _armQ = new THREE.Quaternion(), _relNow = new THREE.Quaternion(),
-      _D = new THREE.Quaternion(), _hl = new THREE.Vector3(), _off = new THREE.Vector3();
+      _D = new THREE.Quaternion(), _hl = new THREE.Vector3(), _off = new THREE.Vector3(), _avE = new THREE.Euler();
 function placeHeld(obj) {
   if (!obj) return;
   const hd = obj.userData.hold, rig = hd && handRig[hd.hand];
   if (!rig) { obj.visible = false; return; }
   obj.visible = thirdPerson; // シーン直下＝アバターの visible を継承しないので明示（一人称では非表示）
-  rig.node.updateWorldMatrix(true, false);  // 親(Body/avatar)も含め最新化
-  playerAvatar.getWorldQuaternion(_avQ);
-  rig.node.getWorldQuaternion(_armQ);
+  rig.node.updateWorldMatrix(true, false);  // 腕ポーズの world を最新化（D 算出用）
+  _avE.set(avatarPitch, avatarYaw, 0, 'YXZ'); _avQ.setFromEuler(_avE); // アバターの現在の向き（権威・matrixWorld非依存）
+  rig.node.getWorldQuaternion(_armQ);                                   // 腕の現在 world 回転
   // 腕の振りデルタ D（アバターローカル）= R_rel_now * inv(R_rel_bind)。位置・姿勢はこの D で追従。
   _relNow.copy(_avQ).invert().multiply(_armQ);   // R_rel_now = inv(avQ)*armQ
   _D.copy(_relNow).multiply(rig.relQbindInv);     // D
-  // 位置：肩 + D・(中立 肩→手) をアバターローカルで作り、ワールドへ。手は肩から常に~0.74mで暴れない。
+  // 位置：アバターローカルで 肩 + D・(中立 肩→手)（肩から常に~0.74mで暴れない）→ 向きで回し → ★player.pos を足す＝必ず追従
   _hl.copy(rig.armToHand).applyQuaternion(_D).add(rig.shoulder);
-  playerAvatar.localToWorld(_hl);                 // アバターローカル → ワールド
+  _hl.applyQuaternion(_avQ).add(player.pos);
   _off.set(hd.offset[0], hd.offset[1], hd.offset[2]).applyQuaternion(_avQ); // オフセットは体フレーム（-Z=前）
   obj.position.copy(_hl).add(_off);
-  // 姿勢：armQ * inv(R_rel_bind) * grip （= avatarQ * D * grip）＝中立で体フレーム grip・腕の振りに追従。較正は回転のみ。
-  obj.quaternion.copy(_armQ).multiply(rig.relQbindInv).multiply(hd.gripQ);
+  // 姿勢：avatarQ * D * grip ＝中立で体フレーム grip・腕の振りに追従。較正は回転のみ。
+  obj.quaternion.copy(_avQ).multiply(_D).multiply(hd.gripQ);
 }
 function updateHeldTransforms() {
   if (!playerAvatar) return;
@@ -2845,7 +2847,10 @@ window.getHeldDebug = () => {
     const r2 = v => [+v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2)];
     return { pos: r2(p), up: r2(up), front: r2(front) };
   };
-  return { weapon: currentWeapon, shieldOn: !!equip.shield, sword: info(heldWeapon), shield: info(heldShield) };
+  const r2 = v => [+v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2)];
+  const avatarPos = playerAvatar ? playerAvatar.getWorldPosition(new THREE.Vector3()) : null;
+  // player=本体座標 / avatar=アバターのworld座標 を併記（武器/盾pos と比較し、追従の有無を一目で判定）
+  return { weapon: currentWeapon, shieldOn: !!equip.shield, player: r2(player.pos), avatar: avatarPos ? r2(avatarPos) : null, sword: info(heldWeapon), shield: info(heldShield) };
 };
 
 // 採掘素材→装備のクラフト（鉱石と装備システムを連結）。mats=itemCounts素材 / blocks=設置ブロック
