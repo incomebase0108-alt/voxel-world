@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03g'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-03h'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1854,6 +1854,7 @@ function buildDiag() {
     `最寄り乗れる船: ${nearBoat}`,
     `武器 / 戦闘  : 装備=${WEAPONS[currentWeapon].name}（C/Bで切替）所持[${WEAPON_ORDER.filter(w=>ownedWeapons.has(w)).map(w=>WEAPONS[w].name).join('・')}] / コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'}`,
     `攻撃の特性   : ${WEAPONS[currentWeapon].ranged?'遠距離(溜め)':'近接'} 威力${WEAPONS[currentWeapon].dmg} 間合${WEAPONS[currentWeapon].reach} 振り${WEAPONS[currentWeapon].swing}s 動作x${WEAPONS[currentWeapon].anim} 止${WEAPONS[currentWeapon].hitstop}s（装備武器で変化）`,
+    `手持ち表示   : 武器モデル${heldWeapon?'装着○':'なし(素手/未読込)'} / 盾${heldShield?'装着○':'-'} / 武器テンプレ読込${Object.keys(equipTemplates).length}種`,
     `装備防御     : ${(defenseFactor()*100).toFixed(0)}% 軽減（防具 頭${equip.armor.head?'○':'-'}/胴${equip.armor.body?'○':'-'}/脚${equip.armor.legs?'○':'-'} 盾${equip.shield?'○':'-'}）`,
     `再生アニメ   : ${curAction === actWalk ? 'walk' : curAction === actIdle ? 'idle' : '-'} / clips:[${(diag.glb.clips||[]).join(',')}]`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 住人${mobs.filter(m=>m.home).length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
@@ -1916,6 +1917,50 @@ function playAvatarAttack() {
   curAction = null;
   avatarAttackTimer = (actAttack.getClip().duration || 0.4) / scale; // 倍率分だけ再生時間も伸縮
 }
+
+// ===================================================================
+// 武器の手持ち表示（EQUIP_HOLD.md）：装備中の武器モデルをアバターの腕ノードの子に付け、
+//   振り(attack)に追従させる。これが無いと装備しても素手のまま見える（星野さん対応）。
+// ===================================================================
+//   hand: 'R'=右手(剣/斧/ピッケル) / 'L'=左手(弓)。rotX=グリップの軽い前傾(rad)。盾は左前腕。
+const HOLD = {
+  sword:   { hand:'R', rotX:-0.314 }, // 刃を上・やや前へ(-18°)
+  axe:     { hand:'R', rotX:-0.21  }, // 斧頭を上(-12°)
+  pickaxe: { hand:'R', rotX:-0.21  },
+  bow:     { hand:'L', rotX: 0.14  }, // 弓を縦(+8°)
+};
+const HAND_LOCAL = { R:[-0.37, 0.73, 0.0], L:[0.37, 0.73, 0.0] }; // アバター(glTF)ローカルの手アンカー（rest実測）
+let heldWeapon = null, heldShield = null;
+// obj を hand の腕ノードに装着。手のワールド位置を腕ローカルへ逆変換＝スケール/回転非依存で原寸配置
+function attachToHand(obj, hand, rotX) {
+  if (!playerAvatar) return false;
+  playerAvatar.updateWorldMatrix(true, false);
+  const parent = playerAvatar.getObjectByName(hand === 'R' ? 'ArmR' : 'ArmL') || playerAvatar; // 腕ノードが無ければroot
+  const hl = HAND_LOCAL[hand];
+  const handWorld = playerAvatar.localToWorld(new THREE.Vector3(hl[0], hl[1], hl[2]));
+  parent.updateWorldMatrix(true, false);
+  parent.add(obj);
+  obj.position.copy(parent.worldToLocal(handWorld.clone())); // 腕ローカルでの手位置
+  const ws = new THREE.Vector3(); parent.getWorldScale(ws);
+  obj.scale.setScalar(1 / (ws.x || 1));                       // ワールドで原寸に
+  obj.rotation.set(rotX || 0, 0, 0);
+  return true;
+}
+// 装備中の武器/盾をアバターの手に反映（装備変更・アバター読込・武器モデル読込後に呼ぶ）
+function updateHeldWeapon() {
+  if (!playerAvatar) return;
+  if (heldWeapon && heldWeapon.parent) heldWeapon.parent.remove(heldWeapon);
+  heldWeapon = null;
+  const cfg = HOLD[currentWeapon], tpl = cfg && equipTemplates[currentWeapon];
+  if (tpl) { heldWeapon = tpl.clone(true); attachToHand(heldWeapon, cfg.hand, cfg.rotX); } // 素手(fist)はモデル無し＝何も持たない
+  updateHeldShield();
+}
+function updateHeldShield() {
+  if (!playerAvatar) return;
+  if (heldShield && heldShield.parent) heldShield.parent.remove(heldShield);
+  heldShield = null;
+  if (equip.shield && equipTemplates.shield) { heldShield = equipTemplates.shield.clone(true); attachToHand(heldShield, 'L', 0); } // 盾は左
+}
 // (C) プレイヤー色選択：5色から選んでアバターを読み込む（選択は保存）
 const PLAYER_SKINS = [
   { file:'models/player.glb',         name:'標準', color:'#8fb5e0' },
@@ -1973,6 +2018,7 @@ function loadAvatar(file) {
         if (byName['swim']) actSwim = mixer.clipAction(byName['swim']); // 泳ぎモーション（4号機。あれば前傾の代わりに再生）
         actIdle.play(); curAction = actIdle;
       }
+      updateHeldWeapon(); // 装備中の武器/盾を手に反映（読込直後・セーブ復元の武器も）
       console.log(`[voxel] アバター読込 OK(${file})：頂点${v} / clips=[${diag.glb.clips}]`);
     },
     undefined,
@@ -2585,7 +2631,7 @@ const drops = []; // 地面に落ちたアイテム { obj, item, equip?, t, life
 // 装備品の落下モデル（4号機の item_*.glb）。kind→ファイル名（防具/盾は専用、武器は同名）
 const EQUIP_MODEL = { sword:'sword', axe:'axe', bow:'bow', pickaxe:'pickaxe', shield:'shield', armor:'armor' };
 const equipTemplates = {}; // kind -> scene
-for (const k in EQUIP_MODEL) gltfLoader.load(`models/item_${EQUIP_MODEL[k]}.glb`, g => { equipTemplates[k] = g.scene; }, undefined, () => {});
+for (const k in EQUIP_MODEL) gltfLoader.load(`models/item_${EQUIP_MODEL[k]}.glb`, g => { equipTemplates[k] = g.scene; if (k === currentWeapon || k === 'shield') updateHeldWeapon(); }, undefined, () => {}); // 後着モデルも手に反映
 // 装備品を地面にドロップ（拾うと grantEquip）
 function spawnEquipDrop(kind, x, y, z) {
   const tpl = equipTemplates[kind];
@@ -2650,7 +2696,7 @@ function cycleWeapon() {
   if (!list.length) return;
   const i = list.indexOf(currentWeapon);
   currentWeapon = list[(i + 1) % list.length];
-  emitEquipChange();
+  emitEquipChange(); updateHeldWeapon();
 }
 // ===================================================================
 // 装備：防御計算・入手・連携口（宣言済み契約に準拠）
@@ -2676,12 +2722,12 @@ function grantEquip(kind) {
     else { toast('防具はすべて装備済み'); return; }
   } else return;
   window.playSFX && window.playSFX('equip');
-  emitEquipChange(); scheduleSave();
+  emitEquipChange(); updateHeldWeapon(); scheduleSave();
 }
 // UIから叩く操作口
 window.getEquipment = () => equipState();
-window.equipWeapon = (type) => { if (!ownedWeapons.has(type) || !WEAPONS[type]) return false; currentWeapon = type; emitEquipChange(); return true; };
-window.toggleShield = () => { if (!ownedShield) return false; equip.shield = !equip.shield; window.playSFX && window.playSFX('equip'); emitEquipChange(); scheduleSave(); return equip.shield; };
+window.equipWeapon = (type) => { if (!ownedWeapons.has(type) || !WEAPONS[type]) return false; currentWeapon = type; emitEquipChange(); updateHeldWeapon(); return true; };
+window.toggleShield = () => { if (!ownedShield) return false; equip.shield = !equip.shield; window.playSFX && window.playSFX('equip'); emitEquipChange(); updateHeldShield(); scheduleSave(); return equip.shield; };
 window.unequipArmor = (slot) => { if (equip.armor[slot]) { equip.armor[slot] = false; emitEquipChange(); scheduleSave(); return true; } return false; };
 
 // 採掘素材→装備のクラフト（鉱石と装備システムを連結）。mats=itemCounts素材 / blocks=設置ブロック
