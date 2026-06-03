@@ -180,15 +180,19 @@
   //   ・最初のユーザー操作で 'day' を自動開始（startMusic/stopMusic で明示制御も可）
   //   ・素材は合成音。後で音楽ファイル(loop)再生に差し替え可能
   const XFADE = 1.8; // シーン間クロスフェード秒
+  const BGM_RICH = 'v2-layer+xfade(2026-06-03)'; // ②BGMリッチ化の版。実機H診断(getSoundDiag)で「どのビルドにBGMが入ったか」を追える
   // level = シーン間の音量バランス（0..1.2程度）。water は静かだが「水中だと分かる」程度に。
+  // 多層化パラメータ（②BGMリッチ化・2026-06-03）：bassG=サブベース土台量 / shimmer=高域の艶 /
+  //   bassline=低音の鼓動(scheduler) / tremHz・tremDepth=パッドの呼吸(揺らぎ)。既存フィールドは不変＝後方互換。
   const SCENES = {
-    day:    { tempo: 104, scale: [220.00, 246.94, 277.18, 329.63, 369.99], pad: [110.00, 164.81, 220.00], wave: 'triangle', density: 0.55, drums: false, level: 1.0 },
-    night:  { tempo: 76,  scale: [164.81, 196.00, 220.00, 261.63, 293.66], pad: [123.47, 164.81, 220.00], wave: 'sine',     density: 0.42, drums: false, level: 0.9 },
-    combat: { tempo: 148, scale: [146.83, 174.61, 196.00, 220.00, 261.63], pad: [110.00, 146.83, 220.00], wave: 'sawtooth', density: 0.85, drums: true,  level: 1.0 },
-    water:  { tempo: 58,  scale: [261.63, 311.13, 349.23, 392.00, 466.16], pad: [130.81, 196.00, 261.63], wave: 'sine',     density: 0.26, drums: false, level: 0.6 },
+    day:    { tempo: 104, scale: [220.00, 246.94, 277.18, 329.63, 369.99], pad: [110.00, 164.81, 220.00], wave: 'triangle', density: 0.55, drums: false, level: 1.0, bassG: 0.05,  shimmer: true,  bassline: true,  tremHz: 0.13, tremDepth: 0.12 },
+    night:  { tempo: 76,  scale: [164.81, 196.00, 220.00, 261.63, 293.66], pad: [123.47, 164.81, 220.00], wave: 'sine',     density: 0.42, drums: false, level: 0.9, bassG: 0.045, shimmer: true,  bassline: false, tremHz: 0.09, tremDepth: 0.14 },
+    combat: { tempo: 148, scale: [146.83, 174.61, 196.00, 220.00, 261.63], pad: [110.00, 146.83, 220.00], wave: 'sawtooth', density: 0.85, drums: true,  level: 1.0, bassG: 0.07,  shimmer: false, bassline: true,  tremHz: 0.6,  tremDepth: 0.10 },
+    water:  { tempo: 58,  scale: [261.63, 311.13, 349.23, 392.00, 466.16], pad: [130.81, 196.00, 261.63], wave: 'sine',     density: 0.26, drums: false, level: 0.6, bassG: 0.035, shimmer: true,  bassline: false, tremHz: 0.07, tremDepth: 0.16 },
   };
   let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false, lastNoteTime = 0;
-  const sceneNodes = {}; // name -> { gain, pad:[{o}] }
+  let xfadeUntil = 0; // クロスフェード進行中の終了時刻（この間はscheduler の stuck回復ガードを抑止＝自動化の衝突回避）
+  const sceneNodes = {}; // name -> { gain, layer, pad:[{o}] }
 
   function sceneGain(name) {
     if (!sceneNodes[name]) {
@@ -202,21 +206,46 @@
   function startPad(name) {
     const c = ac(); if (!c) return;
     const node = sceneGain(name);
-    if (node.pad.length) return; // 既に常駐済みなら二重生成しない
+    if (node.pad.length) return; // 既に常駐済みなら二重生成しない（クロスフェードでは再生成せず＝ノードリーク無し）
     const sc = SCENES[name];
+    // 多層化①: 呼吸（tremolo）レイヤー。pad/sub/shimmer をまとめて通し、ゆっくり揺らして生命感を出す。
+    //   layerGain.gain は crossfade が触る scene gain (node.gain.gain) とは別 AudioParam なので LFO と干渉しない。
+    const layerGain = c.createGain(); layerGain.gain.value = 1.0; layerGain.connect(node.gain);
+    const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = sc.tremHz || 0.12;
+    const lfoDepth = c.createGain(); lfoDepth.gain.value = sc.tremDepth || 0.12;
+    lfo.connect(lfoDepth).connect(layerGain.gain); lfo.start(); // LFO→深さ→layerGainのAudioParamへ加算（1.0を中心に揺れる）
+    node.layer = layerGain; node.pad.push({ o: lfo });
+    // 多層化②: 和音パッド（既存・微デチューンで厚み）。呼吸レイヤー経由で接続。
     sc.pad.forEach((f, i) => {
       const o = c.createOscillator(), g = c.createGain();
       o.type = name === 'combat' ? 'sawtooth' : 'sine';
-      o.frequency.value = f * (1 + (i - 1) * 0.003); // 微デチューンで厚み
+      o.frequency.value = f * (1 + (i - 1) * 0.003);
       g.gain.value = 0.09;
-      o.connect(g).connect(node.gain); o.start();
+      o.connect(g).connect(layerGain); o.start();
       node.pad.push({ o });
     });
+    // 多層化③: サブベース・ドローン（根音の1オクターブ下）で土台の厚みを足す。
+    {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = 'sine'; o.frequency.value = sc.pad[0] / 2;
+      g.gain.value = sc.bassG || 0.05;
+      o.connect(g).connect(layerGain); o.start();
+      node.pad.push({ o });
+    }
+    // 多層化④: シマー（根音の1オクターブ上をごく弱く）で上の艶。combat は密度過多なので省略。
+    if (sc.shimmer) {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = 'triangle'; o.frequency.value = sc.pad[0] * 2 * (1 + 0.004);
+      g.gain.value = 0.022;
+      o.connect(g).connect(layerGain); o.start();
+      node.pad.push({ o });
+    }
   }
   function stopPad(name) {
     const node = sceneNodes[name]; if (!node) return;
-    node.pad.forEach(({ o }) => { try { o.stop(); } catch (e) {} });
+    node.pad.forEach(({ o }) => { try { o.stop(); } catch (e) {} }); // LFO含む全オシレータを停止
     node.pad = [];
+    if (node.layer) { try { node.layer.disconnect(); } catch (e) {} node.layer = null; } // 呼吸レイヤーも撤去（次回startPadで再生成＝二重接続/リーク防止）
   }
   function bgmNote(freq, dur, dest, gain, wave) {
     const c = ac(); if (!c) return;
@@ -235,6 +264,16 @@
     g.gain.setValueAtTime(0.16, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
     o.connect(g).connect(dest); o.start(t); o.stop(t + 0.18);
   }
+  // 多層化: 低音の鼓動（bassline）。サブベース・ドローンの上に乗る短い拍動で前進感を出す。
+  function bgmBass(freq, dur, dest, gain) {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.type = 'triangle'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain || 0.06, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(dest); o.start(t); o.stop(t + dur + 0.02);
+  }
   // ノート生成ループ。例外が出ても・遅れても「絶対に止まらない」設計。
   function scheduler() {
     bgmTimer = null;
@@ -244,7 +283,9 @@
       if (c && bgmScene && SCENES[bgmScene]) {
         const sc = SCENES[bgmScene], node = sceneGain(bgmScene), spb = 60 / sc.tempo / 2; // 8分音符
         const lvl = sc.level || 1, gp = node.gain.gain; // node.gain=GainNode本体 / .gain.gain=AudioParam
-        if (gp.value < lvl - 0.02) gp.setTargetAtTime(lvl, c.currentTime, 0.25); // アクティブscene gainを必ずlevelへ駆動（stuck/0張り付き防止）
+        // アクティブscene gainを必ずlevelへ駆動（stuck/0張り付き防止）。ただしクロスフェード中は抑止
+        //   ＝意図的な equal-power カーブと setTargetAtTime の自動化衝突を避ける。
+        if (c.currentTime > xfadeUntil && gp.value < lvl - 0.02) gp.setTargetAtTime(lvl, c.currentTime, 0.25);
         if (nextNoteT < c.currentTime) nextNoteT = c.currentTime; // 背景化等で遅れたら追従（大量生成・例外を防止）
         let guard = 0; // 暴走ガード
         while (nextNoteT < c.currentTime + 0.2 && guard++ < 64) {
@@ -253,6 +294,7 @@
             bgmNote(f, spb * (Math.random() < 0.5 ? 1.6 : 0.9), node.gain, 0.12, sc.wave);
           }
           if (sc.drums && beat % 2 === 0) kick(node.gain);
+          if (sc.bassline && beat % 4 === 0) bgmBass(sc.scale[0] / 2, spb * 1.8, node.gain, (sc.bassG || 0.05) * 1.2); // 低音の鼓動（2拍ごと）
           nextNoteT += spb; beat++;
         }
       }
@@ -266,12 +308,31 @@
       scheduler();
     }
   }
-  function fadeSceneGain(name, to) {
-    // sceneNodes[name].gain は GainNode本体。AudioParam は .gain.gain（取り違え=真因のTypeError修正）
+  // シーン gain のフェード。shape='in'|'out' を渡すと equal-power カーブ（sin/cos）でクロスの中央ディップを解消。
+  //   省略時は従来の線形ramp（後方互換）。sceneNodes[name].gain は GainNode本体、AudioParam は .gain.gain。
+  function fadeSceneGain(name, to, shape) {
     const c = ac(), g = sceneGain(name).gain.gain;
     g.cancelScheduledValues(c.currentTime);
-    g.setValueAtTime(Math.max(0.0001, g.value), c.currentTime);
-    g.linearRampToValueAtTime(Math.max(0.0001, to), c.currentTime + XFADE);
+    const from = Math.max(0.0001, g.value), target = Math.max(0.0001, to);
+    xfadeUntil = c.currentTime + XFADE; // この区間は scheduler の stuck回復ガードを止める
+    try {
+      if (shape === 'in' || shape === 'out') {
+        const N = 24, arr = new Float32Array(N);
+        for (let i = 0; i < N; i++) {
+          const x = i / (N - 1);
+          const k = shape === 'in' ? Math.sin(x * Math.PI / 2) : Math.cos(x * Math.PI / 2); // 等パワー曲線
+          arr[i] = Math.max(0.0001, from + (target - from) * k);
+        }
+        g.setValueCurveAtTime(arr, c.currentTime, XFADE);
+        g.setValueAtTime(target, c.currentTime + XFADE + 0.02); // カーブ後に終端値を固定
+      } else {
+        g.setValueAtTime(from, c.currentTime);
+        g.linearRampToValueAtTime(target, c.currentTime + XFADE);
+      }
+    } catch (e) {
+      // setValueCurveAtTime の重複自動化等で失敗したら線形へフォールバック（無音事故を防ぐ）
+      try { g.cancelScheduledValues(c.currentTime); g.setValueAtTime(from, c.currentTime); g.linearRampToValueAtTime(target, c.currentTime + XFADE); } catch (e2) {}
+    }
   }
   function startMusic(scene) {
     userMusicCtl = true;
@@ -279,9 +340,9 @@
     const s = SCENES[scene] ? scene : (bgmScene || 'day');
     if (!bgmOn) {
       bgmOn = true; nextNoteT = c.currentTime + 0.1; beat = 0;
-      bgmScene = s; startPad(s); fadeSceneGain(s, SCENES[s].level || 1);
+      bgmScene = s; startPad(s); fadeSceneGain(s, SCENES[s].level || 1, 'in');
       scheduler(); startAmbience();
-      try { console.info('[sound] BGM開始 scene=' + s + ' / bgmBus=' + (bgmBus ? bgmBus.gain.value.toFixed(2) : '?') + ' / ctx=' + (ctx ? ctx.state : '?')); } catch (e) {}
+      try { console.info('[sound] BGM開始 scene=' + s + ' / rich=' + BGM_RICH + ' / bgmBus=' + (bgmBus ? bgmBus.gain.value.toFixed(2) : '?') + ' / ctx=' + (ctx ? ctx.state : '?')); } catch (e) {}
     } else {
       setMusicScene(s);
     }
@@ -294,8 +355,8 @@
     if (!bgmOn) { startMusic(name); return; }
     if (name === bgmScene) return;
     const prev = bgmScene; bgmScene = name;
-    startPad(name); fadeSceneGain(name, SCENES[name].level || 1);
-    if (prev && sceneNodes[prev]) fadeSceneGain(prev, 0); // 旋律もpadもgainで消す。oscillatorは止めない（競合回避）
+    startPad(name); fadeSceneGain(name, SCENES[name].level || 1, 'in'); // 等パワーで入れる
+    if (prev && sceneNodes[prev]) fadeSceneGain(prev, 0, 'out'); // 等パワーで抜く。oscillatorは止めずgainのみ（競合回避）
     ensureScheduler(); // シーン切替時にループが死んでいたら必ず復活
   }
   function stopMusic() {
@@ -489,6 +550,8 @@
       lastNoteAgoSec: (ctx && lastNoteTime) ? +(ctx.currentTime - lastNoteTime).toFixed(2) : null, // 直近ノートから何秒
       ambType: ambType,                                     // 現在の環境音タイプ
       ambBusGain: ambBus ? +ambBus.gain.value.toFixed(3) : null,
+      bgmRich: BGM_RICH,                                    // ②BGMリッチ化の版（実機で追跡用）
+      activeSceneLayers: node ? node.pad.length : 0,        // アクティブシーンの常駐レイヤー数（pad+LFO+sub+shimmer）
       bgmBusGain: bgmBus ? +bgmBus.gain.value.toFixed(3) : null,
       sfxBusGain: sfxBus ? +sfxBus.gain.value.toFixed(3) : null,
       masterGain: master ? +master.gain.value.toFixed(3) : null,
