@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04t'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04u'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1980,7 +1980,7 @@ function buildDiag() {
     `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
     `最寄り乗れる船: ${nearBoat}`,
     `最寄り王国城 : ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, CASTLE_CELL, 3, castleCenter))}　※近衛兵＋最奥にボス(ドラゴン)＋特別報酬`,
-    `最寄りダンジョン: ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, DUNGEON_CELL, 3, dungeonCenter))}　※地下・スポナー/宝箱（一部は魔窟＝デーモン）`,
+    `最寄りダンジョン: ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, DUNGEON_CELL, 3, dungeonCenter), {depth:true})}　※地下・スポナー/宝箱（一部は魔窟＝デーモン）`,
     `武器 / 戦闘  : 装備=${WEAPONS[currentWeapon].name}（C/Bで切替）所持[${WEAPON_ORDER.filter(w=>ownedWeapons.has(w)).map(w=>WEAPONS[w].name).join('・')}] / コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'}`,
     `攻撃の特性   : ${WEAPONS[currentWeapon].ranged?'遠距離(溜め)':'近接'} 威力${WEAPONS[currentWeapon].dmg} 間合${WEAPONS[currentWeapon].reach} 振り${WEAPONS[currentWeapon].swing}s 動作x${WEAPONS[currentWeapon].anim} 止${WEAPONS[currentWeapon].hitstop}s（装備武器で変化）`,
     `手持ち表示   : 武器モデル${heldWeapon?'装着○':'なし(素手/未読込)'} / 盾${heldShield?'装着○':'-'} / 武器テンプレ読込${Object.keys(equipTemplates).length}種`,
@@ -2752,10 +2752,10 @@ function nearestDeterministic(px, pz, cell, span, place) {
   let best = null, bd = Infinity;
   const gx0 = Math.floor(px/cell), gz0 = Math.floor(pz/cell);
   for (let gx = gx0-span; gx <= gx0+span; gx++) for (let gz = gz0-span; gz <= gz0+span; gz++) {
-    const c = place(gx, gz, cell);              // gate を満たす中心 {x,z} または null
+    const c = place(gx, gz, cell);              // gate＋生成条件を満たす中心 {x,z,...} または null
     if (!c) continue;
     const d = Math.hypot(c.x - px, c.z - pz);
-    if (d < bd) { bd = d; best = { x: c.x, z: c.z, d }; }
+    if (d < bd) { bd = d; best = Object.assign({}, c, { d }); } // 追加フィールド(floorY/surf 等)も保持
   }
   return best;
 }
@@ -2769,16 +2769,28 @@ function castleCenter(gx, gz, cell) {
   if (heightAt(ox, oz) <= WATER_LEVEL + 1) return null;
   return { x: ox, z: oz };
 }
-// ダンジョンセルの中心（buildStructures のダンジョンループと同一の判定）。
+// ダンジョンセルの中心（buildStructures のダンジョンループ＋buildDungeon の生成条件と*完全に同一*）。
+//   ★buildDungeon は floor=地表-9 が y<4（地表<13）だと生成しない。ナビもこの却下を再現しないと
+//     「0m と言うのに実体が無い」食い違いになる（星野さん報告の根治）。生成された場合だけ返す。
 function dungeonCenter(gx, gz, cell) {
   if (hash2(gx*29+5, gz*29+11) > 0.28) return null;
   const ox = gx*cell + 10 + Math.floor(hash2(gx+7, gz+1) * (cell-20));
   const oz = gz*cell + 10 + Math.floor(hash2(gx+4, gz+8) * (cell-20));
-  return { x: ox, z: oz };
+  const surf = heightAt(ox, oz), floorY = surf - 9;
+  if (floorY < 4) return null;                 // ★buildDungeon の「浅すぎる地形は不可」と同条件＝実体のある所だけ
+  return { x: ox, z: oz, surf, floorY };        // floorY=床 / surf=地表（地下なので掘る目安に使う）
 }
-function navLine(px, pz, info) { // 距離+方角+座標の表示文字列
+function navLine(px, pz, info, opts) { // 距離+方角+座標（opts.depth なら地下の掘り下げ目安も）
   if (!info) return '探索範囲に未検出';
-  return `${info.d.toFixed(0)}m ${compass8(info.x-px, info.z-pz)}（${info.x.toFixed(0)},${info.z.toFixed(0)}）`;
+  const onTop = info.d < 2; // ほぼ真上に立っている
+  let s = `${info.d.toFixed(0)}m ${compass8(info.x-px, info.z-pz)}（${info.x.toFixed(0)},${info.z.toFixed(0)}）`;
+  if (opts && opts.depth && typeof info.floorY === 'number') {
+    // ダンジョンは地下。天井=床+4=地表-5。真上に立っていれば「真下を掘る」目安を出す。
+    const ceil = info.floorY + 4, digFromFeet = Math.max(0, Math.round(player.pos.y - ceil));
+    s += ` ／ 地下:床Y${info.floorY}・天井Y${ceil}（地表Y${info.surf}）`;
+    s += onTop ? ` → 真下を約${digFromFeet}ブロック掘る` : ' → 真上まで行って掘り下げる';
+  }
+  return s;
 }
 // ⑥ ボス出現点：プレイヤー接近で守護ボスを1体出現。撃破/離脱後に再武装（クールダウン付き）。
 //   モデル未読込(demon 等)の type は静かにスキップ＝モデル到着で自動有効化。
