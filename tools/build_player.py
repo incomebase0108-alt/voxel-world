@@ -149,15 +149,25 @@ def push(o,t):
     tr.strips.new(act.name,int(act.frame_range[0]),act);ad.action=None
 def kz(o,f,z):o.location.z=z;o.keyframe_insert('location',index=2,frame=f)
 def krx(o,f,d):o.rotation_euler[0]=math.radians(d);o.keyframe_insert('rotation_euler',index=0,frame=f)
+def krz(o,f,d):o.rotation_euler[2]=math.radians(d);o.keyframe_insert('rotation_euler',index=2,frame=f)
 BZ=body.location.z
+# idle: 戦士の構え（やや前傾・腰を落とす・武器手を前へ構える・微かな呼吸ループ）。frame1も構え＝
+#   各チャンネルは walk/attack/swim が再アサートするのでクロスフェード復帰に耐える（swim退水と同原理）。
+#   body.rotX 前傾は walk(=0)/attack(0へ収束)/swim(-82) が上書き。腕rotXは全クリップが駆動。脚rotXは walk/swim が再駆動。
 new_action(body,"body_idle")
-for f,z in [(1,BZ),(24,BZ+0.014),(48,BZ)]: kz(body,f,z)
-for f in (1,48): krx(body,f,0)   # 体回転X=0の保持（見た目不変・退水時に直立へ確実に戻すため）
+for f,z in [(1,BZ-0.04),(40,BZ-0.025),(80,BZ-0.04)]: kz(body,f,z)   # 腰を落とす＋呼吸
+for f,d in [(1,-8),(40,-6.5),(80,-8)]: krx(body,f,d)                 # 前傾の構え
 push(body,"idle")
-for a,sgn in [(armL,1),(armR,-1)]:
-    new_action(a,a.name+"_idle")
-    for f,d in [(1,0),(24,4*sgn),(48,0)]: krx(a,f,d)
-    push(a,"idle")
+new_action(armL,"ArmL_idle")
+for f,d in [(1,13),(40,16),(80,13)]: krx(armL,f,d)                   # 添え手側を前へ
+push(armL,"idle")
+new_action(armR,"ArmR_idle")
+for f,d in [(1,22),(40,25),(80,22)]: krx(armR,f,d)                   # 武器手を前へ構える
+push(armR,"idle")
+for lg,sgn in [(legL,1),(legR,-1)]:
+    new_action(lg,lg.name+"_idle")
+    for f,d in [(1,6*sgn),(40,5*sgn),(80,6*sgn)]: krx(lg,f,d)        # 半身の足構え（walk/swimが再アサート）
+    push(lg,"idle")
 LA=16.0;AA=14.0
 new_action(legL,"LegL_walk")
 for f,d in [(1,0),(6,LA),(11,0),(16,-LA),(21,0)]: krx(legL,f,d)
@@ -175,14 +185,18 @@ new_action(body,"body_walk")
 for f,z in [(1,BZ),(6,BZ+0.02),(11,BZ),(16,BZ+0.02),(21,BZ)]: kz(body,f,z)
 for f in (1,21): krx(body,f,0)   # 体回転X=0の保持（見た目不変・退水時に直立へ確実に戻すため）
 push(body,"walk")
+# attack: 力強い大振り（振りかぶり=上後ろ→前へ振り抜き＋体重を乗せる体のひねり）。20f・frame1=最終=0で自己完結＝rest連動維持。
+#   ※振りの向き実測修正(2026-06-03)：旧キーは主モーションが後ろ(+Z)へ薙いでいた→前(-Z=敵方向)へ振り抜くよう反転。
+#     手のworldY実測：windup f6 -0.67(上後ろ) → strike f12 +0.67(前下)。剣はArmR子で追従(1号機 build i)。
 new_action(armR,"armR_attack")
-for f,d in [(1,0),(4,32),(9,-85),(13,-18),(16,0)]: krx(armR,f,d)
+for f,d in [(1,0),(6,-100),(12,80),(16,35),(20,0)]: krx(armR,f,d)    # 振りかぶり(上後ろ-100)→前へ振り抜き(+80)→追い
 push(armR,"attack")
 new_action(armL,"armL_attack")
-for f,d in [(1,0),(9,20),(16,0)]: krx(armL,f,d)
+for f,d in [(1,0),(6,26),(12,-16),(20,0)]: krx(armL,f,d)             # 反対腕でカウンター（体を捻る補助）
 push(armL,"attack")
 new_action(body,"body_attack")
-for f,d in [(1,0),(9,-7),(16,0)]: krx(body,f,d)
+for f,d in [(1,0),(6,8),(12,-12),(20,0)]: krx(body,f,d)              # コイル(後傾+8)→踏み込み前傾(-12)
+for f,d in [(1,0),(6,20),(12,-18),(20,0)]: krz(body,f,d)             # 体重を乗せる体の捻り(windup→振り抜き)
 push(body,"attack")
 
 # ---- swim（水平姿勢のクロール：体前傾水平＋両腕の水かき＋バタ足。frame1=最終で継ぎ目なしループ）----
@@ -213,33 +227,43 @@ zs=[(o.matrix_world@V(v)).z for o in (body,armL,armR,legL,legR) for v in o.bound
 sz=os.path.getsize(out)
 print("[voxel] export OK -> %s  %.3fMB  H%.2fm  clips: idle/walk/attack/swim"%(out, sz/1048576, max(zs)))
 
-# ---- swim 姿勢の検証プレビュー（NLAで swim のみソロ。--render 時のみ・失敗してもexport完了済み）----
+# ---- idle/attack 試作プレビュー（NLAでクリップをソロ表示。--render 時のみ・失敗してもexport完了済み）----
 try:
     import sys
     if "--render" in sys.argv:
-        for o in (body,armL,armR,legL,legR):
-            if o.animation_data:
-                for tr in o.animation_data.nla_tracks: tr.mute = (tr.name != "swim")
+        objs=(body,armL,armR,legL,legR)
+        def solo(track):
+            for o in objs:
+                if o.animation_data:
+                    for tr in o.animation_data.nla_tracks: tr.mute=(tr.name!=track)
         try: scene.render.engine='BLENDER_EEVEE_NEXT'
         except Exception: scene.render.engine='BLENDER_EEVEE'
-        scene.render.resolution_x=940; scene.render.resolution_y=620
+        scene.render.resolution_x=720; scene.render.resolution_y=920
         world=bpy.data.worlds.new("W"); scene.world=world; world.use_nodes=True
-        world.node_tree.nodes["Background"].inputs[0].default_value=(0.06,0.10,0.16,1)
-        world.node_tree.nodes["Background"].inputs[1].default_value=1.2
+        world.node_tree.nodes["Background"].inputs[0].default_value=(0.10,0.11,0.14,1)
+        world.node_tree.nodes["Background"].inputs[1].default_value=1.3
         bpy.ops.object.light_add(type='SUN',location=(3,-4,7)); sun=bpy.context.active_object
-        sun.data.energy=4.2; sun.rotation_euler=(math.radians(55),0,math.radians(30))
-        def shot(name,f,cam_loc,cam_rot):
+        sun.data.energy=4.6; sun.rotation_euler=(math.radians(54),0,math.radians(32))
+        bpy.ops.object.light_add(type='AREA',location=(-3,-3,3)); fill=bpy.context.active_object
+        fill.data.energy=120; fill.data.color=(0.7,0.8,1.0); fill.data.size=4.0
+        def shot(name,f,cam_loc,cam_rot,lens=50):
             scene.frame_set(f)
             bpy.ops.object.camera_add(location=cam_loc,rotation=cam_rot)
-            cam=bpy.context.active_object; scene.camera=cam; cam.data.lens=40
+            cam=bpy.context.active_object; scene.camera=cam; cam.data.lens=lens
             scene.render.filepath=os.path.join(repo,"tools",name)
             bpy.ops.render.render(write_still=True)
             bpy.data.objects.remove(cam,do_unlink=True)
-        # 側面（profile：+Yが右＝進行方向）でうつ伏せ水平姿勢を確認、frame1とframe24
-        shot("hero_player_swim_side1.png",1,(6.5,0.4,1.5),(math.radians(88),0,math.radians(90)))
-        shot("hero_player_swim_side24.png",24,(6.5,0.4,1.5),(math.radians(88),0,math.radians(90)))
-        # 3/4 俯瞰
-        shot("hero_player_swim_3q.png",24,(4.6,3.2,3.4),(math.radians(58),0,math.radians(126)))
-        print("[voxel] swim preview rendered: tools/hero_player_swim_side1/side24/3q.png")
+        FCAM=(0,4.5,1.15); FROT=(math.radians(86),0,math.radians(180))     # 正面
+        QCAM=(3.2,2.9,1.5); QROT=(math.radians(80),0,math.radians(133))     # 3/4
+        # idle（構え）: 呼吸の中間フレーム40
+        solo("idle")
+        shot("hero_player_idle_front.png",40,FCAM,FROT)
+        shot("hero_player_idle_3q.png",40,QCAM,QROT)
+        # attack（大振り）: 振りかぶり(5)→振り下ろし(11)→追い(15) の3ポーズで動きを提示
+        solo("attack")
+        shot("hero_player_attack_windup.png",5,QCAM,QROT)
+        shot("hero_player_attack_swing.png",11,QCAM,QROT)
+        shot("hero_player_attack_follow.png",15,QCAM,QROT)
+        print("[voxel] idle/attack preview rendered: tools/hero_player_idle_front/3q + attack_windup/swing/follow")
 except Exception as e:
-    print("[voxel] swim preview skipped:", e)
+    print("[voxel] preview skipped:", e)
