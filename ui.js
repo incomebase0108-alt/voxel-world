@@ -236,6 +236,17 @@
       #ui-hint { position:fixed; right:14px; bottom:14px; z-index:16; color:#fff; font-size:12px;
         opacity:.7; text-shadow:0 0 3px #000; pointer-events:none; }
 
+      /* equip デバッグ表示（剣のworld向き・盾のworld Y を一目で）。getEquipDebug() があれば自動点灯 */
+      #ui-equipdbg { position:fixed; left:12px; top:12px; z-index:16; pointer-events:none; display:none;
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size:11px; line-height:1.55;
+        color:#cfe6ff; background:rgba(8,14,26,.62); border:1px solid rgba(120,180,255,.32);
+        border-radius:8px; padding:6px 9px; text-shadow:0 0 3px #000, 0 0 3px #000; white-space:nowrap; }
+      #ui-equipdbg .t { font-weight:700; color:#9bd1ff; letter-spacing:.5px; }
+      #ui-equipdbg .k { opacity:.72; }
+      #ui-equipdbg .dim { opacity:.42; }
+      #ui-equipdbg .ok { color:#9be86a; }
+      #ui-equipdbg .ng { color:#ff8a8a; }
+
       /* ③ メニュー／設定／セーブスロット */
       #ui-menu { position:fixed; inset:0; z-index:31; display:flex;
         align-items:center; justify-content:center; background:rgba(8,14,26,.86); backdrop-filter:blur(3px); }
@@ -367,6 +378,9 @@
     radar.width = 128; radar.height = 128;
     const info = el('div', '', radarWrap); info.id = 'ui-info'; info.className = 'panel';
 
+    // equip デバッグ表示（剣のworld向き・盾のworld Y）。getEquipDebug() があれば自動点灯
+    const equipdbg = el('div', '', root); equipdbg.id = 'ui-equipdbg';
+
     // 全画面ヴィネット
     const hurt = el('div', '', root); hurt.id = 'ui-hurt';
     const heal = el('div', '', root); heal.id = 'ui-heal';
@@ -405,7 +419,7 @@
       root, breathRow, breathSegs, foodSegs, foodNum, hpSegs, hpNum,
       selName, hotbar, radar, rctx: radar.getContext('2d'), info, hurt, heal,
       fxCanvas, fxctx: fxCanvas.getContext('2d'), fxLayer,
-      inv, panel, tip, hint, menu, menuPanel,
+      inv, panel, tip, hint, menu, menuPanel, equipdbg,
       expRow, explv, expfill, expnum, levelup, lu2,
       skills, ult, ultfill, skillname, sk1, sk2, skillEls: [],
       hpSegEls: [], foodSegEls: [], breathSegEls: [], slotEls: [],
@@ -1483,6 +1497,43 @@
     return null;
   }
 
+  // equip デバッグ表示：window.getEquipDebug() の値を一目で（剣のworld向き・盾のworld Y）。
+  // 口が無くても localStorage voxel_ui_equipdebug='1' で枠だけ "—" 点灯でき、口が値を返せば自動点灯。
+  let equipDbgForce = null;
+  function readEquipDbgForce() {
+    if (equipDbgForce === null) { try { equipDbgForce = localStorage.getItem('voxel_ui_equipdebug') === '1'; } catch (e) { equipDbgForce = false; } }
+    return equipDbgForce;
+  }
+  function dbgNum(n) { return (typeof n === 'number' && isFinite(n)) ? n.toFixed(2) : null; }
+  function dbgVec(v) {
+    if (!v) return null;
+    const a = Array.isArray(v) ? v : [v.x, v.y, v.z];
+    if (a.length < 3 || a.some(x => typeof x !== 'number' || !isFinite(x))) return null;
+    return '(' + a.map(x => (x >= 0 ? ' ' : '') + x.toFixed(2)).join(', ') + ')';
+  }
+  function updateEquipDebug() {
+    const elx = dom && dom.equipdbg; if (!elx) return;
+    const fn = window.getEquipDebug;
+    const hasFn = typeof fn === 'function';
+    if (!hasFn && !readEquipDbgForce()) { if (elx.style.display !== 'none') elx.style.display = 'none'; return; }
+    if (elx.style.display !== 'block') elx.style.display = 'block';
+
+    let d = null;
+    if (hasFn) { try { d = fn(); } catch (e) { d = null; } }
+    const sword = d && d.sword, shield = d && d.shield;
+    const sdir = sword ? dbgVec(sword.dir) : null;
+    const sang = sword ? dbgNum(sword.angle) : null;
+    const sy = shield ? dbgNum(typeof shield.worldY === 'number' ? shield.worldY : (shield && shield.y)) : null;
+
+    const dash = '<span class="dim">—</span>';
+    const build = d && typeof d.build === 'string' ? ` <span class="dim">${d.build}</span>` : '';
+    elx.innerHTML =
+      `<span class="t">⚙ equip</span>${build}<br>` +
+      `<span class="k">剣 dir</span> ${sdir || dash}${sang != null ? ` <span class="k">∠</span>${sang}°` : ''}<br>` +
+      `<span class="k">盾 Y&nbsp;&nbsp;</span>${sy || dash}` +
+      (!hasFn ? `<br><span class="dim">getEquipDebug() 待ち</span>` : '');
+  }
+
   let warnedOnce = false, running = false, lastDt = 0;
   function tick(t) {
     requestAnimationFrame(tick);
@@ -1555,6 +1606,9 @@
     dom.info.innerHTML =
       `<span class="b">${hh}:${mm}</span> ${time.phase || ''} / ${st.weather || ''}<br>` +
       `${st.biome || ''}${st.riding ? ' 🐴騎乗' : ''}`;
+
+    // --- equip デバッグ表示（剣のworld向き・盾のworld Y）---
+    updateEquipDebug();
 
     // --- 演出 ---
     if (lastHp != null && st.hp > lastHp + 0.01) flashHeal(); // HP増＝回復パルス
