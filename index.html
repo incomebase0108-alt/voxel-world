@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03h'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-03i'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1922,28 +1922,35 @@ function playAvatarAttack() {
 // 武器の手持ち表示（EQUIP_HOLD.md）：装備中の武器モデルをアバターの腕ノードの子に付け、
 //   振り(attack)に追従させる。これが無いと装備しても素手のまま見える（星野さん対応）。
 // ===================================================================
-//   hand: 'R'=右手(剣/斧/ピッケル) / 'L'=左手(弓)。rotX=グリップの軽い前傾(rad)。盾は左前腕。
+//   hand: 'R'=右手(剣/斧/ピッケル) / 'L'=左手(弓)。rotX=グリップの軽い前傾(rad)。offset=手アンカーからのglTF座標ずらし。
+//   ※剣モデルは刃軸=+Y(上)・原点=握り基部。盾は原点=板中心(4号機の実glb裏取り 2026-06-03)。
 const HOLD = {
-  sword:   { hand:'R', rotX:-0.314 }, // 刃を上・やや前へ(-18°)
-  axe:     { hand:'R', rotX:-0.21  }, // 斧頭を上(-12°)
-  pickaxe: { hand:'R', rotX:-0.21  },
-  bow:     { hand:'L', rotX: 0.14  }, // 弓を縦(+8°)
+  sword:   { hand:'R', rotX:-0.314, offset:[0,0,0] },        // 刃を上・やや前へ(-18°)
+  axe:     { hand:'R', rotX:-0.21,  offset:[0,0,0] },        // 斧頭を上(-12°)
+  pickaxe: { hand:'R', rotX:-0.21,  offset:[0,0,0] },
+  bow:     { hand:'L', rotX: 0.14,  offset:[0,0.05,-0.04] }, // 弓を縦(+8°)・握り中央へ
 };
-const HAND_LOCAL = { R:[-0.37, 0.73, 0.0], L:[0.37, 0.73, 0.0] }; // アバター(glTF)ローカルの手アンカー（rest実測）
+const SHIELD_HOLD = { hand:'L', rotX:0, offset:[0.02, 0.32, -0.16] }; // 左前腕に・正面(-Z)外向き（Blender(0.02,0.16,0.32)→glTF）
+const HAND_LOCAL = { R:[-0.37, 0.73, 0.0], L:[0.37, 0.73, 0.0] };     // アバター(glTF)ローカルの手アンカー（rest実測）
 let heldWeapon = null, heldShield = null;
-// obj を hand の腕ノードに装着。手のワールド位置を腕ローカルへ逆変換＝スケール/回転非依存で原寸配置
-function attachToHand(obj, hand, rotX) {
+// obj を hand の腕ノードに装着。位置=手アンカー(+offset)を腕ローカルへ逆変換／向き=アバター基準のグリップ回転を
+//   腕ローカルへ変換（腕の rest 姿勢に依存せず「刃=上＋前傾」を保証）／スケール=ワールドで原寸。
+function attachToHand(obj, hand, rotX, offset) {
   if (!playerAvatar) return false;
   playerAvatar.updateWorldMatrix(true, false);
   const parent = playerAvatar.getObjectByName(hand === 'R' ? 'ArmR' : 'ArmL') || playerAvatar; // 腕ノードが無ければroot
-  const hl = HAND_LOCAL[hand];
-  const handWorld = playerAvatar.localToWorld(new THREE.Vector3(hl[0], hl[1], hl[2]));
   parent.updateWorldMatrix(true, false);
+  const hl = HAND_LOCAL[hand], o = offset || [0,0,0];
+  const handWorld = playerAvatar.localToWorld(new THREE.Vector3(hl[0]+o[0], hl[1]+o[1], hl[2]+o[2]));
   parent.add(obj);
   obj.position.copy(parent.worldToLocal(handWorld.clone())); // 腕ローカルでの手位置
+  // 向き：weaponLocal = inv(armWorld) * avatarWorld * grip(rotX) ＝ アバター基準でグリップ角を保つ
+  const armWorldQ = new THREE.Quaternion(); parent.getWorldQuaternion(armWorldQ);
+  const avatarWorldQ = new THREE.Quaternion(); playerAvatar.getWorldQuaternion(avatarWorldQ);
+  const gripQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX || 0, 0, 0));
+  obj.quaternion.copy(armWorldQ.invert().multiply(avatarWorldQ).multiply(gripQ));
   const ws = new THREE.Vector3(); parent.getWorldScale(ws);
   obj.scale.setScalar(1 / (ws.x || 1));                       // ワールドで原寸に
-  obj.rotation.set(rotX || 0, 0, 0);
   return true;
 }
 // 装備中の武器/盾をアバターの手に反映（装備変更・アバター読込・武器モデル読込後に呼ぶ）
@@ -1952,14 +1959,14 @@ function updateHeldWeapon() {
   if (heldWeapon && heldWeapon.parent) heldWeapon.parent.remove(heldWeapon);
   heldWeapon = null;
   const cfg = HOLD[currentWeapon], tpl = cfg && equipTemplates[currentWeapon];
-  if (tpl) { heldWeapon = tpl.clone(true); attachToHand(heldWeapon, cfg.hand, cfg.rotX); } // 素手(fist)はモデル無し＝何も持たない
+  if (tpl) { heldWeapon = tpl.clone(true); attachToHand(heldWeapon, cfg.hand, cfg.rotX, cfg.offset); } // 素手(fist)はモデル無し＝何も持たない
   updateHeldShield();
 }
 function updateHeldShield() {
   if (!playerAvatar) return;
   if (heldShield && heldShield.parent) heldShield.parent.remove(heldShield);
   heldShield = null;
-  if (equip.shield && equipTemplates.shield) { heldShield = equipTemplates.shield.clone(true); attachToHand(heldShield, 'L', 0); } // 盾は左
+  if (equip.shield && equipTemplates.shield) { heldShield = equipTemplates.shield.clone(true); attachToHand(heldShield, SHIELD_HOLD.hand, SHIELD_HOLD.rotX, SHIELD_HOLD.offset); } // 盾は左前腕
 }
 // (C) プレイヤー色選択：5色から選んでアバターを読み込む（選択は保存）
 const PLAYER_SKINS = [
