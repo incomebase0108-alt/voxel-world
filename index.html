@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04u'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04v'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -132,6 +132,7 @@ const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand, B.snow, B.pla
 const counts = {};          // ブロック種別ごとの所持数（破壊で増え、設置で減る）
 HOTBAR.forEach(b => counts[b] = 0);
 const itemCounts = { meat:0, egg:0, coin:0, apple:0, coal:0, iron:0, gold:0 }; // ドロップ品・採掘素材の所持数（早期宣言＝ロード時に参照するため）
+const bossKills = {}; // ⑥ ボス種別ごとの討伐数（達成感の記録。セーブ・H診断に反映）
 
 // ===================================================================
 // ⑤ (D)バランスの数値基盤：ゲームの体感を決める数値を1か所に集約
@@ -763,6 +764,7 @@ function serializeWorld() {
     level: playerLevel, exp: playerExp,                               // レベル/経験値
     equippedSkills: [...equippedSkills],                              // 装備中の必殺技（②）
     counts, itemCounts,                                               // インベントリ
+    bossKills: { ...bossKills },                                      // ⑥ ボス討伐数
     playerModel: currentPlayerFile,                                   // 選択アバター
     equip: { weapon: currentWeapon, owned: [...ownedWeapons], armor: { ...equip.armor }, shield: equip.shield, ownedShield }, // 装備
     time: { dayTime, weather, autoWeather, weatherTimer },            // 時刻・天候
@@ -836,6 +838,7 @@ function loadWorld(slot = currentSlot) {
     breath = Math.max(0, Math.min(P.breathMax, num(obj.breath, P.breathMax)));
     if (obj.counts) for (const k in obj.counts) if (counts[k] !== undefined && Number.isFinite(obj.counts[k])) counts[k] = Math.max(0, obj.counts[k]|0);
     if (obj.itemCounts) for (const k in obj.itemCounts) if (itemCounts[k] !== undefined && Number.isFinite(obj.itemCounts[k])) itemCounts[k] = Math.max(0, obj.itemCounts[k]|0);
+    if (obj.bossKills && typeof obj.bossKills === 'object') for (const k in obj.bossKills) if (Number.isFinite(obj.bossKills[k])) bossKills[k] = Math.max(0, obj.bossKills[k]|0); // ⑥ 討伐数復元
     if (typeof obj.playerModel === 'string') currentPlayerFile = obj.playerModel;
     if (obj.equip && typeof obj.equip === 'object') { // 装備の復元（防御的に）
       if (Array.isArray(obj.equip.owned)) for (const w of obj.equip.owned) if (WEAPONS[w]) ownedWeapons.add(w);
@@ -1989,6 +1992,7 @@ function buildDiag() {
     `swim選択理由 : ${ridingBoat ? '-乗船中(swim無効)' : ridingMob ? '-騎乗中(swim無効)' : playerHeadInWater() ? '○頭が水中→swim' : '-頭は空気→walk/idle'}（actSwim=${actSwim ? (actSwim.isRunning()?'再生中':'停止') : '無'}）`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 住人${mobs.filter(m=>m.home).length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
     `モブ地中埋没  : ${mobs.filter(m=>m.buried).length}体（透明な敵の監視。0が正常／復帰処理が毎フレーム作動）`,
+    `ボス討伐記録 : ドラゴン${bossKills.dragon||0} / スケ王${bossKills.skeleton_king||0} / デーモン${bossKills.demon||0} / ゴーレム${bossKills.golem||0}（撃破で特別報酬＝大量EXP・金・確定レア装備）`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
     `構造物       : 村${villages.size} / スポナー${spawners.size} / プロップ${props.size}(表示${[...props.values()].filter(p=>p.obj).length}) / structテンプレ${Object.keys(structTemplates).length}種`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
@@ -3010,6 +3014,13 @@ function openChestProp(x, y, z) {
 }
 const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご', coal:'石炭', iron:'鉄', gold:'金' };
 const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin' };
+// ⑥ ボス撃破の特別報酬（探索の目標＝倒す意味）。exp=追加EXP / gold,coin=資源 / equips=確定レア装備数 / name=表示名
+const BOSS_REWARD = {
+  golem:         { exp: 30,  gold: 2, coin: 4,  equips: 1, name: 'ゴーレム' },
+  skeleton_king: { exp: 60,  gold: 4, coin: 8,  equips: 2, name: 'スケルトンキング' },
+  dragon:        { exp: 90,  gold: 6, coin: 12, equips: 2, name: 'ドラゴン' },
+  demon:         { exp: 120, gold: 8, coin: 16, equips: 3, name: 'デーモン' },
+};
 const drops = []; // 地面に落ちたアイテム { obj, item, equip?, t, life }
 
 // 装備品の落下モデル（4号機の item_*.glb）。kind→ファイル名（防具/盾は専用、武器は同名）
@@ -3343,8 +3354,25 @@ function killMob(m) {
   maybeDropEquip(m); // 装備品の抽選ドロップ
   // 討伐EXP（敵の強さ＝最大HP比例、ボスは加算）
   gainExp(Math.ceil((M.hp[m.def.type] || 5) / CFG.level.killDivisor) + (m.def.role === 'boss' ? CFG.level.bossBonus : 0));
+  if (m.def.role === 'boss') defeatBoss(m); // ⑥ ボス撃破の連携（ファンファーレ＋崩壊演出）＋特別報酬＋討伐記録
   if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); }
   else m.dieTimer = 0; // dieクリップ無ければ次フレーム除去
+}
+// ⑥ ボス撃破：出現(roar＋魔法陣＋瘴気)→戦闘(bossBGM)→撃破(ファンファーレ＋崩壊＋特別報酬) で戦いを完結させる
+function defeatBoss(m) {
+  const p = m.obj.position, t = m.def.type;
+  try { window.onBossDefeat && window.onBossDefeat(t); } catch (e) {}        // 撃破ファンファーレ（2号機）
+  spawnFx('fx_collapse', p.x, p.y + 0.3, p.z, 3.5, 1.8);                     // 崩壊演出（4号機・自走loop）
+  const rw = BOSS_REWARD[t] || { exp: 40, gold: 2, coin: 4, equips: 1, name: t };
+  gainExp(rw.exp);                                                          // 大量EXP（通常討伐EXPへ上乗せ）
+  itemCounts.gold = (itemCounts.gold || 0) + rw.gold;
+  itemCounts.coin = (itemCounts.coin || 0) + rw.coin;
+  const pool = ['armor', 'shield', 'sword', 'axe', 'bow'];
+  for (let i = 0; i < rw.equips; i++)                                       // 確定レア装備（ボスを倒す意味）
+    spawnEquipDrop(pool[Math.floor(Math.random()*pool.length)], p.x + (Math.random()*2-1), p.y, p.z + (Math.random()*2-1));
+  bossKills[t] = (bossKills[t] || 0) + 1;                                   // 討伐数の記録（達成感）
+  toast(`★ ${rw.name} 撃破！ 特別報酬：EXP+${rw.exp}・金+${rw.gold}・コイン+${rw.coin}・装備×${rw.equips}（討伐 ${bossKills[t]}体）`);
+  scheduleSave();
 }
 
 // ===================================================================
