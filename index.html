@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-03n'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04o'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1972,71 +1972,85 @@ function playAvatarAttack() {
 }
 
 // ===================================================================
-// 武器の手持ち表示（EQUIP_HOLD.md）：装備中の武器モデルをアバターの腕ノードの子に付け、
-//   振り(attack)に追従させる。これが無いと装備しても素手のまま見える（星野さん対応）。
+// 武器の手持ち表示（EQUIP_HOLD.md §3 ワールド追従方式）：装備モデルを*シーン直下*に置き、
+//   毎フレーム「手のワールド位置 ＋ 腕のワールド回転」だけを写して配置する（武器 scale=1.0＝実寸）。
+//   ※player.glb の腕ノードは非一様スケール(Body[.3,.3,.17]×Arm[.333,.367,.647])を持つため、
+//     腕へ直接子付けすると*せん断歪み*で向き・形が崩れる（剣が背中・盾が腕裏に回る主因）。
+//     getWorldQuaternion は scale を無視するので、これで歪みを持ち込まず姿勢追従できる（§3推奨）。
 // ===================================================================
-//   hand: 'R'=右手(剣/斧/ピッケル) / 'L'=左手(弓)。rotX=グリップの軽い前傾(rad)。offset=手アンカーからのglTF座標ずらし。
-//   ※剣モデルは刃軸=+Y(上)・原点=握り基部。盾は原点=板中心(4号機の実glb裏取り 2026-06-03)。
+//   hand: 'R'=右手(剣/斧/ピッケル) / 'L'=左手(弓/盾)。rotX=グリップ前傾(rad)。offset=手アンカーからの体フレーム(glTF)ずらし。
 const HOLD = {
-  sword:   { hand:'R', rotX:-0.314, offset:[0,0,0] },        // 刃を上・やや前へ(-18°)
-  axe:     { hand:'R', rotX:-0.21,  offset:[0,0,0] },        // 斧頭を上(-12°)
-  pickaxe: { hand:'R', rotX:-0.21,  offset:[0,0,0] },
+  sword:   { hand:'R', rotX:-0.314, offset:[0,0,0] },        // 刃を上やや前へ(-18°)・原点=握り中央
+  axe:     { hand:'R', rotX:-0.21,  offset:[0,0,0] },        // 斧頭を上前方(-12°)
+  pickaxe: { hand:'R', rotX:-0.21,  offset:[0,0,0] },        // 頭を上前方(-12°)
   bow:     { hand:'L', rotX: 0.14,  offset:[0,0.05,-0.04] }, // 弓を縦(+8°)・握り中央へ
 };
-const SHIELD_HOLD = { hand:'L', rotX:0, offset:[0.02, 0.32, -0.16] }; // 左前腕に・正面(-Z)外向き（Blender(0.02,0.16,0.32)→glTF）
-const HAND_LOCAL = { R:[-0.37, 0.73, 0.0], L:[0.37, 0.73, 0.0] };     // アバター(glTF)ローカルの手アンカー（rest実測）
+const SHIELD_HOLD = { hand:'L', rotX:0, offset:[0.02, 0.32, -0.16] }; // 左前腕・表(-Z=前)。Z=-0.16で前へ／Y回転0(180°反転禁止＝腕裏に回る)
+const HAND_LOCAL = { R:[-0.43, 0.72, 0.0], L:[0.43, 0.72, 0.0] };     // §1 手アンカー(中立・player.glbノード実測 2026-06-04)
 let heldWeapon = null, heldShield = null;
-// 腕ボーンの rest（bind pose）変換を「アバター根基準」で保持＝装着計算の不変基準。
-//   ※player.glb の ArmR/ArmL・Body は 非一様スケール(0.3/0.3/0.17 等)＋回転(ArmR 180°X / Body -82°X) を持つため、
-//     getWorldQuaternion/getWorldScale の decompose は破綻する（剣/盾が肩・背中へ飛ぶ既知バグの真因）。
-//     よって rest 行列をそのまま保持し、装着は行列合成のみで行う（分解を一切使わない）。
-let armRestLocal = { R: null, L: null };
-// アバター読込直後（bind pose・mixer 未更新）に腕 rest を採取。switch/equip 変更時もこの基準で当て直す。
-function captureArmRest() {
-  armRestLocal = { R: null, L: null };
+// 腕の装着リグ（bind pose で採取＝アニメポーズ・アバター向きに非依存の不変基準）。
+//   handLocal: 手アンカーを腕ローカルへ移したもの（applyMatrix4(arm.matrixWorld) で現在の手ワールドへ戻る＝振りに追従）。
+//   armRelQInv: inv(腕のアバター相対回転)。体フレームの grip 角を腕フレームへ較正する（中立で体フレーム grip に一致させる）。
+let handRig = { R: null, L: null };
+function captureHandRig() {
+  handRig = { R: null, L: null };
   if (!playerAvatar) return;
-  playerAvatar.updateWorldMatrix(true, true); // 子(腕ボーン)まで bind pose の world を確定
-  const invAv = new THREE.Matrix4().copy(playerAvatar.matrixWorld).invert();
+  playerAvatar.updateWorldMatrix(true, true); // bind pose（mixer 未更新）で腕の world を確定
+  const avQ = new THREE.Quaternion(); playerAvatar.getWorldQuaternion(avQ);
   for (const h of ['R', 'L']) {
-    const arm = playerAvatar.getObjectByName(h === 'R' ? 'ArmR' : 'ArmL');
-    if (arm) { arm.updateWorldMatrix(true, false); armRestLocal[h] = new THREE.Matrix4().multiplyMatrices(invAv, arm.matrixWorld); } // M_rest = inv(avatar)*ArmWorld
+    const node = playerAvatar.getObjectByName(h === 'R' ? 'ArmR' : 'ArmL');
+    if (!node) continue;
+    node.updateWorldMatrix(true, false);
+    const a = HAND_LOCAL[h];
+    const handWorldBind = new THREE.Vector3(a[0], a[1], a[2]).applyMatrix4(playerAvatar.matrixWorld); // 手アンカー(アバターローカル)→world
+    const handLocal = handWorldBind.clone().applyMatrix4(new THREE.Matrix4().copy(node.matrixWorld).invert()); // →腕ローカル（avatar向きは打ち消され不変）
+    const armQ = new THREE.Quaternion(); node.getWorldQuaternion(armQ);
+    const armRelQInv = armQ.clone().invert().multiply(avQ); // inv(R_rel_bind) = inv(armQ)*avQ
+    handRig[h] = { node, handLocal, armRelQInv };
   }
 }
-// obj を hand の腕ボーンに装着。ボーンローカルの「固定行列」を行列合成で与える（matrixAutoUpdate=false）。
-//   L = inv(M_rest) * localDesired。localDesired = アバター根空間で 手アンカー(+offset)位置・グリップ角・原寸(1)。
-//   weaponWorld = ArmWorld(動) * L となり、rest 時は demo(build_hold_demo.py の正解レンダー)と完全一致。
-//   ボーンの非一様スケール+回転があっても、同じ ArmWorld を逆行列で打ち消すので歪み・位置ズレが起きない。
-function attachToHand(obj, hand, rotX, offset) {
-  if (!playerAvatar) return false;
-  const arm = playerAvatar.getObjectByName(hand === 'R' ? 'ArmR' : 'ArmL');
-  const parent = arm || playerAvatar; // 腕ノードが無ければ root（静的だが正位置）
-  const hl = HAND_LOCAL[hand], o = offset || [0,0,0];
-  const localDesired = new THREE.Matrix4().compose(
-    new THREE.Vector3(hl[0]+o[0], hl[1]+o[1], hl[2]+o[2]),                 // 手アンカー(+offset)＝右手の握り/左前腕
-    new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX || 0, 0, 0)), // グリップ角（剣=刃を上やや前 -18° / 盾=0）
-    new THREE.Vector3(1, 1, 1));                                          // アバター根基準で原寸
-  const mRest = (arm && armRestLocal[hand]) ? armRestLocal[hand] : new THREE.Matrix4();
-  const L = new THREE.Matrix4().copy(mRest).invert().multiply(localDesired);
-  parent.add(obj);
-  obj.matrixAutoUpdate = false; // 親(腕)が動いても自前の position/quat/scale で上書きさせない
-  obj.matrix.copy(L);
-  obj.matrixWorldNeedsUpdate = true;
-  return true;
+// 装着：シーン直下に追加し hold 設定を持たせる（位置/姿勢は updateHeldTransforms が毎フレーム決める）。
+function attachWorldFollow(obj, hand, rotX, offset) {
+  if (!obj) return;
+  obj.scale.set(1, 1, 1); // 実寸（腕の非一様スケールを乗せない＝せん断なし）
+  obj.userData.hold = { hand, gripQ: new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX || 0, 0, 0)), offset: offset || [0,0,0] };
+  scene.add(obj);
+  obj.visible = thirdPerson;
 }
-// 装備中の武器/盾をアバターの手に反映（装備変更・アバター読込・武器モデル読込後に呼ぶ）
-function updateHeldWeapon() {
+// 毎フレーム：手のワールド変換だけを写して武器/盾を配置（§3）。mixer.update の後に呼ぶ＝腕ポーズ最新。
+const _avQ = new THREE.Quaternion(), _armQ = new THREE.Quaternion(), _hw = new THREE.Vector3(), _off = new THREE.Vector3();
+function placeHeld(obj) {
+  if (!obj) return;
+  const hd = obj.userData.hold, rig = hd && handRig[hd.hand];
+  if (!rig) { obj.visible = false; return; }
+  obj.visible = thirdPerson; // シーン直下＝アバターの visible を継承しないので明示（一人称では非表示）
+  rig.node.updateWorldMatrix(true, false);
+  playerAvatar.getWorldQuaternion(_avQ);
+  rig.node.getWorldQuaternion(_armQ);
+  _hw.copy(rig.handLocal).applyMatrix4(rig.node.matrixWorld);              // 現在の手ワールド位置（振りに追従）
+  _off.set(hd.offset[0], hd.offset[1], hd.offset[2]).applyQuaternion(_avQ); // オフセットは体フレーム（-Z=前）
+  obj.position.copy(_hw).add(_off);
+  // 姿勢：腕ワールド回転 × inv(R_rel_bind) × grip ＝中立で体フレーム grip に一致し、腕の振りに追従
+  obj.quaternion.copy(_armQ).multiply(rig.armRelQInv).multiply(hd.gripQ);
+}
+function updateHeldTransforms() {
   if (!playerAvatar) return;
+  placeHeld(heldWeapon); placeHeld(heldShield);
+}
+// 装備中の武器/盾をシーンに反映（装備変更・アバター読込・武器モデル読込後に呼ぶ）
+function updateHeldWeapon() {
   if (heldWeapon && heldWeapon.parent) heldWeapon.parent.remove(heldWeapon);
   heldWeapon = null;
+  if (!playerAvatar) return;
   const cfg = HOLD[currentWeapon], tpl = cfg && equipTemplates[currentWeapon];
-  if (tpl) { heldWeapon = tpl.clone(true); attachToHand(heldWeapon, cfg.hand, cfg.rotX, cfg.offset); } // 素手(fist)はモデル無し＝何も持たない
+  if (tpl) { heldWeapon = tpl.clone(true); attachWorldFollow(heldWeapon, cfg.hand, cfg.rotX, cfg.offset); } // 素手(fist)はモデル無し
   updateHeldShield();
 }
 function updateHeldShield() {
-  if (!playerAvatar) return;
   if (heldShield && heldShield.parent) heldShield.parent.remove(heldShield);
   heldShield = null;
-  if (equip.shield && equipTemplates.shield) { heldShield = equipTemplates.shield.clone(true); attachToHand(heldShield, SHIELD_HOLD.hand, SHIELD_HOLD.rotX, SHIELD_HOLD.offset); } // 盾は左前腕
+  if (!playerAvatar) return;
+  if (equip.shield && equipTemplates.shield) { heldShield = equipTemplates.shield.clone(true); attachWorldFollow(heldShield, SHIELD_HOLD.hand, SHIELD_HOLD.rotX, SHIELD_HOLD.offset); } // 盾は左前腕
 }
 // (C) プレイヤー色選択：5色から選んでアバターを読み込む（選択は保存）
 const PLAYER_SKINS = [
@@ -2082,7 +2096,7 @@ function loadAvatar(file) {
       playerAvatar.rotation.order = 'YXZ'; // ヨー(向き)→ピッチ(前傾)の順＝うつ伏せ時も頭が進行方向を向く
       playerAvatar.visible = thirdPerson; // 三人称なら即表示
       scene.add(playerAvatar);
-      captureArmRest(); // ★装着の rest 基準を bind pose で採取（mixer 更新前＝rest）。武器/盾の装着はこれを使う
+      captureHandRig(); // ★装着リグ(手アンカー/腕回転)を bind pose で採取（mixer 更新前＝中立）。§3 ワールド追従の基準
       let v = 0, mc = 0;
       playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
       diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc, clips:[] };
@@ -3215,6 +3229,7 @@ function loop(now) {
   updateClouds(dt);
   updateProps(dt); // ② 構造物プロップ(GLB)の表示・アニメ
   if (mixer) mixer.update(gdt); // アバターのアニメ再生（ヒットストップに同期）
+  updateHeldTransforms(); // §3 ワールド追従：腕ポーズ確定後に武器/盾を手へ写す（毎フレーム）
   updateChunks();
   renderer.render(scene, camera);
 
