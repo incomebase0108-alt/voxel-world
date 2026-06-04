@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04z2'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04z3'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -437,9 +437,10 @@ function buildStructures(cx, cz, stamp) {
       if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue; // 水際は不可
       buildVillage(ox, oz, gx, gz, sw);
     }
-  // --- ダンジョン ---
-  for (let gx = Math.floor(minWX/DUNGEON_CELL); gx <= Math.floor(maxWX/DUNGEON_CELL); gx++)
-    for (let gz = Math.floor(minWZ/DUNGEON_CELL); gz <= Math.floor(maxWZ/DUNGEON_CELL); gz++) {
+  // --- ダンジョン（地上に下り階段の口を持つ＝掘らず歩いて入れる。階段が+X方向に伸びるため走査マージンを広げる） ---
+  const dm = 16; // ダンジョンは階段ぶん +X に伸びる(R+drop≒12)。チャンク跨ぎで欠けないようマージン拡張
+  for (let gx = Math.floor((cx*CHUNK-dm)/DUNGEON_CELL); gx <= Math.floor((cx*CHUNK+CHUNK+dm)/DUNGEON_CELL); gx++)
+    for (let gz = Math.floor((cz*CHUNK-dm)/DUNGEON_CELL); gz <= Math.floor((cz*CHUNK+CHUNK+dm)/DUNGEON_CELL); gz++) {
       if (hash2(gx*29+5, gz*29+11) > 0.28) continue; // 約1/4のセルにダンジョン
       const ox = gx*DUNGEON_CELL + 10 + Math.floor(hash2(gx+7, gz+1) * (DUNGEON_CELL-20));
       const oz = gz*DUNGEON_CELL + 10 + Math.floor(hash2(gx+4, gz+8) * (DUNGEON_CELL-20));
@@ -542,13 +543,11 @@ function buildHillCave(ox, oz, gx, gz, sw) {
     for (let ry=1; ry<=rh; ry++) sw(ex+rx, floorY+ry, ez+rz, B.air);
   }
   sw(ex+rw-1, floorY+1, ez+rw-1, B.chest); addProp(ex+rw-1, floorY+1, ez+rw-1, 'chest'); // 奥の宝
-  sw(ex+2, floorY, ez+2, B.iron); sw(ex-2, floorY, ez-2, B.coal);      // 鉱石
   addProp(ex+1, floorY+1, ez+1, 'cave_mushroom'); addProp(ex-1, floorY+1, ez-1, 'cave_boulder'); // 装飾
   if (floorY < 26) addProp(ex, floorY+1, ez-rw, 'cave_crystal');       // 深い山腹は結晶
   addProp(ox+dx, floorY+1, oz+dz, 'torch');           // 入口内側の灯り
   addProp(ox, floorY, oz, 'cave_entrance', Math.atan2(dx, dz)); // 入口の岩アーチ（4号機・未配置なら静かにスキップ）
-  if (lair) // ⑥ 魔窟＝奥にデーモン（掘らず歩いて到達できるボス。接近で出現・撃破で特別報酬＋記録）
-    bossSpots.set(`${ex},${floorY+1},${ez}`, { x: ex, y: floorY+1, z: ez, type: 'demon', cd: 0, mob: null, trig: 14 });
+  if (lair) { sw(ex-2, floorY+1, ez+2, B.chest); addProp(ex-2, floorY+1, ez+2, 'chest'); } // 広い洞は宝箱を追加（ボスはダンジョン魔窟へ集約）
   hillCaves.set(gx+','+gz, { x: ox, z: oz, y: floorY, dir: Math.atan2(dx, dz), lair }); // ナビ登録（mouth=入口）
 }
 // 横穴洞窟が「魔窟（デーモンの巣）」か（生成/ナビで共有・決定論）。約4割。
@@ -656,28 +655,44 @@ function buildHouse(bx, bz, base, sw) {
   // 正面(+x側)にドア開口
   sw(bx+W, base+1, bz, B.air); sw(bx+W, base+2, bz, B.air);
 }
-// ダンジョン：地下に石レンガの小部屋。中央にスポナー・隅に宝箱
+// ダンジョン：石レンガの部屋＋★地上に開いた下り階段（掘らず歩いて降りられる）。魔窟ならデーモン＋ボスアリーナ。
+//   ※平地含め全域に出る高頻度グリッド(DUNGEON_CELL=64)なので、星野さんが平地スタートでも近くに必ず見つかる。
+function dungeonIsLair(ox, oz) { return hash2(ox*11+1, oz*11+9) < 0.4; } // 約4割が魔窟（デーモン）。生成/ナビで共有
 function buildDungeon(ox, oz, sw) {
   const surf = heightAt(ox, oz);
-  const fy = surf - 9;          // 床の高さ（地表より十分下）
+  const fy = surf - 9;          // 部屋の床の高さ（地表より十分下＝静かな地下空間）
   if (fy < 4) return;           // 浅すぎる地形は不可
-  for (let dx=-3; dx<=3; dx++) for (let dz=-3; dz<=3; dz++) for (let dy=0; dy<=4; dy++) {
-    const shell = dx===-3||dx===3||dz===-3||dz===3||dy===0||dy===4;
+  const lair = dungeonIsLair(ox, oz);
+  const R = lair ? 4 : 3, CH = lair ? 6 : 4; // 魔窟は一回り広く高い「ボスアリーナ」
+  for (let dx=-R; dx<=R; dx++) for (let dz=-R; dz<=R; dz++) for (let dy=0; dy<=CH; dy++) {
+    const shell = dx===-R||dx===R||dz===-R||dz===R||dy===0||dy===CH;
     sw(ox+dx, fy+dy, oz+dz, shell ? B.stonebrick : B.air); // 殻=石レンガ / 内部=空洞
   }
-  sw(ox-2, fy+1, oz-2, B.chest);   // 宝箱
-  sw(ox,   fy+1, oz,   B.spawner); // 敵スポナー
-  spawners.set(`${ox},${fy+1},${oz}`, { x: ox, y: fy+1, z: oz, cd: 0 });
-  // ※デーモン(ボス)はこの地底ダンジョンから「山肌の横穴洞窟の魔窟」へ移設（掘らず歩いて入れる方式へ・星野さん要望）。
-  //   地底ダンジョンは洞窟探索中に偶然出会う小部屋(スポナー/宝箱)として残す＝もう「掘る目標」にはしない。
-  // 装飾プロップ（GLB表示）：宝箱・スポナー・壁際の松明4本・奥の祭壇
-  addProp(ox-2, fy+1, oz-2, 'chest');
-  addProp(ox,   fy+1, oz,   'spawner');
+  // ★地上→部屋の「開いた下り階段」(+X方向・1段1ブロック)。口は地表に開く＝掘らず歩いて入れる。
+  const drop = surf - (fy + 1);                 // 降りる段数（≒8）
+  for (let s = 0; s <= drop; s++) {
+    const sx = ox + R + drop - s;               // 口(+X奥・地表) → 部屋の+X壁 へ降りる
+    const wy = surf - s;                        // 1段ずつ下る歩行面
+    for (let w = -1; w <= 1; w++) {
+      sw(sx, wy-1, oz+w, B.stonebrick);                          // 段の床
+      for (let hy = wy; hy <= surf + 1; hy++) sw(sx, hy, oz+w, B.air); // 段上〜地表まで開削（開いた下り溝）
+    }
+  }
+  for (let hy = fy+1; hy <= fy+3; hy++) for (let w=-1; w<=1; w++) sw(ox+R, hy, oz+w, B.air); // 部屋の+X壁に出入口
+  addProp(ox + R + drop, surf, oz, 'cave_entrance', Math.atan2(1, 0)); // 地上の階段口に岩アーチ（4号機・未配置ならスキップ）
+  sw(ox-2, fy+1, oz-2, B.chest); addProp(ox-2, fy+1, oz-2, 'chest'); // 宝箱
+  if (lair) { // ⑥ 魔窟＝部屋の中央にデーモン（地上の階段から掘らず歩いて到達できるボス。雑魚スポナーは置かずボス主役）
+    bossSpots.set(`${ox},${fy+1},${oz}`, { x: ox, y: fy+1, z: oz, type: 'demon', cd: 0, mob: null, trig: 16 });
+  } else {    // 通常＝敵スポナー
+    sw(ox, fy+1, oz, B.spawner); spawners.set(`${ox},${fy+1},${oz}`, { x: ox, y: fy+1, z: oz, cd: 0 });
+    addProp(ox, fy+1, oz, 'spawner');
+  }
+  // 装飾プロップ（GLB表示）：祭壇・松明
   addProp(ox+2, fy+1, oz-2, 'altar');
   addProp(ox-2, fy+1, oz+2, 'torch');
   addProp(ox+2, fy+1, oz+2, 'torch');
   addProp(ox-2, fy+1, oz,   'torch');
-  addProp(ox+2, fy+1, oz,   'torch');
+  addProp(ox+R-1, fy+1, oz, 'torch');           // 出入口付近の灯り
 }
 // 砦/城塞：石レンガの城壁(2段)で囲まれた攻略拠点。四隅に塔・南に門のGLB、中庭にスポナー＋宝箱
 function buildFort(ox, oz, sw) {
@@ -2068,7 +2083,7 @@ function buildDiag() {
     `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
     `最寄り乗れる船: ${nearBoat}`,
     `最寄り王国城 : ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, CASTLE_CELL, 3, castleCenter))}　※近衛兵＋最奥にボス(ドラゴン)＋特別報酬`,
-    `最寄り魔窟(ボス) : ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, HCAVE_CELL, 4, (gx,gz,c)=>hillCaveMouth(gx,gz,c,true)))}　※入口は山/丘の斜面・掘らず歩いて入れる→奥にデーモン`,
+    `最寄り魔窟(ボス) : ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, DUNGEON_CELL, 4, dungeonLairMouth))}　※入口は地上の階段口・掘らず歩いて降りる→奥にデーモン`,
     `最寄り洞窟(横穴): ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, HCAVE_CELL, 3, hillCaveMouth))}　※山/丘の斜面の入口・掘らず歩いて入れる（奥に鉱石/宝/装飾）`,
     `武器 / 戦闘  : 装備=${WEAPONS[currentWeapon].name}（C/Bで切替）所持[${WEAPON_ORDER.filter(w=>ownedWeapons.has(w)).map(w=>WEAPONS[w].name).join('・')}] / コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'}`,
     `攻撃の特性   : ${WEAPONS[currentWeapon].ranged?'遠距離(溜め)':'近接'} 威力${WEAPONS[currentWeapon].dmg} 間合${WEAPONS[currentWeapon].reach} 振り${WEAPONS[currentWeapon].swing}s 動作x${WEAPONS[currentWeapon].anim} 止${WEAPONS[currentWeapon].hitstop}s（装備武器で変化）`,
@@ -2869,6 +2884,13 @@ function dungeonCenter(gx, gz, cell) {
   const surf = heightAt(ox, oz), floorY = surf - 9;
   if (floorY < 4) return null;                 // ★buildDungeon の「浅すぎる地形は不可」と同条件＝実体のある所だけ
   return { x: ox, z: oz, surf, floorY };        // floorY=床 / surf=地表（地下なので掘る目安に使う）
+}
+// 魔窟ダンジョン（デーモン）の「地上の階段口」をナビ用に返す。魔窟でなければ null。生成(buildDungeon)と同一判定。
+function dungeonLairMouth(gx, gz, cell) {
+  const c = dungeonCenter(gx, gz, cell);
+  if (!c || !dungeonIsLair(c.x, c.z)) return null;
+  const R = 4, drop = c.surf - (c.floorY + 1); // 魔窟は R=4。階段は +X に R+drop 伸び、口は地表
+  return { x: c.x + R + drop, z: c.z, surf: c.surf }; // mouth=地上の階段口（ここへ向かえば歩いて降りられる）
 }
 function navLine(px, pz, info, opts) { // 距離+方角+座標（opts.depth なら地下の掘り下げ目安も）
   if (!info) return '探索範囲に未検出';
