@@ -1219,6 +1219,9 @@
 
   function setTouchMode(on) {
     touchOn = on;
+    // コアがプレイ判定に使えるフラグを公開。スマホはポインタロックが使えないため、
+    // コアのループ/overlay 制御は `document.pointerLockElement===canvas || window.UI_TOUCH` で判定すべき。
+    window.UI_TOUCH = on;
     if (!dom.touch) return;
     dom.touch.classList.toggle('on', on);
     dom.look.style.display = on ? 'block' : 'none';
