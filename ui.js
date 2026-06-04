@@ -221,6 +221,22 @@
       .ui-toast .tg { font-size:19px; line-height:1; }
       .ui-toast .tl { font-size:10px; opacity:.7; font-weight:700; margin-left:2px; }
 
+      /* 照準（クロスヘア）— ui.js が確実に最前面・高コントラストで出す。
+         一人称/三人称どちらでもプレイ中は常に画面中央に表示。 */
+      /* body 直下に出すので z-index はグローバル。FX層(#ui-fx-canvas:26 / #ui-fx:27) より上に。
+         inv(30)/menu(31)/tip(32) より下だが、それらが開く間は gameActive()=false で照準を消すので競合しない。 */
+      #ui-cross { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+        width:26px; height:26px; z-index:29; pointer-events:none; opacity:0; transition:opacity .1s; }
+      #ui-cross.on { opacity:.95; }
+      #ui-cross i { position:absolute; background:#fff; border-radius:1px;
+        box-shadow:0 0 0 1px rgba(0,0,0,.9), 0 0 4px rgba(0,0,0,.85); }
+      #ui-cross .v { width:2px; height:8px; left:50%; transform:translateX(-50%); }
+      #ui-cross .vt { top:0; } #ui-cross .vb { bottom:0; }
+      #ui-cross .h { height:2px; width:8px; top:50%; transform:translateY(-50%); }
+      #ui-cross .hl { left:0; } #ui-cross .hr { right:0; }
+      #ui-cross .dot { width:2px; height:2px; left:50%; top:50%;
+        transform:translate(-50%,-50%); border-radius:50%; }
+
       /* スキル選択カード */
       .uik-card { display:flex; align-items:center; gap:12px; border:2px solid rgba(255,255,255,.16); border-radius:12px;
         padding:10px 12px; margin-bottom:8px; background:rgba(0,0,0,.22); cursor:pointer; transition:.12s; }
@@ -454,6 +470,15 @@
     // 構造物 発見トースト（上部中央スタック）
     const toastWrap = el('div', '', root); toastWrap.id = 'ui-toast-wrap';
 
+    // 照準（クロスヘア）— 4本の腕＋中央ドット。プレイ中は常に最前面・中央。
+    // ※ body 直下に置く。root(z-15) はスタッキングコンテキストを作るため、root の子だと
+    //   どんな z-index でも実効的に z-15 へ閉じ込められ、body 直下の FX 層(z-26/27) に覆われて
+    //   照準が見えなくなる（前回の「照準が出ない」不具合の根因）。body 直下なら z-index が素直に効く。
+    const cross = el('div', '', document.body); cross.id = 'ui-cross';
+    el('i', '', cross).className = 'v vt'; el('i', '', cross).className = 'v vb';
+    el('i', '', cross).className = 'h hl'; el('i', '', cross).className = 'h hr';
+    el('i', '', cross).className = 'dot';
+
     // ダメージFXレイヤー（HUD休止中でも動くよう root 直下に独立配置）
     const fxCanvas = el('canvas', '', document.body); fxCanvas.id = 'ui-fx-canvas';
     const fxLayer = el('div', '', document.body); fxLayer.id = 'ui-fx';
@@ -478,7 +503,7 @@
       inv, panel, tip, hint, menu, menuPanel, equipdbg,
       expRow, explv, expfill, expnum, levelup, lu2,
       boss, bossName, bossPips, bossTrack, bossFill, bossNum, bossBan, bossPipN: -1,
-      toastWrap,
+      toastWrap, cross,
       skills, ult, ultfill, skillname, sk1, sk2, skillEls: [],
       hpSegEls: [], foodSegEls: [], breathSegEls: [], slotEls: [],
     };
@@ -1739,6 +1764,22 @@
     return null;
   }
 
+  // 照準を出してよい「実プレイ中」か判定（堅牢・出す方向に倒す）。
+  //   ・自前インベントリ/メニューを開いている間は出さない（閉じれば自動復活）。
+  //   ・ポインタロック中なら確実にプレイ中＝出す（一人称/三人称は不問・両方で出る）。
+  //   ・ロック前後でも、コアのスタート/再開オーバーレイが外れていれば出す。
+  //   ・タイトル表示中（overlay が見えている）だけ確実に抑止する。
+  function gameActive() {
+    if (invOpen || menuOpen) return false;
+    if (document.pointerLockElement) return true;          // 明確に操作中
+    if (touchOn) return true;                              // スマホはロック不使用
+    try {
+      const o = document.getElementById('overlay');
+      if (o && o.style && o.style.display === 'none') return true; // オーバーレイが外れている＝プレイ中
+    } catch (e) {}
+    return false;
+  }
+
   // equip デバッグ表示：window.getEquipDebug() の値を一目で（剣のworld向き・盾のworld Y）。
   // 口が無くても localStorage voxel_ui_equipdebug='1' で枠だけ "—" 点灯でき、口が値を返せば自動点灯。
   let equipDbgForce = null;
@@ -1790,7 +1831,7 @@
         warnedOnce = true;
         console.info('[ui] 待機中: window.VoxelGame.state() 未実装のため HUD は休止します（UI_INTEGRATION.md (2) を参照）。FX口(spawnDamagePopup等)は有効です。');
       }
-      if (dom) dom.root.style.display = 'none';
+      if (dom) { dom.root.style.display = 'none'; if (dom.cross) dom.cross.classList.remove('on'); } // 照準は root 外なので明示的に消す
       return;
     }
     if (dom.root.style.display === 'none') dom.root.style.display = '';
@@ -1848,6 +1889,9 @@
     stepBoss(dt, st);
     checkDiscovery(st);
     stepToasts(dt);
+
+    // --- 照準（クロスヘア）：プレイ中のみ最前面・中央に表示 ---
+    if (dom.cross) dom.cross.classList.toggle('on', gameActive());
     const time = st.time || {};
     const hh = String(clampN(time.hh)).padStart(2, '0'), mm = String(clampN(time.mm)).padStart(2, '0');
     dom.info.innerHTML =
