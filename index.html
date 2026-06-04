@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04za'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04zb'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -2443,7 +2443,9 @@ const mobs = [];
 const companions = [];           // 仲間モブの配列（mobs にも入っている）
 const MAX_COMPANIONS = 3;        // 最大仲間数
 const COMPANION_COST = 5;        // 雇用コスト（コイン）
-const COMPANION_HP = 24;         // 仲間の最大HP（雇用時に付与）
+const COMPANION_HP = 40;         // 仲間の最大HP（雇用時に付与・タンク役として耐える）
+const COMPANION_DMG = 7;         // 仲間の攻撃力（敵に意味ある火力＝役に立つ体感）
+const COMPANION_TELEPORT = 34;   // この距離以上離れたらプレイヤー背後へワープ（高速移動でも脱落しない）
 // ⑤ モブの体力・上限・湧き距離・速度は CFG.mob、戦闘数値は CFG.combat に集約（生参照で即反映）
 const M = CFG.mob;
 const C = CFG.combat;
@@ -2558,12 +2560,12 @@ function nearestHostileTo(x, z, maxD) {
   return best;
 }
 // 仲間の攻撃（プレイヤー演出=ヒットストップ/シェイクは出さない軽量版。撃破はkillMob＝EXP/ドロップはプレイヤーへ）
-function companionAttack(m, target) {
+function companionAttack(m, target, dmgIn) {
   if (target.dying) return;
-  const dmg = 4;
+  const dmg = dmgIn || COMPANION_DMG;
   target.hp -= dmg;
   const kx = target.obj.position.x - m.obj.position.x, kz = target.obj.position.z - m.obj.position.z, kl = Math.hypot(kx, kz) || 1;
-  target.obj.position.x += kx/kl*0.25; target.obj.position.z += kz/kl*0.25;
+  target.obj.position.x += kx/kl*0.5; target.obj.position.z += kz/kl*0.5; // ノックバック（敵を怯ませる＝足止め＝タンク補助）
   if (window.spawnDamagePopup) window.spawnDamagePopup(target.obj.position.x, target.obj.position.y+1, target.obj.position.z, dmg, {});
   if (window.playSFX) window.playSFX('hit');
   flashMob(target);
@@ -2589,28 +2591,34 @@ function leaveCompanion(m, reason) {
 }
 // 仲間AI：mode=follow(追従＋自衛) / wait(待機＋自衛) / attack(積極的に敵へ)
 function updateCompanion(m, dt, dx, dz, dist) {
+  updateAllyMarker(m, dt); // 頭上マーカー（毎フレーム・テレポート時も）
   m.dmgCd = Math.max(0, (m.dmgCd || 0) - dt);
   m.atkCd = Math.max(0, (m.atkCd || 0) - dt);
-  const aggro = m.cmdMode === 'wait' ? 6 : m.cmdMode === 'attack' ? 20 : 13; // 索敵範囲（待機は自衛のみ）
+  // ★離れすぎたらプレイヤー背後へワープ（歩行8.5/ダッシュ19に追従できず脱落するのを防ぐ）
+  if (dist > COMPANION_TELEPORT && m.cmdMode !== 'wait') {
+    const a = player.yaw + Math.PI, tx = player.pos.x + Math.sin(a)*2.0, tz = player.pos.z + Math.cos(a)*2.0;
+    m.obj.position.set(tx, floorYNear(tx, tz, player.pos.y), tz);
+    setMobAnim(m, 'idle'); return;
+  }
+  const aggro = m.cmdMode === 'wait' ? 7 : m.cmdMode === 'attack' ? 22 : 16; // 索敵範囲（待機は自衛のみ・attackは広い）
   const target = nearestHostileTo(m.obj.position.x, m.obj.position.z, aggro);
-  let moving = false, animName = 'idle', dhx = 0, dhz = 0;
-  // プレイヤーから離れすぎたら戦闘より追従を優先（はぐれ防止。attack時は緩め）
-  const leashed = dist > (m.cmdMode === 'attack' ? 26 : 16);
+  let moving = false, animName = 'idle', dhx = 0, dhz = 0, spd = 9;
+  const leashed = dist > (m.cmdMode === 'attack' ? 30 : 20); // 離れすぎたら戦闘より追従優先
   if (target && !leashed) {
     const tdx = target.obj.position.x - m.obj.position.x, tdz = target.obj.position.z - m.obj.position.z, td = Math.hypot(tdx, tdz) || 0.0001;
-    if (td > 1.6) { const h = chaseHeadingTo(m, dt, target.obj.position.x, target.obj.position.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; }
-    else { // 近接：攻撃＋接敵による被ダメ
+    if (td > 2.0) { const h = chaseHeadingTo(m, dt, target.obj.position.x, target.obj.position.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; spd = 14; } // 敵へ素早く接近
+    else { // 近接：強めの攻撃＋接敵による被ダメ（タンク：少し軽減して耐える）
       m.obj.rotation.y = Math.atan2(-tdx, -tdz); animName = 'attack';
-      if (m.atkCd <= 0) { m.atkCd = 0.9; companionAttack(m, target); }
-      if (m.dmgCd <= 0) { m.dmgCd = 1.2; companionTakeDamage(m, C.meleeDmg); }
+      if (m.atkCd <= 0) { m.atkCd = 0.7; companionAttack(m, target, COMPANION_DMG); }
+      if (m.dmgCd <= 0) { m.dmgCd = 1.2; companionTakeDamage(m, Math.max(1, C.meleeDmg - 1)); }
     }
   } else if (m.cmdMode !== 'wait') { // 追従（待機は留まる）
-    if (dist > 4) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; }
+    if (dist > 3.5) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk';
+      spd = dist > 12 ? 22 : dist > 7 ? 15 : 9; } // ★距離連動：遠いほど速く（プレイヤーのダッシュに追いつく）
   }
-  if (moving) tryMoveMob(m, dhx, dhz, M.speedHostile, dt);
+  if (moving) tryMoveMob(m, dhx, dhz, spd, dt);
   else followFloor(m, dt);
   setMobAnim(m, animName);
-  updateAllyMarker(m, dt); // 頭上の仲間マーカー（横回転＋ふわ上下）
 }
 // 仲間マーカー：頭上に fx_ally_star（金の五芒星・0.6m）。loop再生＋横回転＋上下バウンスで「味方」を一目で示す。
 const ALLY_MARKER = 'fx_ally_star';
