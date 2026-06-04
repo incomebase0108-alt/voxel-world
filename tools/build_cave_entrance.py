@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-# VOXEL WORLD - 横穴洞窟の入口パーツ（cave_entrance）【方向確認プレビュー】
+# VOXEL WORLD - 横穴洞窟の入口パーツ（cave_entrance）【本採用】
 # Blender 5.1 / headless: blender --background --python tools/build_cave_entrance.py
-#   方向確認フェーズ: ライブ models/ は触らず tools/_work/cave_entrance.glb に出力し
-#   front/3q プレビューを tools/ に描画。OK後に models/cave_entrance.glb へ本採用。
+#   本採用フェーズ: models/cave_entrance.glb を出力し front/3q プレビューを tools/ に描画。
+#   方向確認(commit 6a03780)で承認済の見た目をそのまま本採用。
 #   規約: Y-up / 正面 Blender+Y(=glTF -Z) / 1ブロック≒1m / 接地原点 z=0 / 2MB以下・アニメ無し。
 #   方針(司令塔): 山の斜面に置いて「ここが入口」と分かる横穴の口。
 #     ゴツゴツした岩のアーチ＋垂れ下がるつらら状の岩牙＋奥が暗い喉（穴に吸い込まれる見た目）。
@@ -110,11 +110,11 @@ bpy.ops.object.select_all(action='DESELECT'); o.select_set(True); bpy.context.vi
 bpy.ops.object.origin_set(type='ORIGIN_CURSOR'); o.location=(0,0,0)
 
 repo=os.path.abspath(os.path.join(os.path.dirname(__file__),".."))
-work=os.path.join(repo,"tools","_work"); os.makedirs(work,exist_ok=True)
-out=os.path.join(work,"cave_entrance.glb")
+models=os.path.join(repo,"models"); os.makedirs(models,exist_ok=True)
+out=os.path.join(models,"cave_entrance.glb")
 bpy.ops.object.select_all(action='DESELECT'); o.select_set(True); bpy.context.view_layer.objects.active=o
 bpy.ops.export_scene.gltf(filepath=out,export_format='GLB',use_selection=True,export_yup=True,export_apply=True,export_animations=False)
-print("[voxel] cave_entrance(_work) -> %.3f MB  dims=%.2fx%.2fx%.2f (W×D×H)"%(os.path.getsize(out)/1048576, max(xs)-min(xs),max(ys)-min(ys),max(zs)-min(zs)))
+print("[voxel] cave_entrance(models) -> %.3f MB  dims=%.2fx%.2fx%.2f (W×D×H)"%(os.path.getsize(out)/1048576, max(xs)-min(xs),max(ys)-min(ys),max(zs)-min(zs)))
 
 # ===== プレビュー（front / 3q）=====
 try:

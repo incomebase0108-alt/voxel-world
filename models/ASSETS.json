@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 96,
-    "size_bytes": 14313144,
-    "size_mb": 13.65
+    "count": 97,
+    "size_bytes": 14497248,
+    "size_mb": 13.826
   },
   "assets": [
     {
@@ -977,6 +977,18 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 3,
+      "error": null
+    },
+    {
+      "file": "cave_entrance.glb",
+      "name": "cave_entrance",
+      "category": "洞窟・鉱石",
+      "size_bytes": 184104,
+      "size_mb": 0.1756,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 6,
       "error": null
     },
     {
