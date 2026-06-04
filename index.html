@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04z9'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04za'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -2580,6 +2580,7 @@ function leaveCompanion(m, reason) {
   const i = companions.indexOf(m); if (i >= 0) companions.splice(i, 1);
   m.companion = false; m.cmdMode = null;
   try { window.onCompanionLeave && window.onCompanionLeave(m.def.type); } catch (e) {}
+  removeAllyMarker(m); // 頭上マーカー除去
   if (reason === 'death') { // 戦死＝死亡演出して除去
     if (!m.dying) { m.dying = true; m.hp = 0; if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); } else m.dieTimer = 0; }
   } else { m.home = { x: m.obj.position.x, z: m.obj.position.z }; } // 解雇＝その場に住人として残す
@@ -2609,6 +2610,30 @@ function updateCompanion(m, dt, dx, dz, dist) {
   if (moving) tryMoveMob(m, dhx, dhz, M.speedHostile, dt);
   else followFloor(m, dt);
   setMobAnim(m, animName);
+  updateAllyMarker(m, dt); // 頭上の仲間マーカー（横回転＋ふわ上下）
+}
+// 仲間マーカー：頭上に fx_ally_star（金の五芒星・0.6m）。loop再生＋横回転＋上下バウンスで「味方」を一目で示す。
+const ALLY_MARKER = 'fx_ally_star';
+function attachAllyMarker(m) {
+  if (m.allyMarker || !m.obj) return;
+  const tpl = fxTemplates[ALLY_MARKER];
+  if (!tpl) return;                       // テンプレ未読込なら updateAllyMarker で後追いattach
+  const obj = tpl.scene.clone(true);
+  obj.scale.setScalar(0.6);               // ★サイズ0.6m（原点=アイコン中心）
+  obj.position.set(0, 2.0, 0);            // 頭頂+α（NPC身長~1.8m）
+  m.obj.add(obj); m.allyMarker = obj; m.allyBobT = 0;
+  if (tpl.animations.length) { m.allyMixer = new THREE.AnimationMixer(obj); m.allyMixer.clipAction(tpl.animations[0]).play(); }
+}
+function removeAllyMarker(m) {
+  if (m.allyMarker && m.allyMarker.parent) m.allyMarker.parent.remove(m.allyMarker);
+  m.allyMarker = null; m.allyMixer = null;
+}
+function updateAllyMarker(m, dt) {
+  if (!m.allyMarker) { attachAllyMarker(m); return; } // 後着テンプレに対応
+  m.allyBobT = (m.allyBobT || 0) + dt;
+  m.allyMarker.position.y = 2.0 + Math.sin(m.allyBobT * 2.5) * 0.12; // ふわ上下
+  m.allyMarker.rotation.y += dt * 1.6;                                // 横回転
+  if (m.allyMixer) m.allyMixer.update(dt);                            // loopクリップ
 }
 // 経路探索の負荷計測（診断用）。毎秒スナップショットを取る
 let pathCallsAcc = 0, pathNodesAcc = 0, pathCallsPerSec = 0, pathNodesPerSec = 0;
@@ -2702,7 +2727,7 @@ function spawnMob(type, x, z, opts = {}) {
   if (opts.companion) { // セーブからの仲間復元（雇用は recruit 口で行う）
     mob.companion = true; mob.cmdMode = opts.cmdMode || 'follow'; mob.maxHp = opts.maxHp || COMPANION_HP;
     mob.hostile = false; mob.home = null; mob.cid = ++companionIdSeq;
-    companions.push(mob);
+    companions.push(mob); attachAllyMarker(mob);
   }
   return mob;
 }
@@ -3181,7 +3206,7 @@ STRUCT_DEFS.forEach(k => gltfLoader.load(`models/struct_${k}.glb`,
     undefined, () => {}));
 // ⑥ ボス出現演出 fx（4号機・loopクリップ自走）：魔法陣/瘴気/崩壊。一時生成して数秒で消す。
 const fxTemplates = {}; // kind -> { scene, animations }
-['fx_magic_circle','fx_miasma','fx_collapse'].forEach(k => gltfLoader.load(`models/${k}.glb`,
+['fx_magic_circle','fx_miasma','fx_collapse','fx_ally_star','fx_ally_heart','fx_ally_halo'].forEach(k => gltfLoader.load(`models/${k}.glb`,
   g => { fxTemplates[k] = { scene: g.scene, animations: g.animations || [] }; }, undefined, () => {}));
 const fxList = []; // { obj, mixer, life }
 function spawnFx(kind, x, y, z, life, scale) {
@@ -3463,7 +3488,7 @@ window.VoxelGame.recruit = () => {
   itemCounts.coin -= COMPANION_COST;
   m.companion = true; m.cmdMode = 'follow'; m.home = null; m.hostile = false;
   m.maxHp = COMPANION_HP; m.hp = COMPANION_HP; m.cid = ++companionIdSeq;
-  companions.push(m);
+  companions.push(m); attachAllyMarker(m);
   try { window.onCompanionJoin && window.onCompanionJoin(m.def.type); } catch (e) {}
   if (typeof toast === 'function') toast(`${JOB_LABEL[m.def.type]||'住人'}が仲間になった！（追従）`);
   updateHotbar(); scheduleSave();
@@ -3498,7 +3523,7 @@ window.VoxelGame.trade = (offerId) => {
 };
 // 近くの住人に話しかける（Tキー）
 function talkToNPC() {
-  let best = null, bd = 3.5;
+  let best = null, bd = 4.5; // 会話可能距離（雇用しやすいよう少し広め）
   for (const m of mobs) {
     if (!m.home || m.dying) continue; // 住人(home付き)のみ
     const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
