@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04x'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04y'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -340,6 +340,7 @@ const idx = (x,y,z) => x + z*CHUNK + y*CHUNK*CHUNK;
 const villages = new Map(); // "gx,gz" -> { x, z, gh }（村の中心）
 const garrisons = new Map(); // "gx,gz" -> { x, z, captain, r }（城/砦の兵士駐留地）
 const bossSpots = new Map(); // "wx,wy,wz" -> { x, y, z, type, cd, mob, trig }（城/砦/特定地のボス出現点）
+const hillCaves = new Map(); // "gx,gz" -> { x, z, y, dir }（山肌の横穴洞窟＝斜面の入口。ナビ用）
 const spawners = new Map(); // "wx,wy,wz" -> { x, y, z, cd }（ダンジョンの敵スポナー）
 // ② 構造物プロップ（4号機の struct_*.glb を該当位置に表示する装飾。決定論的に登録）
 //   kind: 'chest'|'spawner'|'torch'|'altar'|'well'。obj/mixer は近接時に生成・遠方で破棄
@@ -416,6 +417,9 @@ const SHIP_CELL = 88;    // 船/難破船の発生間隔（やや密に＝乗れ
 const CASTLE_CELL = 360; // 王国城の発生間隔（最希少・探索の最終目標ランドマーク。広域に1〜2基）
 const SHRINE_CELL = 104; // 祠の発生間隔（低頻度で散在）
 const CAVEPROP_CELL = 26; // 洞窟装飾の発生間隔（地下大空洞に結晶/キノコ/岩を散らす）
+const HCAVE_CELL = 120;   // 山肌の横穴洞窟の発生間隔（山/丘の斜面に入口・歩いて入れる）
+const HCAVE_LEN = 14;     // 横穴トンネルの長さ（奥行き）
+const HCAVE_REACH = 22;   // 横穴が原点から伸びる最大距離（チャンク走査マージンに反映＝跨ぎでも欠けない）
 function buildStructures(cx, cz, stamp) {
   const margin = 9; // 最大構造物の半径ぶん広げて候補セルを走査
   const minWX = cx*CHUNK - margin, maxWX = cx*CHUNK + CHUNK + margin;
@@ -492,6 +496,68 @@ function buildStructures(cx, cz, stamp) {
       const oz = gz*CAVEPROP_CELL + 4 + Math.floor(hash2(gx+8, gz+2) * (CAVEPROP_CELL-8));
       placeCaveProp(ox, oz);
     }
+  // --- 山肌の横穴洞窟（山/丘の斜面に横向き入口・歩いて入れる。地底ダンジョンとは別系統） ---
+  //   トンネルが長い(最大HCAVE_REACH)ため、走査マージンを広げてチャンク跨ぎでも欠けないようにする。
+  const hm = HCAVE_REACH;
+  for (let gx = Math.floor((cx*CHUNK-hm)/HCAVE_CELL); gx <= Math.floor((cx*CHUNK+CHUNK+hm)/HCAVE_CELL); gx++)
+    for (let gz = Math.floor((cz*CHUNK-hm)/HCAVE_CELL); gz <= Math.floor((cz*CHUNK+CHUNK+hm)/HCAVE_CELL); gz++) {
+      if (hash2(gx*61+13, gz*61+37) > 0.30) continue; // 一部セルに横穴
+      const ox = gx*HCAVE_CELL + 16 + Math.floor(hash2(gx+5, gz+21) * (HCAVE_CELL-32));
+      const oz = gz*HCAVE_CELL + 16 + Math.floor(hash2(gx+18, gz+7) * (HCAVE_CELL-32));
+      if (biomeAt(ox, oz) === 'ocean') continue;
+      buildHillCave(ox, oz, gx, gz, sw);
+    }
+}
+// 上り方向（最も標高が上がる4方位）を返す。斜面でなければ null（横穴に向かない）。ナビと生成で共有。
+function hillUphill(ox, oz, surf) {
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  let up = null, best = 2; // 8ブロック先で +2 以上上がる斜面が要る
+  for (const [dx, dz] of dirs) { const rise = heightAt(ox+dx*8, oz+dz*8) - surf; if (rise > best) { best = rise; up = [dx, dz]; } }
+  return up;
+}
+// 横穴洞窟：山/丘の斜面に床固定の水平トンネルを彫る。口(下り側)が開き、奥(上り側)は山に埋まる＝歩いて入れる。
+function buildHillCave(ox, oz, gx, gz, sw) {
+  const surf = heightAt(ox, oz);
+  if (surf < WATER_LEVEL + 7) return;                 // 十分高い丘/山のみ
+  const up = hillUphill(ox, oz, surf);
+  if (!up) return;                                    // 平地＝横穴に向かない
+  const [dx, dz] = up, floorY = surf;
+  if (floorY < 3 || floorY > HEIGHT - 6) return;
+  const px = dz, pz = dx;                             // 通路幅の直交方向
+  // 口を少し下り側(-2)へ広げて確実に開口（下り側は低地＝空気なので無害）。床固定で上り斜面を水平に貫く。
+  for (let t = -2; t <= HCAVE_LEN; t++) {
+    const bx = ox + dx*t, bz = oz + dz*t;
+    for (let w = -1; w <= 1; w++) {
+      const wx = bx + px*w, wz = bz + pz*w;
+      for (let hy = 1; hy <= 3; hy++) sw(wx, floorY+hy, wz, B.air); // 通路を彫る（高さ3・幅±1）
+      sw(wx, floorY, wz, B.stonebrick);               // 床を整える（歩ける・浮き床防止）
+    }
+  }
+  // 奥の小部屋（5x5x4）＝鉱石/宝/装飾
+  const ex = ox + dx*HCAVE_LEN, ez = oz + dz*HCAVE_LEN;
+  for (let rx=-2; rx<=2; rx++) for (let rz=-2; rz<=2; rz++) {
+    sw(ex+rx, floorY, ez+rz, B.stonebrick);           // 部屋の床
+    for (let ry=1; ry<=4; ry++) sw(ex+rx, floorY+ry, ez+rz, B.air);
+  }
+  sw(ex, floorY+1, ez, B.chest); addProp(ex, floorY+1, ez, 'chest');   // 奥の宝
+  sw(ex+2, floorY, ez+2, B.iron); sw(ex-2, floorY, ez-2, B.coal);      // 鉱石
+  addProp(ex+1, floorY+1, ez+1, 'cave_mushroom'); addProp(ex-1, floorY+1, ez-1, 'cave_boulder'); // 装飾
+  if (floorY < 26) addProp(ex, floorY+1, ez-2, 'cave_crystal');        // 深い山腹は結晶
+  addProp(ox+dx, floorY+1, oz+dz, 'torch');           // 入口内側の灯り
+  addProp(ox, floorY, oz, 'cave_entrance', Math.atan2(dx, dz)); // 入口の岩アーチ（4号機・未配置なら静かにスキップ）
+  hillCaves.set(gx+','+gz, { x: ox, z: oz, y: floorY, dir: Math.atan2(dx, dz) }); // ナビ登録（mouth=入口）
+}
+// 横穴の入口（生成と同一判定）。ナビ用に mouth を返す。条件を満たさなければ null。
+function hillCaveMouth(gx, gz, cell) {
+  if (hash2(gx*61+13, gz*61+37) > 0.30) return null;
+  const ox = gx*cell + 16 + Math.floor(hash2(gx+5, gz+21) * (cell-32));
+  const oz = gz*cell + 16 + Math.floor(hash2(gx+18, gz+7) * (cell-32));
+  if (biomeAt(ox, oz) === 'ocean') return null;
+  const surf = heightAt(ox, oz);
+  if (surf < WATER_LEVEL + 7) return null;
+  if (!hillUphill(ox, oz, surf)) return null;         // 斜面が無ければ生成されない
+  if (surf < 3 || surf > HEIGHT - 6) return null;
+  return { x: ox, z: oz, y: surf };
 }
 // 王国城：石レンガの基壇＋外周城壁。中央に天守(GLB)・近衛兵駐留・最奥にボス(ドラゴン)＋宝箱
 function buildCastle(ox, oz, gx, gz, sw) {
@@ -2004,7 +2070,8 @@ function buildDiag() {
     `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
     `最寄り乗れる船: ${nearBoat}`,
     `最寄り王国城 : ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, CASTLE_CELL, 3, castleCenter))}　※近衛兵＋最奥にボス(ドラゴン)＋特別報酬`,
-    `最寄りダンジョン: ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, DUNGEON_CELL, 3, dungeonCenter), {depth:true})}　※地下・スポナー/宝箱（一部は魔窟＝デーモン）`,
+    `最寄りダンジョン: ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, DUNGEON_CELL, 3, dungeonCenter), {depth:true})}　※地下・掘って降りる・スポナー/宝箱（一部は魔窟＝デーモン）`,
+    `最寄り洞窟(横穴): ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, HCAVE_CELL, 3, hillCaveMouth))}　※山/丘の斜面の入口・掘らず歩いて入れる（奥に鉱石/宝/装飾）`,
     `武器 / 戦闘  : 装備=${WEAPONS[currentWeapon].name}（C/Bで切替）所持[${WEAPON_ORDER.filter(w=>ownedWeapons.has(w)).map(w=>WEAPONS[w].name).join('・')}] / コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'}`,
     `攻撃の特性   : ${WEAPONS[currentWeapon].ranged?'遠距離(溜め)':'近接'} 威力${WEAPONS[currentWeapon].dmg} 間合${WEAPONS[currentWeapon].reach} 振り${WEAPONS[currentWeapon].swing}s 動作x${WEAPONS[currentWeapon].anim} 止${WEAPONS[currentWeapon].hitstop}s（装備武器で変化）`,
     `手持ち表示   : 武器モデル${heldWeapon?'装着○':'なし(素手/未読込)'} / 盾${heldShield?'装着○':'-'} / 武器テンプレ読込${Object.keys(equipTemplates).length}種`,
@@ -2950,6 +3017,7 @@ STRUCT_DEFS.forEach(k => gltfLoader.load(`models/struct_${k}.glb`,
 ['fort_tower','fort_gate','fort_flag','fort_wall','fort_battlement','ship_rowboat','ship_sailboat','ship_wreck',
  'prop_stall','prop_bench','prop_lamp','prop_brazier','prop_cart','prop_barrel','prop_crate','prop_sign','prop_laundry',
  'castle_keep','shrine', // ①王国城の天守 / ②祠（4号機 世界拡張）
+ 'cave_entrance', // 横穴洞窟の入口アーチ（4号機・未配置なら静かにスキップ＝到着で自動表示）
  'cave_crystal','cave_crystal_purple','cave_geode','cave_mushroom','cave_boulder'] // ⑤洞窟装飾（深部=結晶/晶洞）
   .forEach(k => gltfLoader.load(`models/${k}.glb`,
     g => { structTemplates[k] = { scene: g.scene, animations: g.animations || [] }; },
