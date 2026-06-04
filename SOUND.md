@@ -119,6 +119,19 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 
 ---
 
+## 仲間システムの音（新機能・NPCが仲間になる連携）
+NPCが仲間になる新機能向け。口は防御的（未呼出なら無音待機）。`type` は仲間種（`'knight'` / `'archer'` / `'mage'` 等）で、省略でも汎用音として成立します。
+
+- **① 加入音**: `window.onCompanionJoin(type)` → 心強い・温かい上昇ファンファーレ `companion_join`（長三和音→オクターブ着地＋低音ドローン）。type で軽い個性（knight=重厚／archer=軽やか高音／mage=魔法的きらめき）。
+  例: `window.onCompanionJoin('archer')`
+- **② 返事・反応音**: `window.onCompanionReply(type)` → 指示を受けた時の短い「了解！」二音 `companion_reply`。頻繁に鳴るので軽量。
+- **③ 被ダメ音**: `window.onCompanionHit()` → 仲間が攻撃を受けた時の悲鳴＋衝撃 `companion_hit`（プレイヤーの `hurt` と区別できる音色）。
+- **④ 離脱音**: `window.onCompanionLeave()` → 仲間が倒れた/解雇された時の物悲しい下降 `companion_leave`。
+
+> **1号機へ依頼**: 4音とも sound.js 側は受け口実装済み・**呼ぶだけで動作**します。仲間加入時に `onCompanionJoin(type)`、被ダメ時に `onCompanionHit()`、離脱（撃破/解雇）時に `onCompanionLeave()` を1回呼んでください。**②の返事音 `onCompanionReply(type)` は当初の想定口（Join/Leave/Hit）に無かったため新設**しています — プレイヤーが仲間へ指示を出した瞬間に呼んでいただければ「了解！」が鳴ります（口名・引数の希望があれば #opゲーム で調整します）。`onCompanionHit/Leave` は将来の個体差用に `type` を任意で受けますが現状未使用でも安全です。
+
+---
+
 ## 音量・バランス調整（④）
 全体音量・個別SE倍率はいつでも変更でき、`localStorage`（`vw_sound_v1`）に永続化されます。変更時に `window` へ `soundsettingschange` イベントを発火。
 
@@ -140,7 +153,7 @@ window.setSfxGain('thunder', 1.5);    // 雷を強調
 window.getSfxGain('footstep');        // 現在の倍率
 window.SoundSettings.getGains();       // 全倍率の一覧
 ```
-対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat`）。
+対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat / companion_join / companion_reply / companion_hit / companion_leave`）。
 
 > 体感後に「この音だけ大きい/小さい」が出たら、上記 `setSfxGain` で1行調整 → そのまま保存されます。
 

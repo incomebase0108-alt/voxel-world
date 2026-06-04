@@ -17,6 +17,7 @@
     footstep: 1, jump: 1, land: 1, break: 1, place: 1, eat: 1, pickup: 1, craft: 1,
     splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
     whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1,
+    companion_join: 1, companion_reply: 1, companion_hit: 1, companion_leave: 1, // 仲間システム
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
 
@@ -178,6 +179,40 @@
       tone(1174.66, 0.55, 'sine', 0.06, 1567.98, null, 0.55);  // きらめき(D6→G6)
       tone(1567.98, 0.50, 'triangle', 0.05, 1567.98, null, 0.72); // 締めの高域
     },
+
+    // === 仲間システム（NPCが仲間になる新機能）。1号機が口を呼ぶだけ・未呼出なら無音待機 ===
+    //   type は仲間種（'knight'|'archer'|'mage' 等）。省略でも汎用音として成立。
+    // ① 仲間加入＝心強い・温かい上昇ファンファーレ（「頼れる味方が増えた」安心感。勝利感より温かさ寄り）。
+    companion_join(o) {
+      const type = o && o.type;
+      const seq = [261.63, 329.63, 392.00, 523.25];                              // C4-E4-G4-C5 長三和音→オクターブ着地
+      seq.forEach((f, i) => tone(f, 0.22, 'triangle', 0.11, f, null, i * 0.07));
+      tone(130.81, 0.55, 'sine', 0.10, 130.81, null, 0.00);                       // 低い根音ドローン(C3)＝地に足のついた安心
+      tone(392.00, 0.45, 'sine', 0.06, 587.33, null, 0.28);                       // ふわりと上へ(G4→D5 きらめき)
+      // type で軽い個性（任意・未指定でも汎用で成立）
+      if (type === 'archer')      tone(880.00, 0.10, 'sine',     0.05, 1320.00, null, 0.30); // 弓兵: 軽やかな高音
+      else if (type === 'mage')   tone(659.25, 0.30, 'sine',     0.05,  988.00, null, 0.24); // 魔法使い: 魔法的なきらめき
+      else if (type === 'knight') tone(98.00,  0.40, 'sawtooth', 0.06,   98.00, null, 0.10); // 騎士: 重厚な低音
+    },
+    // ② 指示を受けた時の了解音（短く明るい「了解！」の二音）。頻繁に鳴るので短く軽く。type で僅かに音高を変え個体感。
+    companion_reply(o) {
+      const k = (o && o.type === 'mage') ? 1.12 : (o && o.type === 'knight') ? 0.9 : 1.0;
+      tone(523.25 * k, 0.07, 'sine', 0.10, 659.25 * k, null, 0.00);
+      tone(783.99 * k, 0.09, 'sine', 0.09, 880.00 * k, null, 0.06);
+    },
+    // ③ 仲間が攻撃を受けた（被ダメ）。プレイヤーの hurt と区別できる「味方が傷ついた」短い悲鳴＋衝撃。
+    companion_hit() {
+      noise(0.06, 0.12, 1400);                          // 衝撃
+      tone(440, 0.16, 'square', 0.13, 240);             // 痛みの悲鳴（下降・hurtより高め＝別個体と分かる）
+      tone(330, 0.12, 'sine', 0.06, 220, null, 0.04);   // 心配なうめき
+    },
+    // ④ 仲間の離脱（倒れた/解雇）。物悲しい下降。短いが余韻を残す。
+    companion_leave() {
+      const seq = [392.00, 329.63, 261.63];                                       // G4-E4-C4 下降（哀しい解決）
+      seq.forEach((f, i) => tone(f, 0.30, 'triangle', 0.10, f, null, i * 0.12));
+      tone(196.00, 0.50, 'sine', 0.07, 130.81, null, 0.24);                       // 低音が沈む(G3→C3)
+      noise(0.18, 0.06, 300, 'lowpass');                                          // 崩れ落ちる土の音
+    },
   };
 
   // 公開API：playSFX(name, opts) ── opts は省略可（後方互換）
@@ -223,6 +258,16 @@
   //   window.onBossDefeat(type) … ② ボス撃破の勝利ファンファーレ（達成感）。撃破確定時に1回呼ぶだけ。
   //   撃破後は戦闘継続でなければコアが setMusicScene を day/night 等へ戻せばBGMも平常へ（既存挙動）。
   window.onBossDefeat  = (type) => window.playSFX('boss_defeat', { type });
+
+  // === 仲間システム連携（防御的: 1号機が口を呼ぶだけ・未呼出なら無音待機）=====
+  //   window.onCompanionJoin(type)  … ① NPCが仲間になった時の心強い加入音。type=仲間種（'knight'|'archer'|'mage' 等／省略=汎用）
+  //   window.onCompanionReply(type) … ② 指示を受けた時の了解音（コマンド発行時の「了解！」）。type省略可【②用に新設＝1号機へ呼出依頼】
+  //   window.onCompanionHit(type?)  … ③ 仲間が攻撃を受けた被ダメ音（味方が傷ついた）。typeは任意（将来の個体差用・現状未使用でも安全）
+  //   window.onCompanionLeave(type?)… ④ 仲間が倒れた/解雇された離脱音（物悲しい）
+  window.onCompanionJoin  = (type) => window.playSFX('companion_join',  { type });
+  window.onCompanionReply = (type) => window.playSFX('companion_reply', { type });
+  window.onCompanionHit   = (type) => window.playSFX('companion_hit',   { type });
+  window.onCompanionLeave = (type) => window.playSFX('companion_leave', { type });
 
   // === ② BGMシステム（合成音・bgmBus経由・状況でレイヤー切替＋クロスフェード）===
   //   ・コアは window.setMusicScene('day'|'night'|'combat'|'water') を呼ぶだけ
