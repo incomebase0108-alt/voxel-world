@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04zf'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04zg'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1082,6 +1082,7 @@ window.VoxelGame = {
     // 仲間パーティ（3号機HUDの仲間表示・指示ボタン用）。操作は VoxelGame.recruit / commandCompanion
     companions: companions.map(c => ({ id:c.cid, name:JOB_LABEL[c.def.type]||c.def.type, type:c.def.type, hp:Math.ceil(c.hp), maxHp:c.maxHp||COMPANION_HP, mode:c.cmdMode })),
     companionMax: MAX_COMPANIONS,
+    bossKills: { ...bossKills }, sakuraCape: hasSakuraCape,  // ① 討伐記録（3号机ステータス画面用）＋さくらの毛皮マント所持
     // 必殺技（②）：習得済みが1つも無ければ undefined＝3号機HUD非表示。equipped/list/energy を公開
     skills: (() => {
       const learned = learnedSkills(); if (!learned.length) return undefined;
@@ -1765,9 +1766,17 @@ function damage(amount, cause) {
   camShake = Math.max(camShake, Math.min(0.7, 0.2 + amount * 0.06)); // ③ 被弾の画面シェイク（ダメージ量に応じ）
   if (window.onPlayerHurt) window.onPlayerHurt(cause, amount); // 音は後付け前提のトリガー
   scheduleSave();
-  if (hp <= 0) respawn();
+  if (hp <= 0 && !playerDead) { // ②ゲームオーバー：即respawnせず、3号機のゲームオーバー画面へ（討伐記録/Lv/時間を提示）
+    playerDead = true;
+    const info = { cause: cause || '?', level: playerLevel, kills: { ...bossKills }, seconds: Math.floor(gameTime) };
+    if (typeof window.onPlayerDeath === 'function') { try { window.onPlayerDeath(info); } catch (e) { window.VoxelGame.respawn(); } }
+    else window.VoxelGame.respawn(); // UI未配線なら従来どおり即復活
+  }
 }
 window.damagePlayer = (a) => damage(a, 'external'); // 敵モブからの被ダメージ用の口（後接続）
+let playerDead = false; // ②死亡中（ゲームオーバー画面表示中＝本編休止）。VoxelGame.respawn() で解除
+// 3号機のゲームオーバー画面「リスポーン」ボタン → これを呼ぶ。死亡解除＋復活。
+window.VoxelGame.respawn = () => { playerDead = false; respawn(); return true; };
 
 function respawn() {
   const s = findSpawn(); player.pos.set(s.x, s.y, s.z);
@@ -4052,7 +4061,7 @@ function loop(now) {
   hitstop = Math.max(0, hitstop - dt);
   const gdt = inHitstop ? dt * 0.04 : dt; // アクション系に渡す減速dt（環境は通常dtのまま）
 
-  if (isPlaying() && !invOpen) { // ★PC=ロック成立 / スマホ=タップ開始 で本編シミュを回す（インベントリ中は休止）
+  if (isPlaying() && !invOpen && !playerDead) { // ★PC=ロック成立 / スマホ=タップ開始 で本編シミュを回す（インベントリ/死亡中は休止）
     updateAttack(gdt); // 攻撃の振り・コンボ・溜め
     updateSkills(gdt); // 必殺技クールダウンの減算
     updatePlayer(gdt); updateHealth(dt); updateMobs(gdt); updateArrows(gdt); updateDrops(dt);
