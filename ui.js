@@ -1398,7 +1398,13 @@
     { id: 'attack', label: '攻撃', glyph: '⚔' },
   ];
   const companionSeen = new Map();   // id -> name（加入/離脱トーストの差分検知）
+  // 職業type→絵文字（icon/glyph 未指定時のアバター退避。1号機 state().companions[].type に対応）
+  const JOB_GLYPH = {
+    villager:'🧑', merchant:'🧑‍💼', blacksmith:'🧑‍🏭', farmer:'🧑‍🌾',
+    guard:'💂', child:'🧒', elder:'🧓', baker:'🧑‍🍳',
+  };
   function compId(c, i) { return (c && c.id != null) ? c.id : ('comp' + i); }
+  function compGlyph(c) { return c.glyph || JOB_GLYPH[c.type] || '🧑'; }
   function callCommand(id, order) {
     const vg = window.VoxelGame;
     if (vg && typeof vg.commandCompanion === 'function') { try { vg.commandCompanion(id, order); return true; } catch (e) {} }
@@ -1449,13 +1455,14 @@
       card.root.style.display = '';
       card.id = compId(c, i);
 
-      // アイコン（4号機アイコン優先・無ければ絵文字）
+      // アイコン（4号機アイコン優先・無ければ職業type/絵文字に退避）
       const url = iconUrl(c);
-      const key = url || c.glyph || c.name || '';
+      const gly = compGlyph(c);
+      const key = url || gly || c.name || '';
       if (key !== card.avaKey) {
         card.avaKey = key;
         if (url) { card.ava.style.backgroundImage = `url("${url}")`; card.ava.textContent = ''; }
-        else { card.ava.style.backgroundImage = ''; card.ava.textContent = c.glyph || '🧑'; }
+        else { card.ava.style.backgroundImage = ''; card.ava.textContent = gly; }
       }
       card.name.textContent = c.name || ('仲間' + (i + 1));
       if (c.color) card.name.style.color = c.color; else card.name.style.color = '';
@@ -1468,8 +1475,8 @@
       const dead = !!c.dead || hp <= 0;
       card.root.classList.toggle('dead', dead);
 
-      // 指示ボタンのアクティブ表示
-      const order = c.order || 'follow';
+      // 指示ボタンのアクティブ表示（1号機は cmdMode を state().companions[].mode で出す＝order の別名）
+      const order = c.order || c.mode || 'follow';
       ORDER_META.forEach((o) => card.cmds[o.id].classList.toggle('on', o.id === order));
     }
     for (let i = list.length; i < dom.compCards.length; i++) dom.compCards[i].root.style.display = 'none';

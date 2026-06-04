@@ -176,16 +176,23 @@ window.UI.toast('隠し通路を発見！', { glyph:'🚪', color:'#7be0ff' });
 `ui.js` が **画面左中央に仲間ステータス（名前・HP・アイコン／最大3人）＋指示ボタン（追従/待機/攻撃）** を描画し、
 **加入/離脱トースト** を自動表示します。**受け皿は実装済み**。1号機は `state()` に `companions` を出すだけで自動点灯します。
 
+> **✅ 接続済み (2026-06-04)**: 1号機の仲間システム（住人NPC雇用→追従/共闘・指示・HP・離脱）と結線済み。
+> 実装は `state().companions[]={id,name,type,hp,maxHp,mode}` を出力、`mode` は `order` の別名として受理。
+> `type`（職業）からアバター絵文字を自動退避。`commandCompanion(id,mode)` / `commandCompanion(null,mode)`（全員）/ `mode:'dismiss'`（解雇）対応。
+
 ### 主経路（推奨・state 駆動）— `state()` に `companions` を1つ
 仲間が居る間だけ配列を埋め、居なければ `[]`/省略で非表示（PC/スマホ共通・スマホでもタップで指示可）。
 ```js
 companions: party.map(c => ({
-  id:   c.id,            // 安定キー（加入/離脱トーストの差分検知・指示の宛先に使用）
-  name: c.name,          // 表示名（例 '相棒ウル'）
+  id:   c.id,            // 安定キー（加入/離脱トーストの差分検知・指示の宛先に使用。1号機=cid）
+  name: c.name,          // 表示名（例 '相棒ウル' / JOB_LABEL）
   hp:   c.hp, maxHp: c.maxHp,
-  icon: 'mob_wolf',      // 任意: tools/icons の名前（icon_<icon>.png）。無ければ glyph→🧑
-  glyph:'🐺',            // 任意: アイコン未指定時の絵文字
-  order: c.order,        // 'follow'(追従) | 'wait'(待機) | 'attack'(攻撃)。指示ボタンの点灯に反映
+  // 指示の現在値: order でも mode でも可（'follow'(追従)|'wait'(待機)|'attack'(攻撃)）
+  mode: c.cmdMode,       // ← 1号機の現行。order: でも同じ
+  // アバター（優先順）: icon(4号機 tools/icons の名前) → glyph(絵文字) → type(職業→絵文字) → 🧑
+  type: c.type,          // 任意: villager/merchant/blacksmith/farmer/guard/child/elder/baker
+  icon: 'mob_wolf',      // 任意: tools/icons の名前（icon_<icon>.png）
+  glyph:'🐺',            // 任意: 絵文字直指定
   color: '#9be86a',      // 任意: 名前の色
   dead:  c.hp <= 0,      // 任意: 戦闘不能表示（グレーアウト）
 })),   // 4人以上居ても先頭3人だけ表示

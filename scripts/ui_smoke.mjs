@@ -47,10 +47,10 @@ const $ = (sel) => page.$eval(sel, e => ({ display: getComputedStyle(e).display,
 // 1) 休止: companions 無し → パネル非表示
 results.dormant = await $('#ui-companions');
 
-// 2) 点灯: 仲間2人を注入
+// 2) 点灯: 仲間2人を注入（1号機の実フォーマット= mode/type を使い、別名経路を検証）
 await page.evaluate(() => { window.__companions = [
-  { id:'w', name:'相棒ウル', hp:18, maxHp:20, glyph:'🐺', order:'follow' },
-  { id:'g', name:'ゴーレム', hp:5,  maxHp:30, glyph:'🗿', order:'attack' },
+  { id:'w', name:'相棒ウル', hp:18, maxHp:20, type:'guard',   mode:'follow' },
+  { id:'g', name:'パン屋',   hp:5,  maxHp:30, type:'baker',   mode:'attack' },
 ]; });
 await page.waitForTimeout(120);
 results.lit = await $('#ui-companions');
