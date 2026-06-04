@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04z3'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04z4'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -99,7 +99,10 @@ const AMP = 22;            // 地形の起伏の大きさ
 
 // ブロック種別（0=空気）。water=7 は溺れ判定の WATER_ID と一致させる
 // chest/spawner は ② 構造物用の機能ブロック（プレイヤーは設置不可・ホットバー外）
-const B = { air:0, grass:1, dirt:2, stone:3, log:4, leaves:5, sand:6, water:7, snow:8, planks:9, stonebrick:10, glass:11, chest:12, spawner:13 };
+const B = { air:0, grass:1, dirt:2, stone:3, log:4, leaves:5, sand:6, water:7, snow:8, planks:9, stonebrick:10, glass:11, chest:12, spawner:13, coal:14, iron:15, gold:16 };
+// ★鉱石ブロック(coal/iron/gold)は従来 enum 未定義で B.coal 等が undefined → oreAt が undefined を返し
+//   鉱石が一切生成されていなかった（採掘で鉄/金/石炭が0のまま）。ID 14/15/16 を定義して生成を有効化。
+//   COLORS/NAMES/ORE_MAT は既に [B.coal] 等で参照済み＝ID確定で正しく機能する。
 
 // ブロックの基本色（面ごとに上面・側面・底面を分けられるよう構造化）
 // 値は 0..1 のRGB
@@ -146,8 +149,10 @@ const CFG = {
     maxHp: 20, maxHunger: 20, breathMax: 10, // 最大HP / 最大空腹 / 息が続く秒
     fallSafe: 4, fallDmgPerBlock: 1,         // 無傷の落差 / 超過1ブロックのダメージ
     regenDelay: 5, regenInterval: 1.5, regenHungerMin: 5, // 回復開始までの秒 / 回復間隔 / 回復に要する最低空腹
-    // 空腹の毎秒減少（待機/移動/ダッシュ）。星野さんFBで一段緩和（待機≒1.8/分・通常移動≒3.3/分・ダッシュ≒6/分）
-    hungerDecay: 0.03, hungerMoveExtra: 0.025, hungerDashExtra: 0.07,
+    // 移動速度（星野さんFBで高速化。walk=旧5.0の約1.7倍 / dash=walkの約2.2倍 / 乗物は徒歩より速く維持）
+    walkSpeed: 8.5, dashSpeed: 19, boatSpeed: 12, rideSpeed: 15,
+    // 空腹の毎秒減少（待機/移動/ダッシュ）。高速化に合わせダッシュのみ微増（待機≒1.8/分・移動≒3.3/分・ダッシュ≒7/分）
+    hungerDecay: 0.03, hungerMoveExtra: 0.025, hungerDashExtra: 0.09,
     starveInterval: 2, drownInterval: 1,     // 空腹0/溺れのダメージ間隔（秒）
     food: { meat: 9, apple: 6 },             // 食料の空腹回復量（やや増）
   },
@@ -1442,7 +1447,7 @@ function collideAxis(axis) {
 }
 
 function updatePlayer(dt) {
-  const speed = ridingBoat ? 7.5 : ridingMob ? 9.0 : (keys['ShiftLeft']||keys['ShiftRight']) ? 8.5 : 5.0; // 乗船/騎乗中は速い
+  const speed = ridingBoat ? P.boatSpeed : ridingMob ? P.rideSpeed : (keys['ShiftLeft']||keys['ShiftRight']) ? P.dashSpeed : P.walkSpeed; // VoxelBalance(CFG.player)で調整可
   // yawを基準にした前方・右方向（上下の視点は移動に影響させない）
   const fwd   = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const right = new THREE.Vector3( Math.cos(player.yaw), 0, -Math.sin(player.yaw));
@@ -3613,6 +3618,31 @@ function updateCombatMusic(dt) {
   }
 }
 window.getMusicScene = () => musicScene; // 診断用
+// 祠セルの中心（buildStructures の祠ループと同一判定）。getBiome 用。
+function shrineCenter(gx, gz, cell) {
+  if (hash2(gx*83+7, gz*83+29) > 0.22) return null;
+  const ox = gx*cell + 10 + Math.floor(hash2(gx+6, gz+15) * (cell-20));
+  const oz = gz*cell + 10 + Math.floor(hash2(gx+12, gz+4) * (cell-20));
+  if (biomeAt(ox, oz) === 'ocean') return null;
+  if (heightAt(ox, oz) <= WATER_LEVEL) return null;
+  return { x: ox, z: oz };
+}
+// ② getBiome（2号機の環境音用）：王国城内='castle' / 祠の近く='shrine' / それ以外=地形バイオーム。
+//   決定論hashなので軽い（プレイヤーのセル＋隣接のみ評価）。castle/shrine で聖歌・鈴の環境音が鳴る。
+window.getBiome = () => {
+  const px = player.pos.x, pz = player.pos.z;
+  const cgx = Math.floor(px/CASTLE_CELL), cgz = Math.floor(pz/CASTLE_CELL);
+  for (let gx = cgx-1; gx <= cgx+1; gx++) for (let gz = cgz-1; gz <= cgz+1; gz++) {
+    const c = castleCenter(gx, gz, CASTLE_CELL);
+    if (c && Math.abs(c.x-px) <= 9 && Math.abs(c.z-pz) <= 9) return 'castle'; // 城壁(R=8)内
+  }
+  const sgx = Math.floor(px/SHRINE_CELL), sgz = Math.floor(pz/SHRINE_CELL);
+  for (let gx = sgx-1; gx <= sgx+1; gx++) for (let gz = sgz-1; gz <= sgz+1; gz++) {
+    const c = shrineCenter(gx, gz, SHRINE_CELL);
+    if (c && Math.abs(c.x-px) <= 3 && Math.abs(c.z-pz) <= 3) return 'shrine'; // 祠のそば
+  }
+  return biomeAt(Math.floor(px), Math.floor(pz)); // 地形バイオーム（plains/desert/snow/ocean…）
+};
 
 // ===================================================================
 // 外部連携の口（2号機の空間オーディオ ③ 用。読み取り専用・副作用なし）
