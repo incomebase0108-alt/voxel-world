@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 97,
-    "size_bytes": 14497248,
-    "size_mb": 13.826
+    "count": 100,
+    "size_bytes": 14546596,
+    "size_mb": 13.873
   },
   "assets": [
     {
@@ -1221,6 +1221,48 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 13,
+      "error": null
+    },
+    {
+      "file": "fx_ally_halo.glb",
+      "name": "fx_ally_halo",
+      "category": "演出（ボス出現FX）",
+      "size_bytes": 14084,
+      "size_mb": 0.0134,
+      "clips": [
+        "loop"
+      ],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 1,
+      "error": null
+    },
+    {
+      "file": "fx_ally_heart.glb",
+      "name": "fx_ally_heart",
+      "category": "演出（ボス出現FX）",
+      "size_bytes": 23772,
+      "size_mb": 0.0227,
+      "clips": [
+        "loop"
+      ],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 1,
+      "error": null
+    },
+    {
+      "file": "fx_ally_star.glb",
+      "name": "fx_ally_star",
+      "category": "演出（ボス出現FX）",
+      "size_bytes": 11492,
+      "size_mb": 0.011,
+      "clips": [
+        "loop"
+      ],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 1,
       "error": null
     },
     {
