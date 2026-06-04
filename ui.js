@@ -425,6 +425,22 @@
       .uit-none { font-size:13px; opacity:.7; padding:8px 0; }
       .uit-offer { flex-wrap:wrap; } /* ② 効果キャプションを2行目に回す */
       .uit-eff { flex-basis:100%; font-size:11px; color:#bfe6ff; opacity:.92; margin-top:3px; font-weight:600; text-align:left; }
+      /* ④ ステータス画面 */
+      .uist { display:flex; flex-direction:column; gap:6px; margin:8px 0; }
+      .uist-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:7px 11px;
+        background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:8px; }
+      .uist-row .k { font-size:13px; opacity:.85; } .uist-row .v { font-size:14px; font-weight:800; }
+      /* ③ ゲームオーバー画面（dormant：core が window.onPlayerDeath を呼ぶと表示） */
+      #ui-gameover { position:fixed; inset:0; z-index:40; display:none; flex-direction:column; align-items:center;
+        justify-content:center; gap:12px; text-align:center; color:#fff;
+        background:radial-gradient(circle at 50% 38%, rgba(70,0,0,.74), rgba(0,0,0,.93)); }
+      #ui-gameover.show { display:flex; }
+      #ui-gameover .got { font-size:46px; font-weight:900; letter-spacing:4px; color:#ff5a5a; text-shadow:0 0 22px rgba(255,40,40,.6); }
+      #ui-gameover .gosub { font-size:14px; opacity:.85; }
+      #ui-gameover .gostats { display:flex; flex-direction:column; gap:5px; margin:6px 0; font-size:15px; }
+      #ui-gameover .gobtn { pointer-events:auto; cursor:pointer; margin-top:10px; padding:13px 32px; font-size:17px;
+        font-weight:800; border-radius:12px; border:2px solid rgba(150,220,150,.6); background:rgba(50,130,60,.55); color:#fff; }
+      #ui-gameover .gobtn:hover { background:rgba(70,160,75,.65); transform:translateY(-1px); }
       /* ③ 会話中の「仲間にする」ボタン（trade パネル内・PC/スマホ共通） */
       .uit-recruit { pointer-events:auto; cursor:pointer; width:100%; margin-top:10px; padding:11px 12px;
         display:flex; align-items:center; justify-content:center; gap:8px; font-size:14px; font-weight:800;
@@ -737,6 +753,7 @@
   // 武器の攻撃力（core WEAPONS.dmg 準拠）／装備クラフト種別の効果（EQUIP_RECIPES・防御値 準拠）
   const WEAPON_INFO = { fist:'素手：攻撃力3・素早いが弱い', sword:'剣：攻撃力5・範囲広め', axe:'斧：攻撃力9・重い大振り（最大火力）', pickaxe:'ピッケル：攻撃力4・採掘が速い', bow:'弓：攻撃力7・遠距離＆溜め撃ち' };
   const EQUIP_KIND_INFO = { pickaxe:'採掘が速くなる（攻撃力4）', sword:'攻撃力5・近接の主力', axe:'攻撃力9・最大火力の大振り', bow:'遠距離攻撃（攻撃力7・溜め可）', shield:'被ダメージ-10%（構えて防御）', armor:'被ダメージ-12%/枚（頭・胴・脚で最大3枚）' };
+  const WEAPON_DMG = { fist:3, sword:5, axe:9, pickaxe:4, bow:7 }; // ④ ステータス画面の攻撃力表示（core WEAPONS.dmg 準拠）
 
   // PC=ホバー / スマホ=長押し でツールチップ表示。getHtml は表示時評価＝最新の在庫/効果を反映。
   function bindTip(elm, getHtml) {
@@ -1062,6 +1079,7 @@
     const btns = el('div', '', p); btns.className = 'uim-btns';
     const mk = (label, cls, fn) => { const b = el('div', '', btns); b.className = 'uim-btn' + (cls ? ' ' + cls : ''); b.textContent = label; b.addEventListener('click', fn); };
     mk('▶ ゲームに戻る', 'primary', closeMenu);
+    mk('📊 ステータス', '', () => renderMenu('status'));
     mk('⚡ 必殺技', '', () => renderMenu('skills'));
     mk('⚙ 設定', '', () => renderMenu('settings'));
     mk('💾 セーブ＆ロード', '', () => renderMenu('slots'));
@@ -1075,8 +1093,82 @@
     else if (screen === 'slots') renderSlots(p);
     else if (screen === 'trade') renderTrade(p);
     else if (screen === 'skills') renderSkillsScreen(p);
+    else if (screen === 'status') renderStatusScreen(p);
     else renderMenuRoot(p);
   }
+
+  // ④ ステータス画面：いまの強さ・装備・記録を一覧（state() から読む。Tab / 📊ボタンで開閉）
+  function renderStatusScreen(p) {
+    el('div', '', p).className = 'uim-title'; p.lastChild.textContent = '📊 ステータス';
+    el('div', '', p).className = 'uim-sub'; p.lastChild.textContent = 'いまの強さ・装備・記録';
+    let st = {};
+    try { const vg = window.VoxelGame; if (vg && typeof vg.state === 'function') st = vg.state() || {}; } catch (e) {}
+    const eq = st.equipment || {}, armor = eq.armor || {};
+    const coin = (st.items || []).find(it => it.key === 'coin');
+    const atk = (WEAPON_DMG[eq.weapon] != null) ? WEAPON_DMG[eq.weapon] : '—';
+    const armorN = ['head', 'body', 'legs'].filter(k => armor[k]).length;
+    const rows = [
+      ['🏅 レベル', `Lv ${clampN(st.level)}　EXP ${clampN(st.exp)}/${st.expToNext || '-'}`],
+      ['❤️ HP', `${clampN(st.hp)} / ${clampN(st.maxHp)}`],
+      ['🍖 空腹', `${clampN(st.hunger)} / ${clampN(st.maxHunger)}`],
+      ['⚔️ 攻撃力', `${atk}　（${eq.weaponName || '素手'}）`],
+      ['🛡️ 防御', `${Math.round((eq.defense || 0) * 100)}% 軽減　（防具 ${armorN}/3・盾 ${eq.shield ? '○' : '-'}）`],
+      ['🪙 所持金', `${coin ? clampN(coin.count) : 0} コイン`],
+      ['🤝 仲間', `${(st.companions || []).length} / ${st.companionMax || 0} 人`],
+    ];
+    const tbl = el('div', '', p); tbl.className = 'uist';
+    rows.forEach(([k, v]) => {
+      const r = el('div', '', tbl); r.className = 'uist-row';
+      el('div', '', r).className = 'k'; r.lastChild.textContent = k;
+      el('div', '', r).className = 'v'; r.lastChild.textContent = v;
+    });
+    // 討伐記録（state().bossKills が来たら表示。未提供時は core 連携待ち）
+    el('div', '', p).className = 'uim-sub'; p.lastChild.style.marginTop = '10px'; p.lastChild.textContent = '⚔️ 討伐記録';
+    const kwrap = el('div', '', p); kwrap.className = 'uist';
+    const bk = st.bossKills;
+    if (bk && typeof bk === 'object') {
+      const LBL = { dragon: 'ドラゴン', skeleton_king: 'スケルトンキング', demon: 'デーモン', golem: 'ゴーレム' };
+      let any = false;
+      Object.keys(LBL).forEach(k => {
+        if (bk[k]) { any = true; const r = el('div', '', kwrap); r.className = 'uist-row';
+          el('div', '', r).className = 'k'; r.lastChild.textContent = LBL[k];
+          el('div', '', r).className = 'v'; r.lastChild.textContent = `${clampN(bk[k])} 体`; }
+      });
+      if (!any) { const n = el('div', 'font-size:13px;opacity:.7;padding:4px 2px;', kwrap); n.textContent = 'まだボスを倒していない。強敵を探して挑もう。'; }
+    } else {
+      const n = el('div', 'font-size:13px;opacity:.7;padding:4px 2px;', kwrap); n.textContent = '討伐記録は近日対応（コア state().bossKills 連携待ち）。';
+    }
+    const back = el('div', '', p); back.className = 'uim-back';
+    const b = el('div', '', back); b.className = 'uim-btn'; b.textContent = '← 戻る'; b.addEventListener('click', () => renderMenu('menu'));
+  }
+
+  // ③ ゲームオーバー画面（dormant 受け皿）：core が window.onPlayerDeath(info) を呼ぶと表示。
+  //   info = { cause?, level?, kills?, seconds? }。リスポーンは VoxelGame.respawn() があれば呼ぶ。
+  //   ※現状 core は被弾で即 respawn() する実装。本画面を活かすには core 側で「即respawnを止め
+  //     →onPlayerDeath(info) を呼ぶ→ボタンで VoxelGame.respawn()」への変更が必要（1号機へ要請）。
+  let goEl = null;
+  function fmtDuration(sec) { sec = Math.max(0, Math.floor(+sec || 0)); const m = Math.floor(sec / 60), s = sec % 60; return `${m}分${String(s).padStart(2, '0')}秒`; }
+  function showGameOver(info) {
+    info = info || {};
+    if (!goEl) { goEl = el('div', '', document.body); goEl.id = 'ui-gameover'; }
+    goEl.innerHTML = '';
+    el('div', '', goEl).className = 'got'; goEl.lastChild.textContent = 'G A M E   O V E R';
+    el('div', '', goEl).className = 'gosub'; goEl.lastChild.textContent = info.cause ? `死因: ${info.cause}` : 'あなたは力尽きた…';
+    const stx = el('div', '', goEl); stx.className = 'gostats';
+    const lv = (info.level != null) ? info.level : '—';
+    const kills = (typeof info.kills === 'number') ? `${info.kills} 体` : '—';
+    const tm = (typeof info.seconds === 'number') ? fmtDuration(info.seconds) : (info.timeText || '—');
+    [['🏅 レベル', lv], ['⚔️ 討伐数', kills], ['⏱ プレイ時間', tm]].forEach(([k, v]) => {
+      const r = el('div', '', stx); r.textContent = `${k}：${v}`;
+    });
+    const btn = el('div', '', goEl); btn.className = 'gobtn'; btn.textContent = '🔄 リスポーン';
+    btn.addEventListener('click', () => {
+      try { const vg = window.VoxelGame; if (vg && typeof vg.respawn === 'function') vg.respawn(); } catch (e) {}
+      hideGameOver();
+    });
+    goEl.classList.add('show');
+  }
+  function hideGameOver() { if (goEl) goEl.classList.remove('show'); }
 
   // 必殺技の一覧／装備UI（覚えた技を最大4つ装備）
   function renderSkillsScreen(p) {
@@ -1254,6 +1346,7 @@
     const dash = mkBtn(dashWrap, '', '🏃', 'ダッシュ');
     const top = el('div', '', cont); top.className = 'ui-ttop';
     const invBtn = mkBtn(top, '', '🎒');
+    const statusBtn = mkBtn(top, '', '📊'); // ④ ステータス画面
     const menuBtn = mkBtn(top, '', '⏸');
     // ② NPC接近時に出る「話す」ボタン（近接判定で tick が .show を付け外し）
     const talkWrap = el('div', '', cont); talkWrap.className = 'ui-ttalk';
@@ -1303,6 +1396,7 @@
     holdBtn(place, () => inputAct('secondary', true), () => inputAct('secondary', false));
     tapBtn(dash, () => { dashOn = !dashOn; dash.classList.toggle('on', dashOn); setKey('ShiftLeft', dashOn); });
     tapBtn(invBtn, () => { window.UI._routed = true; toggleInv(); });
+    tapBtn(statusBtn, () => { window.UI._routed = true; (menuOpen && menuScreen === 'status') ? closeMenu() : openMenu('status'); });
     tapBtn(menuBtn, () => { window.UI._routed = true; menuOpen ? closeMenu() : openMenu('menu'); });
     // ② 話す：近くのNPCに話しかける（core が window.UI.openTrade(session) を呼び会話UIを開く）
     tapBtn(talkBtn, () => { window.UI._routed = true; inputAct('talk'); });
@@ -1711,6 +1805,12 @@
     window.onPlayerHurt = function (cause, amount) {
       try { if (typeof prev === 'function') prev(cause, amount); } catch (e) {}
       flashDamage(amount);
+    };
+    // ③ 死亡口（ui.jsが定義・core が呼ぶ＝dormant 受け皿）。core が即respawnを止めて呼ぶようになると発火
+    const prevDeath = window.onPlayerDeath;
+    window.onPlayerDeath = function (info) {
+      try { if (typeof prevDeath === 'function') prevDeath(info); } catch (e) {}
+      showGameOver(info);
     };
     // レベルアップ口（ui.jsが定義・coreは呼ぶだけ）。既存があれば相乗り
     const prevLU = window.onLevelUp;
@@ -2231,6 +2331,14 @@
     // ① 仲間 加入/離脱の簡易口（state() 不使用でも呼べる別名）
     window.UI.companionJoin = (c) => window.onCompanionJoin(c);
     window.UI.companionLeave = (c) => window.onCompanionLeave(c);
+
+    // ④ PC：Tab でステータス画面を開閉（core は Tab 未使用。フォーカス移動を抑止）
+    document.addEventListener('keydown', (e) => {
+      if (e.code !== 'Tab' || !coreIntegrated()) return;
+      e.preventDefault();
+      window.UI._routed = true;
+      (menuOpen && menuScreen === 'status') ? closeMenu() : openMenu('status');
+    });
 
     // タッチUIの構築＋端末判定（PCは非表示・操作不変）
     buildTouch();
