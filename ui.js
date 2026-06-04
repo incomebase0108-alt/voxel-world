@@ -288,6 +288,7 @@
       #ui-tip { position:fixed; z-index:32; pointer-events:none; display:none; max-width:220px;
         background:rgba(0,0,0,.9); color:#fff; border:1px solid rgba(255,255,255,.2); border-radius:7px;
         padding:6px 9px; font-size:12px; line-height:1.4; box-shadow:0 4px 16px rgba(0,0,0,.5); }
+      #ui-tip .tip-eff { display:block; margin-top:3px; color:#bfe6ff; font-weight:600; } /* ① アイテム効果の強調行 */
       #ui-hint { position:fixed; right:14px; bottom:14px; z-index:16; color:#fff; font-size:12px;
         opacity:.7; text-shadow:0 0 3px #000; pointer-events:none; }
 
@@ -422,6 +423,8 @@
       .uit-arrow { font-size:18px; opacity:.8; flex:0 0 auto; }
       .uit-get { flex:1; justify-content:flex-end; }
       .uit-none { font-size:13px; opacity:.7; padding:8px 0; }
+      .uit-offer { flex-wrap:wrap; } /* ② 効果キャプションを2行目に回す */
+      .uit-eff { flex-basis:100%; font-size:11px; color:#bfe6ff; opacity:.92; margin-top:3px; font-weight:600; text-align:left; }
       /* ③ 会話中の「仲間にする」ボタン（trade パネル内・PC/スマホ共通） */
       .uit-recruit { pointer-events:auto; cursor:pointer; width:100%; margin-top:10px; padding:11px 12px;
         display:flex; align-items:center; justify-content:center; gap:8px; font-size:14px; font-weight:800;
@@ -720,6 +723,49 @@
   }
   function hideTip() { dom.tip.style.display = 'none'; }
 
+  // ① アイテム/装備の「効果」説明（恩恵を伝えるツールチップ用）。core値に追従（WEAPONS.dmg / P.food / 防御%）。
+  const ITEM_INFO = {
+    meat:  '🍖 食料：食べる→空腹+9。HP自然回復の前提になる',
+    apple: '🍎 食料：食べる→空腹+6',
+    egg:   '🥚 取引品：商人・農民に売ってコインに換えられる',
+    coin:  '🪙 通貨：NPC取引・仲間の雇用（5コイン）に使う',
+    coal:  '⚫ 採掘素材：燃料・素材として貯めておくと役立つ',
+    iron:  '⛓️ 装備素材：剣・斧・盾・防具クラフトに必須の鉱石',
+    gold:  '🏅 貴重な素材：ボス討伐の報酬。価値が高い',
+  };
+  const itemEffect = (key) => ITEM_INFO[key] || '素材・アイテム';
+  // 武器の攻撃力（core WEAPONS.dmg 準拠）／装備クラフト種別の効果（EQUIP_RECIPES・防御値 準拠）
+  const WEAPON_INFO = { fist:'素手：攻撃力3・素早いが弱い', sword:'剣：攻撃力5・範囲広め', axe:'斧：攻撃力9・重い大振り（最大火力）', pickaxe:'ピッケル：攻撃力4・採掘が速い', bow:'弓：攻撃力7・遠距離＆溜め撃ち' };
+  const EQUIP_KIND_INFO = { pickaxe:'採掘が速くなる（攻撃力4）', sword:'攻撃力5・近接の主力', axe:'攻撃力9・最大火力の大振り', bow:'遠距離攻撃（攻撃力7・溜め可）', shield:'被ダメージ-10%（構えて防御）', armor:'被ダメージ-12%/枚（頭・胴・脚で最大3枚）' };
+
+  // PC=ホバー / スマホ=長押し でツールチップ表示。getHtml は表示時評価＝最新の在庫/効果を反映。
+  function bindTip(elm, getHtml) {
+    const html = () => (typeof getHtml === 'function' ? getHtml() : getHtml);
+    elm.addEventListener('mouseenter', () => buildTip(html()));
+    elm.addEventListener('mousemove', moveTip);
+    elm.addEventListener('mouseleave', hideTip);
+    let lpTimer = null, hideTimer = null, sx = 0, sy = 0;
+    const clearLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+    elm.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      sx = e.clientX; sy = e.clientY;
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      clearLp();
+      lpTimer = setTimeout(() => { buildTip(html()); moveTip({ clientX: sx, clientY: sy }); try { navigator.vibrate && navigator.vibrate(12); } catch (x) {} }, 340);
+    });
+    elm.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'touch' || !lpTimer) return;
+      if (Math.abs(e.clientX - sx) > 12 || Math.abs(e.clientY - sy) > 12) clearLp(); // スクロール/ドラッグはキャンセル
+    });
+    const endTouch = (e) => {
+      if (e.pointerType !== 'touch') return;
+      clearLp();
+      if (dom.tip.style.display === 'block') { if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(hideTip, 1800); } // 指を離して読めるよう少し残す
+    };
+    elm.addEventListener('pointerup', endTouch);
+    elm.addEventListener('pointercancel', endTouch);
+  }
+
   // セル/レシピ要素を作る共通部品（アイコン or スウォッチ）
   function fillIcon(holder, entry) {
     const url = iconUrl(entry);
@@ -764,9 +810,7 @@
       fillIcon(cell, h);
       const nm = el('div', '', cell); nm.className = 'nm'; nm.textContent = h.name;
       const ct = el('div', '', cell); ct.className = 'ct'; ct.textContent = h.count;
-      cell.addEventListener('mouseenter', () => buildTip(`<b>${h.name}</b><br>所持 ${clampN(h.count)}　/　数字キー ${i + 1 <= 9 ? i + 1 : '-'}<br><span style="opacity:.7">クリックで選択</span>`));
-      cell.addEventListener('mousemove', moveTip);
-      cell.addEventListener('mouseleave', hideTip);
+      bindTip(cell, () => `<b>${h.name}</b><br>所持 ${clampN(h.count)}　/　数字キー ${i + 1 <= 9 ? i + 1 : '-'}<br><span class="tip-eff">建築ブロック：タップで選択→設置できる</span>`);
       cell.addEventListener('click', () => {
         if (callSelect(h.block)) { window.playSFX && window.playSFX('place'); }
         invSig = ''; // 即時に選択枠を反映
@@ -784,9 +828,7 @@
       fillIcon(cell, { name: it.name, icon: ('item_' + it.key) });
       const nm = el('div', '', cell); nm.className = 'nm'; nm.textContent = it.name;
       const ct = el('div', '', cell); ct.className = 'ct'; ct.textContent = it.count;
-      cell.addEventListener('mouseenter', () => buildTip(`<b>${it.name}</b><br>所持 ${clampN(it.count)}`));
-      cell.addEventListener('mousemove', moveTip);
-      cell.addEventListener('mouseleave', hideTip);
+      bindTip(cell, () => `<b>${it.name}</b>　所持 ${clampN(it.count)}<br><span class="tip-eff">${itemEffect(it.key)}</span>`);
     });
 
     // 装備（武器・防具・盾）
@@ -801,10 +843,9 @@
         const btn = el('button', '', eg); btn.className = 'uiv-recipe'; btn.disabled = !r.canCraft;
         fillIcon(btn, { name: r.name, icon: ('item_' + r.kind) });
         const rt = el('div', '', btn); rt.className = 'rt';
-        rt.innerHTML = `<b>${r.name}</b><br><span style="opacity:.8">${r.cost} → 作る</span>`;
-        btn.addEventListener('mouseenter', () => buildTip(r.canCraft ? `<b>${r.name}</b> を作成<br>${r.cost} を消費` : `素材不足／既に所持：${r.cost}`));
-        btn.addEventListener('mousemove', moveTip);
-        btn.addEventListener('mouseleave', hideTip);
+        const eff = EQUIP_KIND_INFO[r.kind] || '';
+        rt.innerHTML = `<b>${r.name}</b>${eff ? `<br><span style="opacity:.95;color:#bfe6ff">${eff}</span>` : ''}<br><span style="opacity:.8">${r.cost} → 作る</span>`;
+        bindTip(btn, () => `<b>${r.name}</b>${eff ? `<br><span class="tip-eff">${eff}</span>` : ''}<br>` + (r.canCraft ? `${r.cost} を消費して作成` : `素材不足／既に所持：${r.cost}`));
         btn.addEventListener('click', () => {
           if (btn.disabled) return;
           try { const vg = window.VoxelGame; if (vg && typeof vg.craftEquip === 'function') vg.craftEquip(r.id); } catch (e) {}
@@ -823,9 +864,7 @@
       fillIcon(btn, { name: r.outName, icon: r.outIcon });
       const rt = el('div', '', btn); rt.className = 'rt';
       rt.innerHTML = `<b>${r.outName} ×${r.n}</b><br><span style="opacity:.8">${r.inName} ×${r.cost} → 作る</span>`;
-      btn.addEventListener('mouseenter', () => buildTip(r.canCraft ? `<b>${r.outName}</b> を作成<br>${r.inName} ×${r.cost} を消費` : `素材不足：${r.inName} ×${r.cost} が必要`));
-      btn.addEventListener('mousemove', moveTip);
-      btn.addEventListener('mouseleave', hideTip);
+      bindTip(btn, () => r.canCraft ? `<b>${r.outName}</b> を作成<br>${r.inName} ×${r.cost} を消費` : `素材不足：${r.inName} ×${r.cost} が必要`);
       btn.addEventListener('click', () => { if (!btn.disabled) { callCraft(i); invSig = ''; } });
     });
   }
@@ -839,9 +878,7 @@
     fillIcon(cell, { name, icon });
     const nm = el('div', '', cell); nm.className = 'nm'; nm.textContent = name;
     if (badge) { const b = el('div', '', cell); b.className = 'ct'; b.textContent = badge; }
-    cell.addEventListener('mouseenter', () => buildTip(tip));
-    cell.addEventListener('mousemove', moveTip);
-    cell.addEventListener('mouseleave', hideTip);
+    bindTip(cell, tip);
     if (onClick) cell.addEventListener('click', () => { onClick(); invSig = ''; });
     return cell;
   }
@@ -858,7 +895,7 @@
         icon: w.id === 'fist' ? null : ('item_' + w.id),
         name: w.name, active: w.active, owned: true,
         badge: w.active ? '✓' : '',
-        tip: w.active ? `<b>${w.name}</b><br>装備中` : `<b>${w.name}</b><br><span style="opacity:.7">クリックで装備（C/Bでも切替）</span>`,
+        tip: `<b>${w.name}</b>${WEAPON_INFO[w.id] ? `<br><span class="tip-eff">${WEAPON_INFO[w.id]}</span>` : ''}<br>` + (w.active ? '装備中' : '<span style="opacity:.7">タップで装備（C/Bでも切替）</span>'),
         onClick: w.active ? null : () => {
           try { window.equipWeapon && window.equipWeapon(w.id); } catch (e) {}
           try { window.playSFX && window.playSFX('pickup'); } catch (e) {}
@@ -876,8 +913,7 @@
       equipCell(dgrid, {
         icon: 'item_armor', name: label, active: on, owned: on,
         badge: on ? '○' : '-',
-        tip: on ? `<b>防具（${label}）</b><br><span style="opacity:.7">クリックで外す</span>`
-                : `<b>防具（${label}）</b> 未装備<br><span style="opacity:.7">入手・装備クラフトで装着</span>`,
+        tip: `<b>防具（${label}）</b><br><span class="tip-eff">${EQUIP_KIND_INFO.armor}</span><br>` + (on ? '<span style="opacity:.7">タップで外す</span>' : '<span style="opacity:.7">未装備：入手・装備クラフトで装着</span>'),
         onClick: on ? () => {
           try { window.unequipArmor && window.unequipArmor(slot); } catch (e) {}
           try { window.playSFX && window.playSFX('pickup'); } catch (e) {}
@@ -888,9 +924,7 @@
     equipCell(dgrid, {
       icon: 'item_shield', name: '盾', active: !!eq.shield, owned: !!eq.ownedShield,
       badge: eq.shield ? '○' : (eq.ownedShield ? '-' : ''),
-      tip: !eq.ownedShield ? `<b>盾</b> 未入手<br><span style="opacity:.7">入手・装備クラフトで使える</span>`
-           : (eq.shield ? `<b>盾</b> 構え中<br><span style="opacity:.7">クリックで下ろす</span>`
-                        : `<b>盾</b><br><span style="opacity:.7">クリックで構える</span>`),
+      tip: `<b>盾</b><br><span class="tip-eff">${EQUIP_KIND_INFO.shield}</span><br>` + (!eq.ownedShield ? '<span style="opacity:.7">未入手：装備クラフトで使える</span>' : (eq.shield ? '<span style="opacity:.7">構え中：タップで下ろす</span>' : '<span style="opacity:.7">タップで構える</span>')),
       onClick: eq.ownedShield ? () => {
         try { window.toggleShield && window.toggleShield(); } catch (e) {}
         try { window.playSFX && window.playSFX('pickup'); } catch (e) {}
@@ -1112,7 +1146,7 @@
 
     if (s.greeting) { const say = el('div', '', p); say.className = 'uit-say'; say.textContent = s.greeting; }
 
-    el('div', '', p).className = 'uiv-sec'; p.lastChild.textContent = '取引（クリックで交換）';
+    el('div', '', p).className = 'uiv-sec'; p.lastChild.textContent = '取引（渡す → もらう・クリックで交換）';
     const offers = Array.isArray(s.offers) ? s.offers : [];
     if (!offers.length) { const n = el('div', '', p); n.className = 'uit-none'; n.textContent = '今は取引できるものがないようだ…'; }
     offers.forEach((o) => {
@@ -1120,7 +1154,12 @@
       offerSide(btn, o.giveName, o.giveIcon, o.giveCount);          // 渡す（プレイヤー支払い）
       const ar = el('div', '', btn); ar.className = 'uit-arrow'; ar.textContent = '➡';
       offerSide(btn, o.getName, o.getIcon, o.getCount, 'uit-get');  // 受け取る
+      // ② もらえる物の効果（武器/防具/食料等）を1行で明示＝取引の価値が伝わるように
+      const getKey = (o.getIcon || '').replace(/^item_/, '');
+      const eff = EQUIP_KIND_INFO[getKey] || ITEM_INFO[getKey] || '';
+      if (eff) { const ec = el('div', '', btn); ec.className = 'uit-eff'; ec.textContent = '→ ' + eff; }
       btn.title = o.canAfford ? `${o.giveName}×${o.giveCount} を渡して ${o.getName}×${o.getCount} を受け取る` : `${o.giveName}×${o.giveCount} が足りません`;
+      bindTip(btn, () => `<b>${o.getName} ×${o.getCount}</b>${eff ? `<br><span class="tip-eff">${eff}</span>` : ''}<br><span style="opacity:.8">${o.giveName} ×${o.giveCount} を渡す</span>` + (o.canAfford ? '' : '<br><span style="color:#ff9a9a">在庫不足</span>'));
       btn.addEventListener('click', () => {
         if (btn.disabled) return;
         let updated = null;
