@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04z5'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04z6'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -2808,6 +2808,18 @@ function spawnLogic(dt) {
     }
     return;
   }
+  // 旅の冒険者（道中で仲間にできるNPC）。村/拠点が無い場所でも仲間候補に出会えるよう、たまに近くに湧く。
+  //   home=自分の湧き位置にして「その場をうろつく住人AI」に乗せる＝逃げない・話しかけられる・雇える。
+  if (!vil && !gar && residentN < 3 && isDay() && Math.random() < 0.4) {
+    const pool = ['villager','soldier_spear','soldier_sword','merchant','farmer'].filter(t => mobTemplates[t]);
+    const type = pool[Math.floor(Math.random()*pool.length)];
+    if (type) {
+      const ang = Math.random()*Math.PI*2, rr = 12 + Math.random()*12; // プレイヤーの12〜24m先
+      const x = player.pos.x + Math.cos(ang)*rr, z = player.pos.z + Math.sin(ang)*rr;
+      if (!isWaterColumnSurface(x, z)) { const m = spawnMob(type, x, z, { home: { x, z } }); if (m) m.traveler = true; }
+    }
+    return;
+  }
   if (neutralN < M.neutralCap) spawnNeutralNear(); // 牛/羊/豚/鶏/馬（村の近くでも湧く）
 }
 function updateMobs(dt) {
@@ -3465,12 +3477,18 @@ function talkToNPC() {
     const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
     if (d < bd) { bd = d; best = m; }
   }
-  if (!best) { if (typeof toast === 'function') toast('近くに住人がいません'); return; }
+  if (!best) { if (typeof toast === 'function') toast('近くに住人がいません（村・砦・王国城、または道中の旅人を探そう）'); return; }
   currentTradeNpc = best;
   best.obj.rotation.y = Math.atan2(-(player.pos.x - best.obj.position.x), -(player.pos.z - best.obj.position.z)); // プレイヤーを向く
   setMobAnim(best, 'talk');
+  // 雇用の可否を必ず案内（仲間にできる相手だと分かるように・UIの有無に関わらず）
+  const r = buildTradeSession(best).recruit;
+  const hint = r.already ? '（もう仲間）'
+    : r.full ? `（仲間は満員 最大${MAX_COMPANIONS}人）`
+    : (itemCounts.coin||0) < r.cost ? `（仲間に: ${r.cost}コイン必要・不足）`
+    : `→ Yキーで仲間にできる（${r.cost}コイン）`;
   if (window.UI && typeof window.UI.openTrade === 'function') window.UI.openTrade(buildTradeSession(best));
-  else if (typeof toast === 'function') toast(`${JOB_LABEL[best.def.type]||'住人'}「${NPC_GREETING[best.def.type]||'…'}」`); // UI未配線でも挨拶
+  if (typeof toast === 'function') toast(`${JOB_LABEL[best.def.type]||'住人'}「${NPC_GREETING[best.def.type]||'…'}」 ${hint}`);
 }
 function triggerHitstop(t) { hitstop = Math.max(hitstop, t); }
 // 連携口：ヒット通知（UIのダメージ数字/エフェクト用）。UI側の例外で本体を止めない
