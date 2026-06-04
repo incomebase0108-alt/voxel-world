@@ -1144,7 +1144,13 @@
     const i = coreInput();
     // 軸対応: stickVec.x = 左右(strafe, dx) / stickVec.z = 前後(forward, dy)。上=前進=z<0。
     // ① コアが input.move(dx, dz) 受け口を提供したら最優先で両軸を渡す（第1引数=左右, 第2引数=前後）
-    if (i && typeof i.move === 'function') { try { i.move(stickVec.x, stickVec.z); } catch (e) {} return; }
+    //   コア(index.html)実装: move(fwd,-z)+move(right,+x)＝上倒し(z<0)で前進・右倒し(x>0)で右。符号一致。
+    if (i && typeof i.move === 'function') {
+      // フォールバックで合成したWASDが残っていれば解除（経路切替時の前進固定バグ防止。未heldなら no-op）
+      setKey('KeyW', false); setKey('KeyS', false); setKey('KeyA', false); setKey('KeyD', false);
+      try { i.move(stickVec.x, stickVec.z); } catch (e) {}
+      return;
+    }
     // ② フォールバック: WASD 合成キー。左右(x)が抜けないよう A/D も毎回判定する
     setKey('KeyW', stickVec.z < -0.35); setKey('KeyS', stickVec.z > 0.35);
     setKey('KeyA', stickVec.x < -0.35); setKey('KeyD', stickVec.x > 0.35);
