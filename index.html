@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04z8'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04z9'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1043,8 +1043,13 @@ window.VoxelGame = {
     // ★dx/dy を NaN ガード（undefined/NaN→0）。ui.js が look(dx) を1引数で呼ぶ経路があり、dy=undefined だと
     //   player.pitch が NaN 化→カメラ破綻（スマホで空しか見えない/真上固定）になっていた根治。
     look: (dx, dy) => { const ax = +dx || 0, ay = +dy || 0; player.yaw -= ax * 0.0045; player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch - ay * 0.0045)); },
+    // ★スマホ仮想スティックのアナログ移動口（合成KeyboardEventの取りこぼし回避）。dx=左右strafe / dz=前後(上=前進=負)。
+    //   倒し量(0..1)で速度可変。(0,0)で停止。updatePlayer がキー入力より優先して使う。
+    move: (dx, dz) => { touchMove.x = +dx || 0; touchMove.z = +dz || 0; touchMove.active = (Math.abs(touchMove.x) + Math.abs(touchMove.z)) > 0.02; },
     primary: (down) => { if (down) onAttackDown(); else onAttackUp(); }, // 攻撃/採掘（弓は押下で溜め→離しで発射）
     secondary: (down) => { if (down) placeBlock(); },                    // 設置
+    talk: () => talkToNPC(),       // 会話/取引（スマホは Tキー不可＝この口で起動）
+    recruit: () => window.VoxelGame.recruit(), // 仲間化（会話中NPCを雇用）
   },
   // 必殺技（②）：3号機UI（スキルボタン/技選択）から呼ばれる口。発動演出は core が onUseSkill を呼ぶ
   useSkill:   (id) => useSkill(id),
@@ -1387,6 +1392,7 @@ ensureRideableBoat(Math.floor(player.pos.x), Math.floor(player.pos.z), 64);
 function waterAtPlayer(yOff) { return getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + yOff), Math.floor(player.pos.z)) === B.water; }
 function playerHeadInWater() { return waterAtPlayer(PH - 0.1); }
 const keys = {};
+const touchMove = { x: 0, z: 0, active: false }; // スマホ仮想スティックのアナログ移動（VoxelGame.input.move で更新）
 let selBlock = B.grass;
 let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
 let avatarYaw = 0;       // 三人称アバターの向き（移動方向に追従）
@@ -1462,7 +1468,12 @@ function updatePlayer(dt) {
   if (keys['KeyS']) move.sub(fwd);
   if (keys['KeyD']) move.add(right);
   if (keys['KeyA']) move.sub(right);
-  if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
+  // ★スマホ仮想スティックのアナログ移動を加算（WASDと共存）。dz=前後(負=前進)・dx=左右(正=右)。倒し量で速度可変。
+  if (touchMove.active) { move.addScaledVector(fwd, -touchMove.z); move.addScaledVector(right, touchMove.x); }
+  if (move.lengthSq() > 0) {
+    const mag = Math.min(1, move.length());        // アナログの倒し量を速度に反映（キー入力時は1にクランプ＝従来どおり）
+    move.normalize().multiplyScalar(speed * mag);
+  }
   player.vel.x = move.x;
   player.vel.z = move.z;
 
