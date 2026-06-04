@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04z4'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04z5'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -867,6 +867,7 @@ function serializeWorld() {
       x: +m.obj.position.x.toFixed(2), y: +m.obj.position.y.toFixed(2), z: +m.obj.position.z.toFixed(2),
       ry: +m.obj.rotation.y.toFixed(3), hp: m.hp, st: m.state,
       hm: m.home || undefined, // 住人NPCの定住アンカー
+      cp: m.companion ? 1 : undefined, cm: m.companion ? m.cmdMode : undefined, mhp: m.companion ? m.maxHp : undefined, // 仲間（種別/指示/最大HP）
     })),
   };
 }
@@ -1004,6 +1005,9 @@ window.VoxelGame = {
       armor: { ...equip.armor }, shield: equip.shield, ownedShield, defense: defenseFactor(),
     },
     mobs: mobs.slice(0, 16).map(m => ({ x:m.obj.position.x, z:m.obj.position.z, hostile:!!m.hostile, type:m.def.type })),
+    // 仲間パーティ（3号機HUDの仲間表示・指示ボタン用）。操作は VoxelGame.recruit / commandCompanion
+    companions: companions.map(c => ({ id:c.cid, name:JOB_LABEL[c.def.type]||c.def.type, type:c.def.type, hp:Math.ceil(c.hp), maxHp:c.maxHp||COMPANION_HP, mode:c.cmdMode })),
+    companionMax: MAX_COMPANIONS,
     // 必殺技（②）：習得済みが1つも無ければ undefined＝3号機HUD非表示。equipped/list/energy を公開
     skills: (() => {
       const learned = learnedSkills(); if (!learned.length) return undefined;
@@ -1893,6 +1897,11 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyC') { const eq = effectiveEquipped(); if (eq[2] && !invOpen) useSkill(eq[2]); else cycleWeapon(); }
   if (e.code === 'KeyB') cycleWeapon(); // 武器切替の予備（C が必殺技で埋まっても切替可能に）
   if (e.code === 'KeyT') talkToNPC();   // 近くの住人に話しかける/取引
+  if (e.code === 'KeyY') window.VoxelGame.recruit(); // 会話中の住人を仲間に（コイン）※3号機UIボタンと同じ口
+  if (e.code === 'KeyU') { // 仲間の指示を一括トグル（追従→攻撃→待機）。3号機UIボタンと併用可
+    const next = { follow:'attack', attack:'wait', wait:'follow' }[(companions[0] && companions[0].cmdMode) || 'follow'];
+    if (companions.length) window.VoxelGame.commandCompanion(null, next);
+  }
   if (e.code === 'KeyE') { invOpen ? closeInventory() : openInventory(); } // インベントリ開閉
   if (e.code === 'Escape' && invOpen) closeInventory();
   if (e.code === 'Space') e.preventDefault();
@@ -2099,6 +2108,7 @@ function buildDiag() {
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 住人${mobs.filter(m=>m.home).length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
     `モブ地中埋没  : ${mobs.filter(m=>m.buried).length}体（透明な敵の監視。0が正常／復帰処理が毎フレーム作動）`,
     `ボス討伐記録 : ドラゴン${bossKills.dragon||0} / スケ王${bossKills.skeleton_king||0} / デーモン${bossKills.demon||0} / ゴーレム${bossKills.golem||0}（撃破で特別報酬＝大量EXP・金・確定レア装備）`,
+    `仲間         : ${companions.length}/${MAX_COMPANIONS}人 ${companions.map(c=>`${JOB_LABEL[c.def.type]||c.def.type}(HP${Math.ceil(c.hp)}/${c.maxHp}・${c.cmdMode})`).join(' / ')||'なし'}　※T会話→Y雇用(${COMPANION_COST}coin)／U指示切替(追従/攻撃/待機)`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
     `構造物       : 村${villages.size} / スポナー${spawners.size} / プロップ${props.size}(表示${[...props.values()].filter(p=>p.obj).length}) / structテンプレ${Object.keys(structTemplates).length}種`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
@@ -2402,6 +2412,11 @@ MOB_DEFS.forEach(def => gltfLoader.load(def.file,
   undefined, () => {}));
 
 const mobs = [];
+// 仲間システム：住人NPCをコインで雇って追従＋共闘。companions は mobs の部分集合への参照。
+const companions = [];           // 仲間モブの配列（mobs にも入っている）
+const MAX_COMPANIONS = 3;        // 最大仲間数
+const COMPANION_COST = 5;        // 雇用コスト（コイン）
+const COMPANION_HP = 24;         // 仲間の最大HP（雇用時に付与）
 // ⑤ モブの体力・上限・湧き距離・速度は CFG.mob、戦闘数値は CFG.combat に集約（生参照で即反映）
 const M = CFG.mob;
 const C = CFG.combat;
@@ -2497,6 +2512,77 @@ function chaseHeading(m, dt) {
   }
   return { x: m.navx, z: m.navz };
 }
+// 任意座標への追跡ヘディング（仲間が敵/プレイヤーを追う用）。A*→無ければ直線。
+function chaseHeadingTo(m, dt, tx, tz) {
+  m.navCd -= dt;
+  if (m.navCd <= 0) {
+    m.navCd = 0.4 + Math.random()*0.25;
+    const d = findPathDir(m.obj.position.x, m.obj.position.z, tx, tz, m.obj.position.y, 160);
+    if (d) { m.navx = d.x; m.navz = d.z; }
+    else { const ex = tx - m.obj.position.x, ez = tz - m.obj.position.z, L = Math.hypot(ex, ez) || 1; m.navx = ex/L; m.navz = ez/L; }
+  }
+  return { x: m.navx, z: m.navz };
+}
+// ===== 仲間システム（雇用→追従/共闘→HP管理/離脱）=====
+let companionIdSeq = 0;
+function nearestHostileTo(x, z, maxD) {
+  let best = null, bd = maxD;
+  for (const o of mobs) { if (!o.hostile || o.dying) continue; const d = Math.hypot(o.obj.position.x - x, o.obj.position.z - z); if (d < bd) { bd = d; best = o; } }
+  return best;
+}
+// 仲間の攻撃（プレイヤー演出=ヒットストップ/シェイクは出さない軽量版。撃破はkillMob＝EXP/ドロップはプレイヤーへ）
+function companionAttack(m, target) {
+  if (target.dying) return;
+  const dmg = 4;
+  target.hp -= dmg;
+  const kx = target.obj.position.x - m.obj.position.x, kz = target.obj.position.z - m.obj.position.z, kl = Math.hypot(kx, kz) || 1;
+  target.obj.position.x += kx/kl*0.25; target.obj.position.z += kz/kl*0.25;
+  if (window.spawnDamagePopup) window.spawnDamagePopup(target.obj.position.x, target.obj.position.y+1, target.obj.position.z, dmg, {});
+  if (window.playSFX) window.playSFX('hit');
+  flashMob(target);
+  if (target.hp <= 0) killMob(target);
+  else { setMobAnim(target, 'hit'); target.hitStun = 0.2; }
+}
+function companionTakeDamage(m, dmg) {
+  m.hp -= Math.max(1, Math.round(dmg));
+  flashMob(m);
+  try { window.onCompanionHit && window.onCompanionHit(m.def.type); } catch (e) {}
+  if (m.hp <= 0) leaveCompanion(m, 'death');
+}
+function leaveCompanion(m, reason) {
+  const i = companions.indexOf(m); if (i >= 0) companions.splice(i, 1);
+  m.companion = false; m.cmdMode = null;
+  try { window.onCompanionLeave && window.onCompanionLeave(m.def.type); } catch (e) {}
+  if (reason === 'death') { // 戦死＝死亡演出して除去
+    if (!m.dying) { m.dying = true; m.hp = 0; if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); } else m.dieTimer = 0; }
+  } else { m.home = { x: m.obj.position.x, z: m.obj.position.z }; } // 解雇＝その場に住人として残す
+  if (typeof toast === 'function') toast(reason === 'death' ? `仲間が倒れた…（${JOB_LABEL[m.def.type]||m.def.type}）` : '仲間を解雇した');
+  scheduleSave();
+}
+// 仲間AI：mode=follow(追従＋自衛) / wait(待機＋自衛) / attack(積極的に敵へ)
+function updateCompanion(m, dt, dx, dz, dist) {
+  m.dmgCd = Math.max(0, (m.dmgCd || 0) - dt);
+  m.atkCd = Math.max(0, (m.atkCd || 0) - dt);
+  const aggro = m.cmdMode === 'wait' ? 6 : m.cmdMode === 'attack' ? 20 : 13; // 索敵範囲（待機は自衛のみ）
+  const target = nearestHostileTo(m.obj.position.x, m.obj.position.z, aggro);
+  let moving = false, animName = 'idle', dhx = 0, dhz = 0;
+  // プレイヤーから離れすぎたら戦闘より追従を優先（はぐれ防止。attack時は緩め）
+  const leashed = dist > (m.cmdMode === 'attack' ? 26 : 16);
+  if (target && !leashed) {
+    const tdx = target.obj.position.x - m.obj.position.x, tdz = target.obj.position.z - m.obj.position.z, td = Math.hypot(tdx, tdz) || 0.0001;
+    if (td > 1.6) { const h = chaseHeadingTo(m, dt, target.obj.position.x, target.obj.position.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; }
+    else { // 近接：攻撃＋接敵による被ダメ
+      m.obj.rotation.y = Math.atan2(-tdx, -tdz); animName = 'attack';
+      if (m.atkCd <= 0) { m.atkCd = 0.9; companionAttack(m, target); }
+      if (m.dmgCd <= 0) { m.dmgCd = 1.2; companionTakeDamage(m, C.meleeDmg); }
+    }
+  } else if (m.cmdMode !== 'wait') { // 追従（待機は留まる）
+    if (dist > 4) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; }
+  }
+  if (moving) tryMoveMob(m, dhx, dhz, M.speedHostile, dt);
+  else followFloor(m, dt);
+  setMobAnim(m, animName);
+}
 // 経路探索の負荷計測（診断用）。毎秒スナップショットを取る
 let pathCallsAcc = 0, pathNodesAcc = 0, pathCallsPerSec = 0, pathNodesPerSec = 0;
 // 簡易A*（足場グリッド上）。最初の一歩の単位ベクトルを返す。ノード数 maxNodes で打ち切り
@@ -2586,6 +2672,11 @@ function spawnMob(type, x, z, opts = {}) {
     navx:0, navz:0, navCd: Math.random()*0.5, wx:0, wz:0, flx:0, flz:0, stuck:0 };
   mobs.push(mob);
   if (def.role === 'boss' && mobsRestored) onBossSpawned(mob); // ⑥ ボス出現演出（live湧きのみ。セーブ復元中=mobsRestored前 は鳴らさない）
+  if (opts.companion) { // セーブからの仲間復元（雇用は recruit 口で行う）
+    mob.companion = true; mob.cmdMode = opts.cmdMode || 'follow'; mob.maxHp = opts.maxHp || COMPANION_HP;
+    mob.hostile = false; mob.home = null; mob.cid = ++companionIdSeq;
+    companions.push(mob);
+  }
   return mob;
 }
 // セーブされたモブ一覧を復元（テンプレ読込完了後に updateMobs から1回だけ呼ばれる）
@@ -2600,6 +2691,7 @@ function restorePendingMobs() {
       hp: Number.isFinite(md.hp) ? md.hp : undefined,
       state: md.st,
       home: (md.hm && Number.isFinite(md.hm.x) && Number.isFinite(md.hm.z)) ? md.hm : undefined, // 住人の定住アンカー復元
+      companion: md.cp ? true : undefined, cmdMode: md.cm, maxHp: Number.isFinite(md.mhp) ? md.mhp : undefined, // 仲間の復元
     });
   }
   pendingMobLoad = null;
@@ -2751,6 +2843,7 @@ function updateMobs(dt) {
     const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z;
     const dist = Math.hypot(dx, dz) || 0.0001;
     const dy = Math.abs(m.obj.position.y - player.pos.y); // 垂直距離。地下/上空に詰まった敵の「見えない攻撃」を遮断する
+    if (m.companion) { updateCompanion(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 仲間は despawn しない・専用AI
     if (dist > M.despawn) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
     // ④ 朝＝地上の敵性は陽光で消滅（地下の敵は生存＝洞窟は常時湧き）。プレイヤーから離れた個体のみ
     if (m.hostile && isDay() && dist > 18) {
@@ -3296,7 +3389,7 @@ const TRADE_TABLE = {
   default:    [ {give:{coin:2},get:{apple:1}}, {give:{apple:2},get:{coin:3}} ],
 };
 const NPC_GREETING = { merchant:'いい品揃えだよ、見ていきな', blacksmith:'鉄はあるか？武器を打つぜ', farmer:'作物と交換しないか', baker:'焼きたてだよ！', guard:'通行人か、気をつけてな', elder:'よく来たな、若いの', child:'わー、ぼうけんしゃだ！', woman:'こんにちは', villager:'やあ' };
-const JOB_LABEL = { merchant:'商人', blacksmith:'鍛冶屋', farmer:'農民', baker:'パン屋', guard:'衛兵', elder:'長老', child:'子供', woman:'住人', villager:'村人' };
+const JOB_LABEL = { merchant:'商人', blacksmith:'鍛冶屋', farmer:'農民', baker:'パン屋', guard:'衛兵', elder:'長老', child:'子供', woman:'住人', villager:'村人', soldier_spear:'槍兵', soldier_sword:'剣兵', soldier_captain:'隊長' };
 let currentTradeNpc = null;
 function equipDisplayName(kind) { return (WEAPONS[kind] && WEAPONS[kind].name) || (kind === 'armor' ? '防具' : kind === 'shield' ? '盾' : kind); }
 function buildTradeSession(m) {
@@ -3313,8 +3406,40 @@ function buildTradeSession(m) {
       canAfford: (itemCounts[gk] || 0) >= gn,
     };
   });
-  return { npc: JOB_LABEL[job] || '住人', job, greeting: NPC_GREETING[job] || '…', offers };
+  // 仲間化の可否（3号機UIが「仲間にする(◯coin)」ボタンを出す用）
+  const recruit = {
+    cost: COMPANION_COST,
+    already: !!m.companion,
+    full: companions.length >= MAX_COMPANIONS,
+    canRecruit: !m.companion && companions.length < MAX_COMPANIONS && (itemCounts.coin || 0) >= COMPANION_COST,
+  };
+  return { npc: JOB_LABEL[job] || '住人', job, greeting: NPC_GREETING[job] || '…', offers, recruit };
 }
+// 会話中の住人を雇って仲間にする（3号機UIの「仲間にする」ボタン→ VoxelGame.recruit）
+window.VoxelGame.recruit = () => {
+  const m = currentTradeNpc;
+  if (!m || !m.home || m.companion) return false;                       // 会話中の住人(未仲間)のみ
+  if (companions.length >= MAX_COMPANIONS) { if (typeof toast==='function') toast(`仲間は満員（最大${MAX_COMPANIONS}人）`); return false; }
+  if ((itemCounts.coin || 0) < COMPANION_COST) { if (typeof toast==='function') toast(`コインが足りない（${COMPANION_COST}枚必要）`); return false; }
+  itemCounts.coin -= COMPANION_COST;
+  m.companion = true; m.cmdMode = 'follow'; m.home = null; m.hostile = false;
+  m.maxHp = COMPANION_HP; m.hp = COMPANION_HP; m.cid = ++companionIdSeq;
+  companions.push(m);
+  try { window.onCompanionJoin && window.onCompanionJoin(m.def.type); } catch (e) {}
+  if (typeof toast === 'function') toast(`${JOB_LABEL[m.def.type]||'住人'}が仲間になった！（追従）`);
+  updateHotbar(); scheduleSave();
+  return buildTradeSession(m); // 更新後セッションを返してUI再描画
+};
+// 仲間への指示（id省略=全員）。mode='follow'|'wait'|'attack'。解雇は mode='dismiss'。
+window.VoxelGame.commandCompanion = (id, mode) => {
+  if (mode === 'dismiss') { (id==null?[...companions]:companions.filter(c=>c.cid===id)).forEach(c => leaveCompanion(c, 'dismiss')); return true; }
+  if (!['follow','wait','attack'].includes(mode)) return false;
+  const list = (id == null) ? companions : companions.filter(c => c.cid === id);
+  list.forEach(c => c.cmdMode = mode);
+  if (typeof toast === 'function') toast(`仲間: ${mode==='follow'?'追従':mode==='wait'?'待機':'攻撃'}`);
+  scheduleSave();
+  return true;
+};
 // 取引実行（3号機UIのボタンから）。在庫増減→更新後セッションを返して再描画させる
 window.VoxelGame.trade = (offerId) => {
   if (!currentTradeNpc) return null;
