@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 118,
-    "size_bytes": 17438128,
-    "size_mb": 16.63
+    "count": 130,
+    "size_bytes": 18411048,
+    "size_mb": 17.558
   },
   "assets": [
     {
@@ -1325,6 +1325,18 @@
       "error": null
     },
     {
+      "file": "dgn_altar_boss.glb",
+      "name": "dgn_altar_boss",
+      "category": "室内・ダンジョン",
+      "size_bytes": 105960,
+      "size_mb": 0.1011,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 14,
+      "error": null
+    },
+    {
       "file": "dgn_anvil.glb",
       "name": "dgn_anvil",
       "category": "室内・ダンジョン",
@@ -1433,6 +1445,18 @@
       "error": null
     },
     {
+      "file": "dgn_crown.glb",
+      "name": "dgn_crown",
+      "category": "室内・ダンジョン",
+      "size_bytes": 88352,
+      "size_mb": 0.0843,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 9,
+      "error": null
+    },
+    {
       "file": "dgn_door_iron.glb",
       "name": "dgn_door_iron",
       "category": "室内・ダンジョン",
@@ -1457,6 +1481,18 @@
       "error": null
     },
     {
+      "file": "dgn_floor_stone.glb",
+      "name": "dgn_floor_stone",
+      "category": "室内・ダンジョン",
+      "size_bytes": 49248,
+      "size_mb": 0.047,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
+      "error": null
+    },
+    {
       "file": "dgn_forge.glb",
       "name": "dgn_forge",
       "category": "室内・ダンジョン",
@@ -1469,6 +1505,30 @@
       "error": null
     },
     {
+      "file": "dgn_gems.glb",
+      "name": "dgn_gems",
+      "category": "室内・ダンジョン",
+      "size_bytes": 65572,
+      "size_mb": 0.0625,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 8,
+      "error": null
+    },
+    {
+      "file": "dgn_magic_floor.glb",
+      "name": "dgn_magic_floor",
+      "category": "室内・ダンジョン",
+      "size_bytes": 77780,
+      "size_mb": 0.0742,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 6,
+      "error": null
+    },
+    {
       "file": "dgn_pillar.glb",
       "name": "dgn_pillar",
       "category": "室内・ダンジョン",
@@ -1478,6 +1538,30 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 2,
+      "error": null
+    },
+    {
+      "file": "dgn_sign_wood.glb",
+      "name": "dgn_sign_wood",
+      "category": "室内・ダンジョン",
+      "size_bytes": 74060,
+      "size_mb": 0.0706,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "dgn_spike_trap.glb",
+      "name": "dgn_spike_trap",
+      "category": "室内・ダンジョン",
+      "size_bytes": 53972,
+      "size_mb": 0.0515,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 5,
       "error": null
     },
     {
@@ -1517,6 +1601,18 @@
       "error": null
     },
     {
+      "file": "dgn_throne.glb",
+      "name": "dgn_throne",
+      "category": "室内・ダンジョン",
+      "size_bytes": 79160,
+      "size_mb": 0.0755,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 7,
+      "error": null
+    },
+    {
       "file": "dgn_torch_wall.glb",
       "name": "dgn_torch_wall",
       "category": "室内・ダンジョン",
@@ -1526,6 +1622,54 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 4,
+      "error": null
+    },
+    {
+      "file": "dgn_trapdoor.glb",
+      "name": "dgn_trapdoor",
+      "category": "室内・ダンジョン",
+      "size_bytes": 42708,
+      "size_mb": 0.0407,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 7,
+      "error": null
+    },
+    {
+      "file": "dgn_treasure_gold.glb",
+      "name": "dgn_treasure_gold",
+      "category": "室内・ダンジョン",
+      "size_bytes": 193796,
+      "size_mb": 0.1848,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 2,
+      "error": null
+    },
+    {
+      "file": "dgn_wall_cracked.glb",
+      "name": "dgn_wall_cracked",
+      "category": "室内・ダンジョン",
+      "size_bytes": 65792,
+      "size_mb": 0.0627,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 4,
+      "error": null
+    },
+    {
+      "file": "dgn_wall_mossy.glb",
+      "name": "dgn_wall_mossy",
+      "category": "室内・ダンジョン",
+      "size_bytes": 76520,
+      "size_mb": 0.073,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 5,
       "error": null
     },
     {
