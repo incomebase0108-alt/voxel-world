@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04zg'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04zh'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -935,7 +935,7 @@ function serializeWorld() {
     equip: { weapon: currentWeapon, owned: [...ownedWeapons], armor: { ...equip.armor }, shield: equip.shield, ownedShield }, // 装備
     time: { dayTime, weather, autoWeather, weatherTimer },            // 時刻・天候
     // モブ（騎乗中の馬も含む。位置/向き/HP/状態を保存し、ロード時に再スポーン）
-    mobs: mobs.map(m => ({
+    mobs: mobs.filter(m => !m.dying).map(m => ({ // 死亡演出中(HP0)のmobはセーブしない＝死んだ仲間/敵を残さない
       t: m.def.type,
       x: +m.obj.position.x.toFixed(2), y: +m.obj.position.y.toFixed(2), z: +m.obj.position.z.toFixed(2),
       ry: +m.obj.rotation.y.toFixed(3), hp: m.hp, st: m.state,
@@ -2672,17 +2672,16 @@ function companionTakeDamage(m, dmg) {
   m.hp -= Math.max(1, Math.round(dmg));
   flashMob(m);
   try { window.onCompanionHit && window.onCompanionHit(m.def.type); } catch (e) {}
-  if (m.hp <= 0) leaveCompanion(m, 'death');
+  if (m.hp <= 0) killMob(m); // 戦死＝killMob が companions から即削除＋離脱音＋死亡演出（HP0で残さない）
 }
+// 解雇（dismiss）：companions から外し、その場に住人として残す。死亡は killMob 側で処理。
 function leaveCompanion(m, reason) {
   const i = companions.indexOf(m); if (i >= 0) companions.splice(i, 1);
   m.companion = false; m.cmdMode = null;
+  removeAllyMarker(m);
   try { window.onCompanionLeave && window.onCompanionLeave(m.def.type); } catch (e) {}
-  removeAllyMarker(m); // 頭上マーカー除去
-  if (reason === 'death') { // 戦死＝死亡演出して除去
-    if (!m.dying) { m.dying = true; m.hp = 0; if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); } else m.dieTimer = 0; }
-  } else { m.home = { x: m.obj.position.x, z: m.obj.position.z }; } // 解雇＝その場に住人として残す
-  if (typeof toast === 'function') toast(reason === 'death' ? `仲間が倒れた…（${JOB_LABEL[m.def.type]||m.def.type}）` : '仲間を解雇した');
+  m.home = { x: m.obj.position.x, z: m.obj.position.z }; // 解雇＝その場に住人として残す
+  if (typeof toast === 'function') toast('仲間を解雇した');
   scheduleSave();
 }
 // 仲間AI：mode=follow(追従＋自衛) / wait(待機＋自衛) / attack(積極的に敵へ)
@@ -3844,6 +3843,14 @@ function updateMobFlash(m, dt) {
 }
 function killMob(m) {
   m.dying = true; m.hp = 0;
+  if (m.companion) { // 仲間が死んだら companions から即削除（HP0で残さない・UI/セーブからも消える・枠が空く）。離脱音を鳴らす
+    const ci = companions.indexOf(m); if (ci >= 0) companions.splice(ci, 1);
+    m.companion = false; m.cmdMode = null; removeAllyMarker(m);
+    try { window.onCompanionLeave && window.onCompanionLeave(m.def.type); } catch (e) {}
+    if (typeof toast === 'function') toast(`仲間が倒れた…（${JOB_LABEL[m.def.type]||m.def.type}）`);
+    if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); } else m.dieTimer = 0; // 死亡演出後に mobs から除去
+    scheduleSave(); return; // 仲間死亡では討伐EXP/ドロップは出さない（味方なので）
+  }
   spawnDrop(MOB_DROP[m.def.type], m.obj.position.x, m.obj.position.y, m.obj.position.z);
   maybeDropEquip(m); // 装備品の抽選ドロップ
   // 討伐EXP（敵の強さ＝最大HP比例、ボスは加算）
