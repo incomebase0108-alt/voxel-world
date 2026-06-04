@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04zc'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04zd'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -2238,6 +2238,8 @@ function playAvatarAttack() {
 //   hand: 'R'=右手(剣/斧/ピッケル) / 'L'=左手(弓/盾)。rotX=グリップ前傾(rad)。offset=手アンカーからの体フレーム(glTF)ずらし。
 const HOLD = {
   sword:   { hand:'R', rotX:-0.314, offset:[0,0,0] },        // 刃を上やや前へ(-18°)・原点=握り中央
+  steel_sword: { hand:'R', rotX:-0.314, offset:[0,0,0] },    // 鋼の剣（見た目は剣モデル流用）
+  gold_sword:  { hand:'R', rotX:-0.314, offset:[0,0,0] },    // 金の剣（同上）
   axe:     { hand:'R', rotX:-0.21,  offset:[0,0,0] },        // 斧頭を上前方(-12°)
   pickaxe: { hand:'R', rotX:-0.21,  offset:[0,0,0] },        // 頭を上前方(-12°)
   bow:     { hand:'L', rotX: 0.14,  offset:[0,0.05,-0.04] }, // 弓を縦(+8°)・握り中央へ
@@ -2348,8 +2350,11 @@ const WEAPONS = {
   axe:     { name:'斧',       dmg:9, reach:3.0, dot:0.55, swing:0.72, knock:0.9,  ranged:false, anim:0.65, hitstop:0.15 }, // 大振り・遅い・重い
   pickaxe: { name:'ピッケル', dmg:4, reach:2.8, dot:0.40, swing:0.34, knock:0.4,  ranged:false, anim:1.2,  hitstop:0.06 }, // 採掘向き・素手より少し上
   bow:     { name:'弓',       dmg:7, reach:0,   dot:0,    swing:0.5,  knock:0.25, ranged:true,  anim:1.0,  hitstop:0.05 }, // 遠距離・溜め
+  // ②段階強化（鉄→鋼→金）。鍛冶屋/クラフトで前段+素材から作成。威力が明確に上がる＝強い敵に挑めるループ。
+  steel_sword: { name:'鋼の剣', dmg:8,  reach:3.4, dot:0.28, swing:0.40, knock:0.6, ranged:false, anim:0.95, hitstop:0.10 },
+  gold_sword:  { name:'金の剣', dmg:13, reach:3.5, dot:0.26, swing:0.42, knock:0.7, ranged:false, anim:0.90, hitstop:0.12 },
 };
-const WEAPON_ORDER = ['fist','sword','axe','pickaxe','bow'];
+const WEAPON_ORDER = ['fist','sword','steel_sword','gold_sword','axe','pickaxe','bow'];
 let currentWeapon = 'fist'; // 初期は素手（武器は入手して持ち替え）
 const equip = { armor: { head:false, body:false, legs:false }, shield:false }; // 装備状態
 const ownedWeapons = new Set(['fist']); // 入手済み武器（fist常時）
@@ -3371,7 +3376,7 @@ const BOSS_REWARD = {
 const drops = []; // 地面に落ちたアイテム { obj, item, equip?, t, life }
 
 // 装備品の落下モデル（4号機の item_*.glb）。kind→ファイル名（防具/盾は専用、武器は同名）
-const EQUIP_MODEL = { sword:'sword', axe:'axe', bow:'bow', pickaxe:'pickaxe', shield:'shield', armor:'armor' };
+const EQUIP_MODEL = { sword:'sword', steel_sword:'sword', gold_sword:'sword', axe:'axe', bow:'bow', pickaxe:'pickaxe', shield:'shield', armor:'armor' };
 const equipTemplates = {}; // kind -> scene
 for (const k in EQUIP_MODEL) gltfLoader.load(`models/item_${EQUIP_MODEL[k]}.glb`, g => { equipTemplates[k] = g.scene; if (k === currentWeapon || k === 'shield') updateHeldWeapon(); }, undefined, () => {}); // 後着モデルも手に反映
 // 装備品を地面にドロップ（拾うと grantEquip）
@@ -3496,11 +3501,15 @@ const EQUIP_RECIPES = [
   { id:'bow',     name:'弓',       kind:'bow',     mats:{},          blocks:{ [B.planks]:3 } },
   { id:'shield',  name:'盾',       kind:'shield',  mats:{ iron:1 },  blocks:{ [B.planks]:3 } },
   { id:'armor',   name:'防具1枚',  kind:'armor',   mats:{ iron:3 },  blocks:{} },
+  // ②段階強化（前段の所持が条件 req）。鉄の剣→鋼の剣→金の剣。威力 5→8→13。
+  { id:'steel_sword', name:'鋼の剣（剣を強化）', kind:'steel_sword', req:'sword',       mats:{ iron:4, coal:2 },  blocks:{} }, // 石炭=製鋼の燃料（石炭の用途）
+  { id:'gold_sword',  name:'金の剣（鋼を強化）', kind:'gold_sword',  req:'steel_sword', mats:{ gold:3, iron:2 },  blocks:{} },
 ];
 function canCraftEquip(r) {
   if (!r) return false;
   for (const k in r.mats)   if ((itemCounts[k]||0) < r.mats[k])   return false;
   for (const b in r.blocks) if ((counts[b]||0)     < r.blocks[b]) return false;
+  if (r.req && !ownedWeapons.has(r.req)) return false;                            // ②段階強化：前段の武器を所持していること
   if (WEAPONS[r.kind] && ownedWeapons.has(r.kind)) return false;                  // 既所持の武器は不要
   if (r.kind === 'shield' && ownedShield) return false;                           // 盾は1つで十分
   if (r.kind === 'armor' && equip.armor.head && equip.armor.body && equip.armor.legs) return false; // 防具枠満杯
@@ -3523,7 +3532,7 @@ window.VoxelGame.craftEquip = (id) => craftEquip(id);
 // ===================================================================
 const TRADE_TABLE = {
   merchant:   [ {give:{coin:3},get:{apple:2}}, {give:{coin:4},get:{meat:2}}, {give:{apple:3},get:{coin:5}}, {give:{egg:4},get:{coin:6}} ],
-  blacksmith: [ {give:{iron:2},equip:'sword'}, {give:{iron:2},equip:'pickaxe'}, {give:{iron:3},equip:'axe'}, {give:{iron:3},equip:'armor'}, {give:{gold:4},equip:'shield'} ],
+  blacksmith: [ {give:{iron:2},equip:'sword'}, {give:{iron:4},equip:'steel_sword'}, {give:{gold:3},equip:'gold_sword'}, {give:{iron:2},equip:'pickaxe'}, {give:{iron:3},equip:'axe'}, {give:{iron:3},equip:'armor'}, {give:{gold:4},equip:'shield'} ],
   farmer:     [ {give:{coin:2},get:{apple:3}}, {give:{apple:2},get:{coin:3}}, {give:{coin:3},get:{egg:2}} ],
   baker:      [ {give:{coin:3},get:{meat:2}}, {give:{coin:2},get:{apple:2}} ],
   default:    [ {give:{coin:2},get:{apple:1}}, {give:{apple:2},get:{coin:3}} ],
