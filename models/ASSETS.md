@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 101 ファイル / 15.53 MB
+**合計**: 118 ファイル / 16.63 MB
 
 
 ## プレイヤー
@@ -161,6 +161,28 @@
 | `fx_collapse.glb` | 0.0738 | `loop` | 3/3 |
 | `fx_magic_circle.glb` | 0.3806 | `loop` | 3/3 |
 | `fx_miasma.glb` | 0.3016 | `loop` | 3/3 |
+
+## 室内・ダンジョン
+
+| ファイル | 容量(MB) | クリップ | mesh/node |
+|---|---|---|---|
+| `dgn_anvil.glb` | 0.0393 | —（静物） | 1/1 |
+| `dgn_banner.glb` | 0.0242 | —（静物） | 1/1 |
+| `dgn_barrel.glb` | 0.0321 | —（静物） | 1/1 |
+| `dgn_bars.glb` | 0.0533 | —（静物） | 1/1 |
+| `dgn_bookshelf.glb` | 0.1048 | —（静物） | 1/1 |
+| `dgn_candelabra.glb` | 0.0820 | —（静物） | 1/1 |
+| `dgn_chair.glb` | 0.0227 | —（静物） | 1/1 |
+| `dgn_chest_closed.glb` | 0.0268 | —（静物） | 1/1 |
+| `dgn_chest_open.glb` | 0.0638 | —（静物） | 1/1 |
+| `dgn_door_iron.glb` | 0.2791 | —（静物） | 1/1 |
+| `dgn_door_wood.glb` | 0.1030 | —（静物） | 1/1 |
+| `dgn_forge.glb` | 0.1006 | —（静物） | 1/1 |
+| `dgn_pillar.glb` | 0.0416 | —（静物） | 1/1 |
+| `dgn_stairs.glb` | 0.0239 | —（静物） | 1/1 |
+| `dgn_stairs_spiral.glb` | 0.0603 | —（静物） | 1/1 |
+| `dgn_table.glb` | 0.0175 | —（静物） | 1/1 |
+| `dgn_torch_wall.glb` | 0.0250 | —（静物） | 1/1 |
 
 ## 町小物
 

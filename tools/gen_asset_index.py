@@ -48,6 +48,7 @@ def category(name):
     if name.startswith("fort_"): return ("砦・城塞", 7)
     if name.startswith("ship_"): return ("船", 8)
     if name.startswith("prop_"): return ("町小物", 25)
+    if name.startswith("dgn_"):   return ("室内・ダンジョン", 11)
     if name.startswith("fx_"):    return ("演出（ボス出現FX）", 10)
     if name.startswith("item_") and name in EQUIP: return ("装備・道具", 5)
     if name.startswith("item_"):  return ("アイテム", 4)
