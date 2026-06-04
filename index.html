@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04v'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04w'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -595,7 +595,7 @@ function buildDungeon(ox, oz, sw) {
   sw(ox-2, fy+1, oz-2, B.chest);   // 宝箱
   sw(ox,   fy+1, oz,   B.spawner); // 敵スポナー
   spawners.set(`${ox},${fy+1},${oz}`, { x: ox, y: fy+1, z: oz, cd: 0 });
-  if (hash2(ox*11+1, oz*11+9) < 0.18) // 一部のダンジョンは「魔窟」＝デーモンの巣（※mob_demon.glb 到着で出現）
+  if (hash2(ox*11+1, oz*11+9) < 0.18) // 一部のダンジョンは「魔窟」＝デーモンの巣（mob_demon.glb 本採用済み＝接近で出現・撃破で特別報酬）
     bossSpots.set(`${ox},${fy+2},${oz}`, { x: ox, y: fy+1, z: oz, type: 'demon', cd: 0, mob: null, trig: 14 });
   // 装飾プロップ（GLB表示）：宝箱・スポナー・壁際の松明4本・奥の祭壇
   addProp(ox-2, fy+1, oz-2, 'chest');
@@ -2269,7 +2269,7 @@ const MOB_DEFS = [
   { type:'golem',    file:'models/mob_golem.glb',    role:'boss'   },
   { type:'dragon',   file:'models/mob_dragon.glb',   role:'boss'   }, // ⑤ ボス（4号機・golem骨格/clips一致＝role:bossで完全動作）
   { type:'skeleton_king', file:'models/mob_skeleton_king.glb', role:'boss' }, // ⑤ ボス第2弾（4号機・大剣の薙ぎ=attack/叩き付け=heavy）
-  { type:'demon',    file:'models/mob_demon.glb',    role:'boss'   }, // ⑥ ボス第3弾（※models/mob_demon.glb 未配置なら読込失敗→静かにスキップ＝配線のみ先行・モデル到着で自動有効）
+  { type:'demon',    file:'models/mob_demon.glb',    role:'boss'   }, // ⑥ ボス第3弾（4号機 本採用 8701c47・魔系マグマ。golem/dragon と同契約＝role:boss で完全動作。ダンジョンの魔窟に出現）
   // 海の魚（4号機・群れで海バイオームに湧く中立。aquatic=水中専用AI）
   { type:'fish',          file:'models/mob_fish.glb',          role:'neutral', aquatic:true },
   { type:'fish_koi',      file:'models/mob_fish_koi.glb',      role:'neutral', aquatic:true },
