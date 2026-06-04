@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04ze'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04zf'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -168,7 +168,7 @@ const CFG = {
     spawnMin: 18, spawnMax: 40, caveMin: 6, caveMax: 18, despawn: 75, // 地上/地下の湧き距離・消滅距離
     spawnEveryMin: 2, spawnEveryRand: 2,               // 湧き判定の間隔（最小＋ランダム秒）
     speedBoss: 1.4, speedHostile: 2.2, speedNeutral: 1.3, speedVillager: 1.0, // 移動速度
-    hp: { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30, dragon:50, skeleton_king:60, demon:80, kraken:120,
+    hp: { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30, dragon:50, skeleton_king:60, demon:80, kraken:120, queen_sakura:240,
           blacksmith:8, merchant:6, farmer:6, guard:14, child:4, elder:5, woman:6, baker:6,
           fish:3, fish_koi:3, fish_tropical:3, fish_puffer:4, soldier_spear:16, soldier_sword:18, soldier_captain:26 }, // 種別ごとの体力
   },
@@ -423,6 +423,7 @@ const CASTLE_CELL = 360; // 王国城の発生間隔（最希少・探索の最�
 const SHRINE_CELL = 104; // 祠の発生間隔（低頻度で散在）
 const CAVEPROP_CELL = 26; // 洞窟装飾の発生間隔（地下大空洞に結晶/キノコ/岩を散らす）
 const KRAKEN_CELL = 384;  // 海ボス クラーケンの発生間隔（深海/外洋・希少）
+const SAKURA_CELL = 900;  // ★最終ボス「さくらの間」の発生間隔（全構造物中いちばん希少・特別な場所）
 const HCAVE_CELL = 120;   // 山肌の横穴洞窟の発生間隔（山/丘の斜面に入口・歩いて入れる）
 const HCAVE_LEN = 14;     // 横穴トンネルの長さ（奥行き）
 const HCAVE_REACH = 22;   // 横穴が原点から伸びる最大距離（チャンク走査マージンに反映＝跨ぎでも欠けない）
@@ -509,6 +510,13 @@ function buildStructures(cx, cz, stamp) {
       const c = krakenSpot(gx, gz, KRAKEN_CELL);
       if (c) bossSpots.set(`${c.x},${WATER_LEVEL},${c.z}`, { x: c.x, y: WATER_LEVEL + 1, z: c.z, type: 'kraken', cd: 0, mob: null, trig: 26 });
     }
+  // --- ★さくらの間（最終ボス 女王さくら。全構造物中いちばん希少・特別な間） ---
+  const skm = 12;
+  for (let gx = Math.floor((cx*CHUNK-skm)/SAKURA_CELL); gx <= Math.floor((cx*CHUNK+CHUNK+skm)/SAKURA_CELL); gx++)
+    for (let gz = Math.floor((cz*CHUNK-skm)/SAKURA_CELL); gz <= Math.floor((cz*CHUNK+CHUNK+skm)/SAKURA_CELL); gz++) {
+      const c = sakuraCenter(gx, gz, SAKURA_CELL);
+      if (c) buildSakuraChamber(c.x, c.z, sw);
+    }
   // --- 山肌の横穴洞窟（山/丘の斜面に横向き入口・歩いて入れる。地底ダンジョンとは別系統） ---
   //   トンネルが長い(最大HCAVE_REACH)ため、走査マージンを広げてチャンク跨ぎでも欠けないようにする。
   const hm = HCAVE_REACH;
@@ -576,6 +584,42 @@ function hillCaveMouth(gx, gz, cell, lairOnly) {
   if (surf < 3 || surf > HEIGHT - 6) return null;
   if (lairOnly && !hillCaveIsLair(gx, gz)) return null; // 魔窟のみ抽出（デーモン案内用）
   return { x: ox, z: oz, y: surf, lair: hillCaveIsLair(gx, gz) };
+}
+// ★さくらの間の中心（陸地のみ・超希少）。生成とナビで共有。条件を満たさなければ null。
+function sakuraCenter(gx, gz, cell) {
+  if (hash2(gx*211+71, gz*211+97) > 0.5) return null; // 約半数の候補（cell が巨大なので実数は極少＝最希少）
+  const ox = gx*cell + 60 + Math.floor(hash2(gx+33, gz+41) * (cell-120));
+  const oz = gz*cell + 60 + Math.floor(hash2(gx+19, gz+57) * (cell-120));
+  const bi = biomeAt(ox, oz);
+  if (bi !== 'plains' && bi !== 'snow') return null;
+  const surf = heightAt(ox, oz);
+  if (surf <= WATER_LEVEL + 1 || surf > HEIGHT - 10) return null;
+  return { x: ox, z: oz, y: surf };
+}
+// ★さくらの間：石レンガの荘厳な大広間(9x9・屋根付き)。南に入口、奥の玉座に最終ボス 女王さくら＋最高報酬。
+function buildSakuraChamber(ox, oz, sw) {
+  const base = heightAt(ox, oz);
+  if (base < 2 || base > HEIGHT - 10) return;
+  const R = 4, top = base + 6;                          // 大きく高い（巨大チンチラが入る）
+  for (let dx=-R; dx<=R; dx++) for (let dz=-R; dz<=R; dz++) {
+    sw(ox+dx, base, oz+dz, B.stonebrick);               // 床
+    const edge = Math.abs(dx)===R || Math.abs(dz)===R;
+    if (edge) {
+      if (dz===-R && Math.abs(dx)<=1) { for (let yy=base+1; yy<=base+3; yy++) sw(ox+dx, yy, oz+dz, B.air); continue; } // 南の大扉(幅3・高3)
+      for (let yy=base+1; yy<=top; yy++) sw(ox+dx, yy, oz+dz, (yy===base+3 && (dx===0||dz===0)) ? B.glass : B.stonebrick); // 壁＋窓
+    } else {
+      for (let yy=base+1; yy<=base+5; yy++) sw(ox+dx, yy, oz+dz, B.air); // 内部空洞(高さ5)
+      sw(ox+dx, base+6, oz+dz, B.stonebrick);           // 屋根
+    }
+  }
+  // 奥の玉座（北側）＋松明＋大扉門
+  sw(ox, base+1, oz+R-1, B.stonebrick); sw(ox, base+2, oz+R-1, B.stonebrick); // 玉座の背
+  addProp(ox, base+1, oz-R, 'fort_gate', Math.PI);
+  addProp(ox-2, base+1, oz-1, 'torch'); addProp(ox+2, base+1, oz-1, 'torch'); addProp(ox-2, base+1, oz+2, 'torch'); addProp(ox+2, base+1, oz+2, 'torch');
+  // 最終ボス 女王さくら（玉座の前）＋最高報酬の宝箱（模型未配置なら静かにスキップ＝到着で自動出現）
+  bossSpots.set(`${ox},${base+1},${oz}`, { x: ox, y: base+1, z: oz, type: 'queen_sakura', cd: 0, mob: null, trig: 20 });
+  sw(ox-2, base+1, oz+2, B.chest); addProp(ox-2, base+1, oz+2, 'chest');
+  sw(ox+2, base+1, oz+2, B.chest); addProp(ox+2, base+1, oz+2, 'chest');
 }
 // 海ボス クラーケンのスポット（深海/外洋のみ）。生成とナビで共有。条件を満たさなければ null。
 function krakenSpot(gx, gz, cell) {
@@ -886,7 +930,7 @@ function serializeWorld() {
     level: playerLevel, exp: playerExp,                               // レベル/経験値
     equippedSkills: [...equippedSkills],                              // 装備中の必殺技（②）
     counts, itemCounts,                                               // インベントリ
-    bossKills: { ...bossKills },                                      // ⑥ ボス討伐数
+    bossKills: { ...bossKills }, sakuraCape: hasSakuraCape,           // ⑥ ボス討伐数／さくらの毛皮マント所持
     playerModel: currentPlayerFile,                                   // 選択アバター
     equip: { weapon: currentWeapon, owned: [...ownedWeapons], armor: { ...equip.armor }, shield: equip.shield, ownedShield }, // 装備
     time: { dayTime, weather, autoWeather, weatherTimer },            // 時刻・天候
@@ -962,6 +1006,7 @@ function loadWorld(slot = currentSlot) {
     if (obj.counts) for (const k in obj.counts) if (counts[k] !== undefined && Number.isFinite(obj.counts[k])) counts[k] = Math.max(0, obj.counts[k]|0);
     if (obj.itemCounts) for (const k in obj.itemCounts) if (itemCounts[k] !== undefined && Number.isFinite(obj.itemCounts[k])) itemCounts[k] = Math.max(0, obj.itemCounts[k]|0);
     if (obj.bossKills && typeof obj.bossKills === 'object') for (const k in obj.bossKills) if (Number.isFinite(obj.bossKills[k])) bossKills[k] = Math.max(0, obj.bossKills[k]|0); // ⑥ 討伐数復元
+    if (obj.sakuraCape) hasSakuraCape = true; // さくらの毛皮マント復元
     if (typeof obj.playerModel === 'string') currentPlayerFile = obj.playerModel;
     if (obj.equip && typeof obj.equip === 'object') { // 装備の復元（防御的に）
       if (Array.isArray(obj.equip.owned)) for (const w of obj.equip.owned) if (WEAPONS[w]) ownedWeapons.add(w);
@@ -1422,6 +1467,8 @@ function waterAtPlayer(yOff) { return getBlock(Math.floor(player.pos.x), Math.fl
 function playerHeadInWater() { return waterAtPlayer(PH - 0.1); }
 const keys = {};
 const touchMove = { x: 0, z: 0, active: false }; // スマホ仮想スティックのアナログ移動（VoxelGame.input.move で更新）
+let playerSlow = 0; // ★女王さくらの「おしっこ」被弾でのスリップ（移動速度低下）残り秒
+let hasSakuraCape = false; // ★女王さくら撃破の超レア報酬「さくらの毛皮マント」（防御+10%・常時）
 let selBlock = B.grass;
 let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
 let avatarYaw = 0;       // 三人称アバターの向き（移動方向に追従）
@@ -1488,7 +1535,9 @@ function collideAxis(axis) {
 }
 
 function updatePlayer(dt) {
-  const speed = ridingBoat ? P.boatSpeed : ridingMob ? P.rideSpeed : (keys['ShiftLeft']||keys['ShiftRight']) ? P.dashSpeed : P.walkSpeed; // VoxelBalance(CFG.player)で調整可
+  if (playerSlow > 0) playerSlow = Math.max(0, playerSlow - dt); // スリップ（おしっこ被弾）の減衰
+  const slowMul = playerSlow > 0 ? 0.45 : 1; // スリップ中は移動速度45%
+  const speed = (ridingBoat ? P.boatSpeed : ridingMob ? P.rideSpeed : (keys['ShiftLeft']||keys['ShiftRight']) ? P.dashSpeed : P.walkSpeed) * slowMul; // VoxelBalance(CFG.player)で調整可
   // yawを基準にした前方・右方向（上下の視点は移動に影響させない）
   const fwd   = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const right = new THREE.Vector3( Math.cos(player.yaw), 0, -Math.sin(player.yaw));
@@ -2156,6 +2205,7 @@ function buildDiag() {
     `最寄り魔窟(ボス) : ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, DUNGEON_CELL, 4, dungeonLairMouth))}　※入口は地上の階段口・掘らず歩いて降りる→奥にデーモン`,
     `最寄り洞窟(横穴): ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, HCAVE_CELL, 3, hillCaveMouth))}　※山/丘の斜面の入口・掘らず歩いて入れる（奥に鉱石/宝/装飾）`,
     `最寄り海ボス : ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, KRAKEN_CELL, 4, krakenSpot))}　※深海/外洋・船で接近すると海面にクラーケン出現`,
+    `最寄りさくらの間: ${navLine(player.pos.x, player.pos.z, nearestDeterministic(player.pos.x, player.pos.z, SAKURA_CELL, 2, sakuraCenter))}　※★最終ボス 女王さくら（最も希少な間・歩いて入る）`,
     `武器 / 戦闘  : 装備=${WEAPONS[currentWeapon].name}（C/Bで切替）所持[${WEAPON_ORDER.filter(w=>ownedWeapons.has(w)).map(w=>WEAPONS[w].name).join('・')}] / コンボ${comboIndex} / 振り${swingTimer>0?'中':'-'}`,
     `攻撃の特性   : ${WEAPONS[currentWeapon].ranged?'遠距離(溜め)':'近接'} 威力${WEAPONS[currentWeapon].dmg} 間合${WEAPONS[currentWeapon].reach} 振り${WEAPONS[currentWeapon].swing}s 動作x${WEAPONS[currentWeapon].anim} 止${WEAPONS[currentWeapon].hitstop}s（装備武器で変化）`,
     `手持ち表示   : 武器モデル${heldWeapon?'装着○':'なし(素手/未読込)'} / 盾${heldShield?'装着○':'-'} / 武器テンプレ読込${Object.keys(equipTemplates).length}種`,
@@ -2164,7 +2214,7 @@ function buildDiag() {
     `swim選択理由 : ${ridingBoat ? '-乗船中(swim無効)' : ridingMob ? '-騎乗中(swim無効)' : playerHeadInWater() ? '○頭が水中→swim' : '-頭は空気→walk/idle'}（actSwim=${actSwim ? (actSwim.isRunning()?'再生中':'停止') : '無'}）`,
     `モブ         : ${mobs.length}/${M.totalCap}体（敵${mobs.filter(m=>m.hostile).length}/${M.hostileCap} 住人${mobs.filter(m=>m.home).length} テンプレ${Object.keys(mobTemplates).length}種 矢${arrows.length}）`,
     `モブ地中埋没  : ${mobs.filter(m=>m.buried).length}体（透明な敵の監視。0が正常／復帰処理が毎フレーム作動）`,
-    `ボス討伐記録 : ドラゴン${bossKills.dragon||0} / スケ王${bossKills.skeleton_king||0} / デーモン${bossKills.demon||0} / ゴーレム${bossKills.golem||0}（撃破で特別報酬＝大量EXP・金・確定レア装備）`,
+    `ボス討伐記録 : ドラゴン${bossKills.dragon||0} / スケ王${bossKills.skeleton_king||0} / デーモン${bossKills.demon||0} / クラーケン${bossKills.kraken||0} / 女王さくら${bossKills.queen_sakura||0} / ゴーレム${bossKills.golem||0}　マント${hasSakuraCape?'○':'-'}`,
     `仲間         : ${companions.length}/${MAX_COMPANIONS}人 ${companions.map(c=>`${JOB_LABEL[c.def.type]||c.def.type}(HP${Math.ceil(c.hp)}/${c.maxHp}・${c.cmdMode})`).join(' / ')||'なし'}　※T会話→Y雇用(${COMPANION_COST}coin)／U指示切替(追従/攻撃/待機)`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
     `構造物       : 村${villages.size} / スポナー${spawners.size} / プロップ${props.size}(表示${[...props.values()].filter(p=>p.obj).length}) / structテンプレ${Object.keys(structTemplates).length}種`,
@@ -2449,6 +2499,7 @@ const MOB_DEFS = [
   { type:'skeleton_king', file:'models/mob_skeleton_king.glb', role:'boss' }, // ⑤ ボス第2弾（4号機・大剣の薙ぎ=attack/叩き付け=heavy）
   { type:'demon',    file:'models/mob_demon.glb',    role:'boss'   }, // ⑥ ボス第3弾（4号機 本採用 8701c47・魔系マグマ。golem/dragon と同契約＝role:boss で完全動作。ダンジョンの魔窟に出現）
   { type:'kraken',   file:'models/mob_kraken.glb',   role:'boss', sea:true }, // ⑥ 海ボス（4号機 1b543d9）。深海/外洋に出現・船上戦・専用AI(sea)
+  { type:'queen_sakura', file:'models/mob_queen_sakura.glb', role:'boss', queen:true }, // ★最終ボス 巨大チンチラの女王さくら（4号機モデル待ち・defensive load）。専用の「さくらの間」最奥・heavy=おしっこ攻撃
   // 海の魚（4号機・群れで海バイオームに湧く中立。aquatic=水中専用AI）
   { type:'fish',          file:'models/mob_fish.glb',          role:'neutral', aquatic:true },
   { type:'fish_koi',      file:'models/mob_fish_koi.glb',      role:'neutral', aquatic:true },
@@ -3047,8 +3098,15 @@ function updateMobs(dt) {
         m.atkCd -= dt; animName = 'attack';
         if (m.atkCd <= 0) {
           m.atkCnt++;
-          if (m.atkCnt % 3 === 0) { m.atkCd = C.golemHeavyCd; damage(C.golemHeavyDmg, 'golem'); animName = 'heavy'; }
-          else { m.atkCd = C.golemCd; damage(C.golemDmg, 'golem'); }
+          if (m.atkCnt % 3 === 0) { // 強攻撃(heavy)
+            m.atkCd = C.golemHeavyCd; animName = 'heavy';
+            if (m.def.queen) { // ★女王さくらの「おしっこ攻撃」：範囲大ダメージ＋スリップ＋黄色い飛沫
+              damage(C.golemHeavyDmg * 3, 'sakura');
+              playerSlow = 4;                                  // 4秒スリップ（移動速度低下）
+              spawnSplash(player.pos.x, player.pos.y + 0.4, player.pos.z, 18);
+              camShake = Math.max(camShake, 0.6);
+            } else damage(C.golemHeavyDmg, 'golem');
+          } else { m.atkCd = C.golemCd; damage(m.def.queen ? C.golemDmg + 2 : C.golemDmg, 'golem'); }
         }
       }
     } else if (role === 'melee' && dist < 20) {
@@ -3320,6 +3378,25 @@ function updateFx(dt) {
     f.life -= dt;
     if (f.life <= 0) { scene.remove(f.obj); fxList.splice(i,1); }
   }
+  updateSplashes(dt);
+}
+// 黄色い飛沫パーティクル（女王さくらの「おしっこ」演出）。小さな立方体を撒いて重力で落として消す。
+const splashes = [];
+const _splashGeo = new THREE.BoxGeometry(0.13, 0.13, 0.13);
+const _splashMat = new THREE.MeshBasicMaterial({ color: 0xffe24a });
+function spawnSplash(x, y, z, n) {
+  for (let i = 0; i < (n || 14); i++) {
+    const o = new THREE.Mesh(_splashGeo, _splashMat);
+    o.position.set(x, y, z); scene.add(o);
+    splashes.push({ obj: o, vx: (Math.random()*2-1)*3.5, vy: 2 + Math.random()*3.5, vz: (Math.random()*2-1)*3.5, life: 0.7 + Math.random()*0.4 });
+  }
+}
+function updateSplashes(dt) {
+  for (let i = splashes.length-1; i >= 0; i--) {
+    const s = splashes[i]; s.life -= dt; s.vy -= 13*dt;
+    s.obj.position.x += s.vx*dt; s.obj.position.y += s.vy*dt; s.obj.position.z += s.vz*dt;
+    if (s.life <= 0) { scene.remove(s.obj); splashes.splice(i,1); }
+  }
 }
 // ⑥ ボス出現の連携：威圧音(2号機 onBossAppear)＋出現fx(4号機 魔法陣/瘴気)。live湧き時のみ（復元時は鳴らさない）
 function onBossSpawned(m) {
@@ -3385,6 +3462,7 @@ const BOSS_REWARD = {
   dragon:        { exp: 90,  gold: 6, coin: 12, equips: 2, name: 'ドラゴン' },
   demon:         { exp: 120, gold: 8, coin: 16, equips: 3, name: 'デーモン' },
   kraken:        { exp: 110, gold: 12, coin: 24, equips: 3, name: 'クラーケン' }, // 海の宝（大量資源＋確定レア装備）
+  queen_sakura:  { exp: 250, gold: 25, coin: 50, equips: 4, name: '女王さくら', cape: true }, // ★最終ボス＝最高報酬（超レア「さくらの毛皮マント」＋大量資源）
 };
 const drops = []; // 地面に落ちたアイテム { obj, item, equip?, t, life }
 
@@ -3463,7 +3541,7 @@ function cycleWeapon() {
 // ===================================================================
 function armorCount() { return (equip.armor.head?1:0) + (equip.armor.body?1:0) + (equip.armor.legs?1:0); }
 function defenseFactor() { // 被ダメ軽減 0..cap
-  return Math.min(C.defenseCap, armorCount() * C.armorPerPiece + (equip.shield ? C.shieldDef : 0));
+  return Math.min(C.defenseCap, armorCount() * C.armorPerPiece + (equip.shield ? C.shieldDef : 0) + (hasSakuraCape ? 0.1 : 0)); // さくらの毛皮マント=防御+10%
 }
 function equipState() {
   return { weapon: currentWeapon, ownedWeapons: [...ownedWeapons],
@@ -3777,6 +3855,10 @@ function defeatBoss(m) {
   const pool = ['armor', 'shield', 'sword', 'axe', 'bow'];
   for (let i = 0; i < rw.equips; i++)                                       // 確定レア装備（ボスを倒す意味）
     spawnEquipDrop(pool[Math.floor(Math.random()*pool.length)], p.x + (Math.random()*2-1), p.y, p.z + (Math.random()*2-1));
+  if (rw.cape) { // ★最終ボス 女王さくら：金の剣も確定＋超レア「さくらの毛皮マント」
+    spawnEquipDrop('gold_sword', p.x, p.y, p.z + 1);
+    if (!hasSakuraCape) { hasSakuraCape = true; toast('★★ さくらの毛皮マントを獲得！（防御+10%・常時）'); }
+  }
   bossKills[t] = (bossKills[t] || 0) + 1;                                   // 討伐数の記録（達成感）
   toast(`★ ${rw.name} 撃破！ 特別報酬：EXP+${rw.exp}・金+${rw.gold}・コイン+${rw.coin}・装備×${rw.equips}（討伐 ${bossKills[t]}体）`);
   scheduleSave();
