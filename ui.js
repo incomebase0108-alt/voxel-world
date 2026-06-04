@@ -422,6 +422,19 @@
       .uit-arrow { font-size:18px; opacity:.8; flex:0 0 auto; }
       .uit-get { flex:1; justify-content:flex-end; }
       .uit-none { font-size:13px; opacity:.7; padding:8px 0; }
+      /* ③ 会話中の「仲間にする」ボタン（trade パネル内・PC/スマホ共通） */
+      .uit-recruit { pointer-events:auto; cursor:pointer; width:100%; margin-top:10px; padding:11px 12px;
+        display:flex; align-items:center; justify-content:center; gap:8px; font-size:14px; font-weight:800;
+        border-radius:10px; border:2px solid rgba(120,230,120,.5); background:rgba(50,120,50,.32); color:#fff; }
+      .uit-recruit:hover:not(:disabled) { border-color:#9be86a; background:rgba(70,150,60,.42); transform:translateY(-1px); }
+      .uit-recruit:disabled { opacity:.5; cursor:not-allowed; border-color:rgba(255,255,255,.2); background:rgba(255,255,255,.08); }
+      .uit-recruit .e { font-size:18px; line-height:1; }
+      .uit-recruit .sub { font-size:11px; font-weight:600; opacity:.85; }
+      /* ② スマホ：NPC接近時に出る「話す」ボタン（左サム圏・スティック上） */
+      .ui-ttalk { position:fixed; left:26px; bottom:230px; display:none; }
+      .ui-ttalk.show { display:block; }
+      .ui-ttalk .ui-tbtn { width:64px; height:64px; background:rgba(40,90,150,.55); border-color:rgba(150,200,255,.6); }
+      .ui-ttalk .ui-tbtn .e { font-size:24px; }
 
       @media (max-width:640px) {
         #ui-radar { width:96px; height:96px; }
@@ -1078,6 +1091,9 @@
   // =====================================================================
   let tradeSession = null;
   const JOB_EMOJI = { merchant:'🪙', blacksmith:'🔨', farmer:'🌾', guard:'🛡', child:'🧒', elder:'🧓', baker:'🥖', villager:'🧑' };
+  // ② 話しかけ可能な住人 type（core JOB_LABEL 準拠）。state().mobs の type で近接判定→「話す」ボタン表示
+  const TALKABLE_TYPES = new Set(['merchant','blacksmith','farmer','baker','guard','elder','child','woman','villager','soldier_spear','soldier_sword','soldier_captain']);
+  const TALK_RANGE = 3.6; // core talkToNPC の探索半径(3.5)に合わせる（わずかに広め）
 
   function offerSide(holder, name, icon, count, cls) {
     const side = el('div', '', holder); side.className = 'uit-side' + (cls ? ' ' + cls : '');
@@ -1114,6 +1130,28 @@
         renderMenu('trade'); // 在庫/可否を反映して再描画
       });
     });
+
+    // ③ 仲間にする（session.recruit が来た時だけ表示。可否は recruit.canRecruit、不可理由でラベル変化）
+    const rc = s.recruit;
+    if (rc && typeof rc.cost === 'number') {
+      el('div', '', p).className = 'uiv-sec'; p.lastChild.textContent = '仲間';
+      const rbtn = el('button', '', p); rbtn.className = 'uit-recruit';
+      const reason = rc.already ? '仲間済み' : rc.full ? '満員' : !rc.canRecruit ? 'コイン不足' : '';
+      rbtn.disabled = !rc.canRecruit;
+      const ico = el('div', '', rbtn); ico.className = 'e'; ico.textContent = '🤝';
+      const lab = el('div', '', rbtn);
+      lab.textContent = rc.canRecruit ? `仲間にする（${rc.cost}コイン）` : `仲間にする（${reason}）`;
+      const sub = el('div', '', rbtn); sub.className = 'sub'; sub.textContent = rc.canRecruit ? '' : `必要${rc.cost}コイン`;
+      rbtn.title = rc.canRecruit ? `${rc.cost}コインで仲間にする` : `仲間にできません：${reason}`;
+      rbtn.addEventListener('click', () => {
+        if (rbtn.disabled) return;
+        let updated = null;
+        try { const i = coreInput(); if (i && typeof i.recruit === 'function') updated = i.recruit(); } catch (e) {}
+        try { window.playSFX && window.playSFX('trade'); } catch (e) {}
+        if (updated && (updated.offers || updated.npc)) tradeSession = updated; // recruit は更新後 session を返す
+        renderMenu('trade'); // 仲間化後の状態（already=true 等）を反映
+      });
+    }
   }
   function openTrade(session) {
     tradeSession = session || tradeSession || {};
@@ -1178,7 +1216,10 @@
     const top = el('div', '', cont); top.className = 'ui-ttop';
     const invBtn = mkBtn(top, '', '🎒');
     const menuBtn = mkBtn(top, '', '⏸');
-    dom.touch = cont; dom.look = look; dom.stick = stick; dom.knob = knob;
+    // ② NPC接近時に出る「話す」ボタン（近接判定で tick が .show を付け外し）
+    const talkWrap = el('div', '', cont); talkWrap.className = 'ui-ttalk';
+    const talkBtn = mkBtn(talkWrap, '', '💬', '話す');
+    dom.touch = cont; dom.look = look; dom.stick = stick; dom.knob = knob; dom.talkWrap = talkWrap;
 
     // --- ジョイスティック ---
     function moveKnob(e) {
@@ -1224,6 +1265,8 @@
     tapBtn(dash, () => { dashOn = !dashOn; dash.classList.toggle('on', dashOn); setKey('ShiftLeft', dashOn); });
     tapBtn(invBtn, () => { window.UI._routed = true; toggleInv(); });
     tapBtn(menuBtn, () => { window.UI._routed = true; menuOpen ? closeMenu() : openMenu('menu'); });
+    // ② 話す：近くのNPCに話しかける（core が window.UI.openTrade(session) を呼び会話UIを開く）
+    tapBtn(talkBtn, () => { window.UI._routed = true; inputAct('talk'); });
   }
 
   function setTouchMode(on) {
@@ -2093,6 +2136,20 @@
     //   input.move 提供時はもちろん、WASD 合成キー経路でも再送して左右(A/D)の取りこぼしを防ぐ。
     //   setKey は heldKeys でガードされ冪等なので、同一状態の連続呼び出しはイベントを発火しない。 ---
     if (touchOn && stickId !== null) applyStick();
+
+    // --- ② 「話す」ボタン：近くに住人NPCが居る時だけ表示（会話中=メニュー開は隠す）。core 近接判定に追従 ---
+    if (touchOn && dom.talkWrap) {
+      let near = false;
+      const p = st.pos, list = Array.isArray(st.mobs) ? st.mobs : [];
+      if (p && !menuOpen && !invOpen) {
+        for (const m of list) {
+          if (!TALKABLE_TYPES.has(m.type)) continue;
+          const dx = m.x - p.x, dz = m.z - p.z;
+          if (dx * dx + dz * dz <= TALK_RANGE * TALK_RANGE) { near = true; break; }
+        }
+      }
+      dom.talkWrap.classList.toggle('show', near);
+    }
   }
 
   // =====================================================================
