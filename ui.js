@@ -341,29 +341,67 @@
       /* ④ スマホ向けタッチUI（タッチ端末のみ表示） */
       #ui-touch { position:fixed; inset:0; z-index:17; pointer-events:none; display:none; touch-action:none; }
       #ui-touch.on { display:block; }
-      #ui-look { position:fixed; inset:0; z-index:14; pointer-events:auto; touch-action:none; } /* 視点ドラッグ捕捉（最下層） */
+      /* 視点スワイプは画面右半分のみ捕捉（左半分は移動パッド／誤操作回避のため空ける）。最下層 */
+      #ui-look { position:fixed; left:40%; right:0; top:0; bottom:0; z-index:14; pointer-events:auto; touch-action:none; }
       #ui-stick { position:fixed; left:22px; bottom:22px; width:128px; height:128px; border-radius:50%;
         background:radial-gradient(circle, rgba(255,255,255,.10), rgba(0,0,0,.22)); border:2px solid rgba(255,255,255,.22);
         pointer-events:auto; touch-action:none; }
       #ui-knob { position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px; border-radius:50%;
         background:radial-gradient(circle at 40% 35%, #fff, #c9d4e2); box-shadow:0 2px 8px rgba(0,0,0,.5); }
-      .ui-tbtns { position:fixed; right:20px; bottom:24px; display:grid; gap:12px; pointer-events:none;
-        grid-template-columns:repeat(2,72px); grid-template-areas:'place jump' 'attack jump'; }
-      .ui-tbtn { pointer-events:auto; touch-action:none; user-select:none; -webkit-user-select:none;
-        width:72px; height:72px; border-radius:50%; border:2px solid rgba(255,255,255,.3);
-        background:rgba(20,30,48,.5); color:#fff; font-size:12px; font-weight:700; display:flex;
+      /* 右下：攻撃を主役（大）に、ジャンプ/設置を左へ小さく配置 */
+      .ui-tbtns { position:fixed; right:18px; bottom:22px; display:grid; gap:10px; align-items:end; pointer-events:none;
+        grid-template-columns:auto auto; grid-template-areas:'place attack' 'jump attack'; }
+      .ui-tbtn { position:relative; pointer-events:auto; touch-action:none; user-select:none; -webkit-user-select:none;
+        width:64px; height:64px; border-radius:50%; border:2px solid rgba(255,255,255,.3);
+        background:rgba(20,30,48,.5); color:#fff; font-size:11px; font-weight:700; display:flex;
         flex-direction:column; align-items:center; justify-content:center; gap:2px; backdrop-filter:blur(2px); }
-      .ui-tbtn .e { font-size:22px; line-height:1; }
+      .ui-tbtn .e { font-size:21px; line-height:1; }
       .ui-tbtn.press { transform:scale(.92); background:rgba(70,110,170,.6); border-color:#9bc1ff; }
-      .ui-tbtn.jump { grid-area:jump; width:84px; height:84px; }
-      .ui-tbtn.attack { grid-area:attack; }
+      .ui-tbtn.jump { grid-area:jump; width:72px; height:72px; }
       .ui-tbtn.place { grid-area:place; }
+      .ui-tbtn.attack { grid-area:attack; align-self:end; width:96px; height:96px;
+        background:rgba(150,40,52,.5); border-color:rgba(255,160,170,.5); }
+      .ui-tbtn.attack .e { font-size:32px; }
+      .ui-tbtn.attack.press { background:rgba(200,60,72,.62); border-color:#ff9aa6; }
+      /* 弓溜め（長押し）の充填リング。攻撃ボタンを押し続けると放射する */
+      .ui-tbtn.attack .chg { position:absolute; inset:-5px; border-radius:50%; border:3px solid #ffd54a;
+        opacity:0; transform:scale(.78); pointer-events:none; }
+      .ui-tbtn.attack.charging .chg { animation:ui-bowchg .8s ease-out infinite; }
+      @keyframes ui-bowchg { 0%{ opacity:0; transform:scale(.78) } 35%{ opacity:.95 } 100%{ opacity:0; transform:scale(1.28) } }
       .ui-ttop { position:fixed; left:14px; top:14px; display:flex; gap:10px; pointer-events:none; } /* 右上はレーダーのため左上へ */
       .ui-ttop .ui-tbtn { width:50px; height:50px; }
       .ui-ttop .ui-tbtn .e { font-size:20px; }
       .ui-tdash { position:fixed; left:26px; bottom:160px; }
       .ui-tdash .ui-tbtn { width:56px; height:56px; }
       .ui-tdash .ui-tbtn.on { background:rgba(255,170,40,.55); border-color:#ffd54a; }
+
+      /* ① 仲間ステータス（左中央・最大3人・state().companions が来たら自動点灯） */
+      #ui-companions { position:fixed; left:12px; top:84px; z-index:16; display:none;
+        flex-direction:column; gap:8px; width:188px; pointer-events:none; }
+      #ui-companions.on { display:flex; }
+      .ui-comp { pointer-events:auto; background:rgba(8,14,26,.46); border:2px solid rgba(255,255,255,.18);
+        border-radius:10px; padding:6px 8px 7px; backdrop-filter:blur(2px); box-shadow:0 2px 8px rgba(0,0,0,.35);
+        transition:opacity .2s, transform .2s; }
+      .ui-comp.dead { opacity:.5; filter:grayscale(.7); }
+      .ui-comp-top { display:flex; align-items:center; gap:7px; }
+      .ui-comp-ava { width:30px; height:30px; flex:0 0 auto; border-radius:7px; background:rgba(255,255,255,.1);
+        border:1px solid rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center;
+        font-size:18px; background-size:cover; background-position:center; }
+      .ui-comp-mid { flex:1 1 auto; min-width:0; }
+      .ui-comp-name { font-size:13px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        text-shadow:0 0 3px #000,0 0 3px #000; }
+      .ui-comp-hpbar { height:7px; border-radius:4px; margin-top:3px; background:rgba(255,255,255,.14);
+        overflow:hidden; box-shadow:0 0 2px rgba(0,0,0,.6) inset; }
+      .ui-comp-hpfill { height:100%; width:100%; border-radius:4px; background:#46d36a; transition:width .18s, background .18s; }
+      .ui-comp-hpfill.mid { background:#f3c23a; } .ui-comp-hpfill.low { background:#ff4d5e; }
+      .ui-comp-hpnum { font-size:10px; opacity:.8; margin-top:1px; }
+      .ui-comp-cmds { display:flex; gap:4px; margin-top:6px; }
+      .ui-comp-cmd { pointer-events:auto; cursor:pointer; flex:1 1 0; text-align:center; font-size:11px; font-weight:700;
+        padding:3px 0; border-radius:6px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.06);
+        transition:background .12s, border-color .12s; }
+      .ui-comp-cmd:hover { background:rgba(255,255,255,.14); }
+      .ui-comp-cmd.on { background:rgba(70,150,255,.5); border-color:#9bc1ff; color:#fff; box-shadow:0 0 8px rgba(80,150,255,.5); }
+      .ui-comp-cmd .cg { font-size:12px; }
 
       /* NPC会話／取引 */
       .uit-npc { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
@@ -470,6 +508,9 @@
     // 構造物 発見トースト（上部中央スタック）
     const toastWrap = el('div', '', root); toastWrap.id = 'ui-toast-wrap';
 
+    // ① 仲間ステータス（左中央・最大3人）。state().companions が来たら自動点灯
+    const companions = el('div', '', root); companions.id = 'ui-companions';
+
     // 照準（クロスヘア）— 4本の腕＋中央ドット。プレイ中は常に最前面・中央。
     // ※ body 直下に置く。root(z-15) はスタッキングコンテキストを作るため、root の子だと
     //   どんな z-index でも実効的に z-15 へ閉じ込められ、body 直下の FX 層(z-26/27) に覆われて
@@ -503,7 +544,7 @@
       inv, panel, tip, hint, menu, menuPanel, equipdbg,
       expRow, explv, expfill, expnum, levelup, lu2,
       boss, bossName, bossPips, bossTrack, bossFill, bossNum, bossBan, bossPipN: -1,
-      toastWrap, cross,
+      toastWrap, cross, companions, compCards: [],
       skills, ult, ultfill, skillname, sk1, sk2, skillEls: [],
       hpSegEls: [], foodSegEls: [], breathSegEls: [], slotEls: [],
     };
@@ -1121,6 +1162,7 @@
     };
     const jump = mkBtn(tbtns, 'jump', '⬆', 'ジャンプ');
     const attack = mkBtn(tbtns, 'attack', '⚔', '攻撃/破壊');
+    el('div', '', attack).className = 'chg';   // 弓溜め（長押し）の充填リング
     const place = mkBtn(tbtns, 'place', '⛏', '設置');
     const dashWrap = el('div', '', cont); dashWrap.className = 'ui-tdash';
     const dash = mkBtn(dashWrap, '', '🏃', 'ダッシュ');
@@ -1163,7 +1205,12 @@
     }
     function tapBtn(elm, fn) { elm.addEventListener('pointerdown', (e) => { e.preventDefault(); elm.classList.add('press'); }); elm.addEventListener('pointerup', (e) => { e.preventDefault(); elm.classList.remove('press'); fn(); }); }
     holdBtn(jump, () => setKey('Space', true), () => setKey('Space', false));
-    holdBtn(attack, () => inputAct('primary', true), () => inputAct('primary', false));
+    // 攻撃：タップで攻撃/破壊、長押しで弓溜め（core が primary 押下保持を溜めとして扱う）。
+    //   約200ms以上の保持で充填リングを点灯し「溜め中」を視覚化（実際の溜めは core 側）。
+    let chargeTimer = null;
+    holdBtn(attack,
+      () => { inputAct('primary', true); chargeTimer = setTimeout(() => attack.classList.add('charging'), 200); },
+      () => { inputAct('primary', false); if (chargeTimer) { clearTimeout(chargeTimer); chargeTimer = null; } attack.classList.remove('charging'); });
     holdBtn(place, () => inputAct('secondary', true), () => inputAct('secondary', false));
     tapBtn(dash, () => { dashOn = !dashOn; dash.classList.toggle('on', dashOn); setKey('ShiftLeft', dashOn); });
     tapBtn(invBtn, () => { window.UI._routed = true; toggleInv(); });
@@ -1335,6 +1382,97 @@
       t.el.style.opacity = op.toFixed(3);
       t.el.style.transform = `translateY(${ty.toFixed(1)}px)`;
     }
+  }
+
+  // =====================================================================
+  // ① 仲間（コンパニオン）ステータス＆指示
+  //   ・主経路: state().companions = [ { id, name, hp, maxHp, icon?/glyph?, order?, color?, dead? }, … ]（最大3人表示）
+  //       order: 'follow'(追従) | 'wait'(待機) | 'attack'(攻撃)。不在/空で非表示（1号機未実装の間は休止）。
+  //   ・指示: ボタン押下で window.VoxelGame.commandCompanion(id, order) を呼ぶ（在庫/AIはcore側）。
+  //   ・加入/離脱トーストは id 差分で自動。明示通知は window.onCompanionJoin/Leave（push経路・重複は抑止）。
+  // =====================================================================
+  const COMP_MAX = 3;
+  const ORDER_META = [
+    { id: 'follow', label: '追従', glyph: '🐾' },
+    { id: 'wait',   label: '待機', glyph: '✋' },
+    { id: 'attack', label: '攻撃', glyph: '⚔' },
+  ];
+  const companionSeen = new Map();   // id -> name（加入/離脱トーストの差分検知）
+  function compId(c, i) { return (c && c.id != null) ? c.id : ('comp' + i); }
+  function callCommand(id, order) {
+    const vg = window.VoxelGame;
+    if (vg && typeof vg.commandCompanion === 'function') { try { vg.commandCompanion(id, order); return true; } catch (e) {} }
+    return false;
+  }
+  function compToast(name, join) {
+    enqueueToast(join
+      ? { glyph: '🤝', text: (name || '仲間') + ' が仲間になった！', label: 'JOIN', color: '#7be08a' }
+      : { glyph: '💨', text: (name || '仲間') + ' が離脱した', label: 'LEAVE', color: '#bcb6c8' });
+  }
+  function buildCompCard() {
+    const root = el('div', '', dom.companions); root.className = 'ui-comp';
+    const top = el('div', '', root); top.className = 'ui-comp-top';
+    const ava = el('div', '', top); ava.className = 'ui-comp-ava';
+    const mid = el('div', '', top); mid.className = 'ui-comp-mid';
+    const name = el('div', '', mid); name.className = 'ui-comp-name';
+    const hpbar = el('div', '', mid); hpbar.className = 'ui-comp-hpbar';
+    const hpfill = el('div', '', hpbar); hpfill.className = 'ui-comp-hpfill';
+    const hpnum = el('div', '', mid); hpnum.className = 'ui-comp-hpnum';
+    const cmds = el('div', '', root); cmds.className = 'ui-comp-cmds';
+    const card = { root, ava, name, hpfill, hpnum, cmds: {}, id: null, avaKey: null };
+    ORDER_META.forEach((o) => {
+      const b = el('div', '', cmds); b.className = 'ui-comp-cmd';
+      const g = el('span', '', b); g.className = 'cg'; g.textContent = o.glyph;
+      el('span', '', b).textContent = o.label;
+      b.addEventListener('click', (e) => { e.stopPropagation(); if (card.id != null) callCommand(card.id, o.id); });
+      card.cmds[o.id] = b;
+    });
+    return card;
+  }
+  function paintCompanions(st) {
+    if (!dom || !dom.companions) return;
+    const list = Array.isArray(st.companions) ? st.companions.slice(0, COMP_MAX) : [];
+
+    // 加入/離脱トースト（id 差分・防御的）
+    const cur = new Map();
+    list.forEach((c, i) => cur.set(compId(c, i), (c && c.name) || ''));
+    for (const [id, nm] of cur) if (!companionSeen.has(id)) { companionSeen.set(id, nm); compToast(nm, true); }
+    for (const [id, nm] of Array.from(companionSeen)) if (!cur.has(id)) { companionSeen.delete(id); compToast(nm, false); }
+
+    if (!list.length) { if (dom.companions.classList.contains('on')) dom.companions.classList.remove('on'); return; }
+    dom.companions.classList.add('on');
+
+    while (dom.compCards.length < list.length) dom.compCards.push(buildCompCard());
+    for (let i = 0; i < dom.compCards.length; i++) {
+      const card = dom.compCards[i], c = list[i];
+      if (!c) { card.root.style.display = 'none'; continue; }
+      card.root.style.display = '';
+      card.id = compId(c, i);
+
+      // アイコン（4号機アイコン優先・無ければ絵文字）
+      const url = iconUrl(c);
+      const key = url || c.glyph || c.name || '';
+      if (key !== card.avaKey) {
+        card.avaKey = key;
+        if (url) { card.ava.style.backgroundImage = `url("${url}")`; card.ava.textContent = ''; }
+        else { card.ava.style.backgroundImage = ''; card.ava.textContent = c.glyph || '🧑'; }
+      }
+      card.name.textContent = c.name || ('仲間' + (i + 1));
+      if (c.color) card.name.style.color = c.color; else card.name.style.color = '';
+
+      const maxHp = (typeof c.maxHp === 'number' && c.maxHp > 0) ? c.maxHp : 20;
+      const hp = clampN(c.hp); const ratio = clamp01(hp / maxHp);
+      card.hpfill.style.width = (ratio * 100).toFixed(1) + '%';
+      card.hpfill.className = 'ui-comp-hpfill' + (ratio < 0.3 ? ' low' : ratio < 0.6 ? ' mid' : '');
+      card.hpnum.textContent = `${hp}/${maxHp}`;
+      const dead = !!c.dead || hp <= 0;
+      card.root.classList.toggle('dead', dead);
+
+      // 指示ボタンのアクティブ表示
+      const order = c.order || 'follow';
+      ORDER_META.forEach((o) => card.cmds[o.id].classList.toggle('on', o.id === order));
+    }
+    for (let i = list.length; i < dom.compCards.length; i++) dom.compCards[i].root.style.display = 'none';
   }
 
   // =====================================================================
@@ -1523,6 +1661,22 @@
         label: info.label || (m.big ? 'NEW LANDMARK' : '発見'),
         color: info.color || m.color || '#fff',
       });
+    };
+    // ① 仲間 加入/離脱 push 口（任意。state().companions の自動検知と併用可・id で重複抑止）
+    const prevCJ = window.onCompanionJoin;
+    window.onCompanionJoin = function (c) {
+      try { if (typeof prevCJ === 'function') prevCJ(c); } catch (e) {}
+      c = c || {}; const id = c.id != null ? c.id : (c.name || 'comp');
+      if (companionSeen.has(id)) return;       // 既知（自動検知済み）なら二重トーストしない
+      companionSeen.set(id, c.name || ''); compToast(c.name, true);
+    };
+    const prevCL = window.onCompanionLeave;
+    window.onCompanionLeave = function (c) {
+      try { if (typeof prevCL === 'function') prevCL(c); } catch (e) {}
+      c = c || {}; const id = c.id != null ? c.id : (c.name || 'comp');
+      const nm = companionSeen.get(id);
+      if (!companionSeen.has(id)) return;
+      companionSeen.delete(id); compToast(c.name || nm, false);
     };
   }
 
@@ -1885,6 +2039,9 @@
     // --- レーダー＆情報 ---
     paintRadar(st);
 
+    // --- 仲間ステータス（state().companions が来たら自動点灯） ---
+    paintCompanions(st);
+
     // --- ボスHPバー＆構造物発見トースト ---
     stepBoss(dt, st);
     checkDiscovery(st);
@@ -1954,6 +2111,9 @@
     window.UI.bossDefeated = (boss) => window.onBossDefeated(boss);
     window.UI.discover = (info) => window.onDiscover(info);
     window.UI.toast = (text, opts) => { opts = opts || {}; enqueueToast({ glyph: opts.glyph || '📍', text: text || '', label: opts.label || '', color: opts.color || '#fff' }); };
+    // ① 仲間 加入/離脱の簡易口（state() 不使用でも呼べる別名）
+    window.UI.companionJoin = (c) => window.onCompanionJoin(c);
+    window.UI.companionLeave = (c) => window.onCompanionLeave(c);
 
     // タッチUIの構築＋端末判定（PCは非表示・操作不変）
     buildTouch();
