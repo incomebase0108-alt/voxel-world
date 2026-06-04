@@ -153,9 +153,51 @@ window.VoxelGame.trade = (offerId) => { /* 支払い可なら itemCounts 増減 
 
 `state()` に **`structures`** を入れると、レーダーに*構造物マーカー*（四角）と、*範囲外の重要構造物への縁の方向矢印*が出ます（無ければ出ません）。探索の足跡（通過点）は ui.js が自動記録・点描します。
 ```js
-structures: [ { x, z, type:'village'|'fort'|'dungeon'|'chest'|'spawner' }, … ]
-// 色: village=緑 / fort=橙 / dungeon=紫 / chest=金 / spawner=赤。範囲外矢印は village/fort/dungeon のみ。
+structures: [ { x, z, type:'village'|'fort'|'castle'|'shrine'|'dungeon'|'chest'|'spawner', name?, id? }, … ]
+// 色: village=緑 / fort=橙 / castle=金(大マーカー+外周リング) / shrine=水 / dungeon=紫 / chest=金 / spawner=赤。
+// 範囲外の縁矢印: village/fort/castle/shrine/dungeon（chest/spawner は出さない）。
+// name?: 個別名（例 '王都グランド'）。発見トーストや将来表示に使用。無ければ type の和名にフォールバック。
+// id?:   安定キー（発見トーストの重複抑止に使用）。無ければ type+座標 でキー化。
 ```
+
+### 構造物 発見トースト（自動・受け皿は実装済み）
+上記 `structures` の **castle/shrine/dungeon/village/fort** にプレイヤーが約40ブロック以内へ近づくと、
+ui.js が画面上部に**発見トースト**（🏰王国城 を発見！ 等）を**一度だけ**自動表示します（chest/spawner は対象外）。
+**1号機側の追加作業は不要**（structures を出すだけ）。明示通知したい場合のみ任意の口:
+```js
+window.onDiscover({ type:'castle', name:'天空城' });   // または
+window.UI.toast('隠し通路を発見！', { glyph:'🚪', color:'#7be0ff' });
+```
+
+---
+
+## ボスHPバー（1号機の世界拡張ボス＝三系統と接続）
+
+画面**上部中央**に*大型HPバー＋ボス名*を表示し、通常モブ（レーダーの赤blip／頭上ダメージのみ）と**別格化**します。
+出現/撃破バナー・低HP脈動・任意のフェーズpip付き。**受け皿は実装済み**。2経路どちらでもOK（併用可）:
+
+### 経路A（推奨・state 駆動）— `state()` に `boss` を1つ
+戦闘中だけ `boss` を埋め、ボス不在時は `null`/省略するだけ。HPは毎フレームこのスナップショットで追従します。
+```js
+boss: currentBoss ? {
+  name: '闇竜ヴォルガ',        // 表示名
+  hp: boss.hp, maxHp: boss.maxHp,
+  color: '#a020f0',           // 任意（名前のグロー＋出現バナー色）
+  phase: 1, maxPhase: 3,      // 任意（フェーズpipを表示・無ければ非表示）
+  id: 'volga',                // 任意（個体識別。出現/撃破の遷移検知に使用）
+} : null
+```
+- 出現（id が新規に出現）→ ui.js が「⚔ 〇〇 出現！」バナー＋画面フラッシュ＋シェイクを自動表示。
+- 撃破 → `boss` を `null` に戻すだけ。HPが瀕死(<15%)で消えた場合は「✦ 撃破！」を自動表示。明示したいなら経路Bの `onBossDefeated` を1行。
+
+### 経路B（push 口・state に boss を出さない実装向け）
+```js
+window.onBossEncounter(boss);  // 出現（boss = 上記と同形）。バー表示開始＋出現バナー
+window.onBossUpdate(boss);     // HP変化のたびに呼ぶ（最終更新から ~10s で自動フェード）
+window.onBossDefeated(boss);   // 撃破（boss は任意）。撃破バナー＋金バースト＋バー消去
+```
+- 発動音は2号機 `playSFX(...)`（任意）。出現/撃破でシェイクは ui.js が `VoxelGame.shake` を使います（無ければHUD揺れ）。
+- 三系統ボスとも同じ口でOK。`color` を変えれば系統ごとに色分けできます。
 
 ---
 

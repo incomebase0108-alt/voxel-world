@@ -182,6 +182,45 @@
       #ui-skillname .s1 { font-size:48px; font-weight:900; letter-spacing:5px; text-shadow:0 0 20px currentColor, 0 3px 7px #000; }
       #ui-skillname .s2 { font-size:18px; font-weight:800; color:#fff; text-shadow:0 0 8px #000; margin-top:5px; letter-spacing:2px; }
 
+      /* ボスHPバー（画面上部中央・通常モブと別格） */
+      #ui-boss { position:fixed; left:50%; top:18px; transform:translateX(-50%);
+        width:min(680px,72vw); z-index:23; pointer-events:none; display:none;
+        flex-direction:column; align-items:center; gap:4px; text-align:center; }
+      #ui-boss .bn { font-size:20px; font-weight:900; letter-spacing:2px; color:#fff;
+        text-shadow:0 0 10px #ff2a3e, 0 2px 4px #000; display:flex; align-items:center; gap:7px; }
+      #ui-boss .bn::before { content:'☠'; font-size:18px; color:#ff5a6e; text-shadow:0 0 8px #ff2a3e; }
+      #ui-boss-pips { display:flex; gap:4px; }
+      #ui-boss-pips .pip { width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.18);
+        border:1px solid rgba(0,0,0,.5); }
+      #ui-boss-pips .pip.on { background:#ffd54a; box-shadow:0 0 6px #ffb300; }
+      #ui-boss-track { position:relative; width:100%; height:16px; border-radius:9px; overflow:hidden;
+        background:rgba(0,0,0,.55); border:2px solid rgba(255,255,255,.28);
+        box-shadow:0 2px 12px rgba(0,0,0,.55), 0 0 10px rgba(255,30,50,.28); }
+      #ui-boss-fill { position:absolute; inset:0 auto 0 0; width:100%;
+        background:linear-gradient(90deg,#7a0010,#ff2a3e 70%,#ff6a78);
+        transition:width .25s cubic-bezier(.3,.9,.4,1); }
+      #ui-boss-track::after { content:''; position:absolute; inset:0; pointer-events:none;
+        background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 1px),rgba(0,0,0,.32) calc(10% - 1px) 10%); }
+      #ui-boss-num { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+        font-size:11px; font-weight:800; color:#fff; text-shadow:0 0 3px #000,0 1px 2px #000; }
+      #ui-boss.low #ui-boss-track { animation:ui-boss-pulse .6s ease-in-out infinite; }
+      @keyframes ui-boss-pulse { 0%,100%{ box-shadow:0 2px 12px rgba(0,0,0,.55),0 0 8px rgba(255,30,50,.4) }
+        50%{ box-shadow:0 2px 12px rgba(0,0,0,.55),0 0 22px rgba(255,30,50,.95) } }
+      /* ボス出現/撃破バナー */
+      #ui-boss-banner { position:fixed; left:50%; top:24%; transform:translate(-50%,-50%) scale(.7);
+        z-index:29; pointer-events:none; opacity:0; font-size:40px; font-weight:900; letter-spacing:4px;
+        color:#ff5a6e; text-shadow:0 0 20px currentColor, 0 3px 7px #000; white-space:nowrap; }
+
+      /* 構造物 発見トースト（上部中央・ボスバーの下に積む） */
+      #ui-toast-wrap { position:fixed; left:50%; top:64px; transform:translateX(-50%);
+        z-index:22; pointer-events:none; display:flex; flex-direction:column; align-items:center; gap:7px; }
+      .ui-toast { display:flex; align-items:center; gap:9px; padding:8px 16px; border-radius:11px;
+        background:rgba(10,16,28,.78); backdrop-filter:blur(3px); border:2px solid #fff;
+        font-size:15px; font-weight:800; color:#fff; text-shadow:0 1px 2px #000; white-space:nowrap;
+        will-change:transform,opacity; }
+      .ui-toast .tg { font-size:19px; line-height:1; }
+      .ui-toast .tl { font-size:10px; opacity:.7; font-weight:700; margin-left:2px; }
+
       /* スキル選択カード */
       .uik-card { display:flex; align-items:center; gap:12px; border:2px solid rgba(255,255,255,.16); border-radius:12px;
         padding:10px 12px; margin-bottom:8px; background:rgba(0,0,0,.22); cursor:pointer; transition:.12s; }
@@ -335,6 +374,11 @@
         .ui-slot { width:42px; height:42px; }
         .ui-slot .sw, .ui-slot .ic { width:20px; height:20px; }
         .uiv-panel { padding:14px; }
+        #ui-boss { width:88vw; top:10px; }
+        #ui-boss .bn { font-size:16px; }
+        #ui-boss-banner { font-size:28px; }
+        #ui-toast-wrap { top:54px; }
+        .ui-toast { font-size:13px; padding:6px 12px; }
       }
     `;
     document.head.appendChild(s);
@@ -398,6 +442,18 @@
     const sk1 = el('div', '', skillname); sk1.className = 's1';
     const sk2 = el('div', '', skillname); sk2.className = 's2';
 
+    // ボスHPバー（画面上部中央・通常モブと別格）＋出現/撃破バナー
+    const boss = el('div', '', root); boss.id = 'ui-boss';
+    const bossName = el('div', '', boss); bossName.className = 'bn';
+    const bossPips = el('div', '', boss); bossPips.id = 'ui-boss-pips';
+    const bossTrack = el('div', '', boss); bossTrack.id = 'ui-boss-track';
+    const bossFill = el('div', '', bossTrack); bossFill.id = 'ui-boss-fill';
+    const bossNum = el('div', '', bossTrack); bossNum.id = 'ui-boss-num';
+    const bossBan = el('div', '', root); bossBan.id = 'ui-boss-banner';
+
+    // 構造物 発見トースト（上部中央スタック）
+    const toastWrap = el('div', '', root); toastWrap.id = 'ui-toast-wrap';
+
     // ダメージFXレイヤー（HUD休止中でも動くよう root 直下に独立配置）
     const fxCanvas = el('canvas', '', document.body); fxCanvas.id = 'ui-fx-canvas';
     const fxLayer = el('div', '', document.body); fxLayer.id = 'ui-fx';
@@ -421,6 +477,8 @@
       fxCanvas, fxctx: fxCanvas.getContext('2d'), fxLayer,
       inv, panel, tip, hint, menu, menuPanel, equipdbg,
       expRow, explv, expfill, expnum, levelup, lu2,
+      boss, bossName, bossPips, bossTrack, bossFill, bossNum, bossBan, bossPipN: -1,
+      toastWrap,
       skills, ult, ultfill, skillname, sk1, sk2, skillEls: [],
       hpSegEls: [], foodSegEls: [], breathSegEls: [], slotEls: [],
     };
@@ -1099,6 +1157,22 @@
   // レーダーミニマップ（北を上にしたシンプル版・プレイヤー中心）
   // =====================================================================
   const RADAR_RANGE = 44; // 半径（ブロック）
+
+  // 構造物メタ（レーダー色・発見トーストの絵文字/和名・縁の方向矢印対象を一元化）
+  //   1号機が state().structures[].type に流す想定の type 名:
+  //   village=村 / fort=砦 / castle=王国城 / shrine=祠 / dungeon=ダンジョン / chest=宝箱 / spawner=スポナー
+  const STRUCT_META = {
+    village: { color: '#9be86a', glyph: '🏘', name: '村',         arrow: true,  discover: true },
+    fort:    { color: '#d9b36a', glyph: '🏯', name: '砦',         arrow: true,  discover: true },
+    castle:  { color: '#ffd54a', glyph: '🏰', name: '王国城',     arrow: true,  discover: true, big: true },
+    shrine:  { color: '#7be0ff', glyph: '⛩',  name: '祠',         arrow: true,  discover: true },
+    dungeon: { color: '#c58cff', glyph: '🗝', name: 'ダンジョン', arrow: true,  discover: true },
+    chest:   { color: '#ffd54a', glyph: '📦', name: '宝箱',       arrow: false, discover: false },
+    spawner: { color: '#ff6a6a', glyph: '💀', name: 'スポナー',   arrow: false, discover: false },
+  };
+  function structKey(s) { return (s.id != null) ? ('id:' + s.id) : (s.type + ':' + Math.round(s.x) + ':' + Math.round(s.z)); }
+  function structName(s) { const m = STRUCT_META[s.type]; return s.name || (m && m.name) || '構造物'; }
+
   // 探索の足跡：一定距離ごとに通過点を記録（固定長リングで軽量）
   const trail = [];
   let lastTrailX = null, lastTrailZ = null;
@@ -1135,22 +1209,27 @@
       ctx.beginPath(); ctx.arc(R + dx, R + dz, 2.4, 0, Math.PI * 2); ctx.fill();
     }
 
-    // 構造物マーカー（四角）＋範囲外の重要構造物は縁に方向矢印
-    const SCOL = { village: '#9be86a', fort: '#d9b36a', dungeon: '#c58cff', chest: '#ffd54a', spawner: '#ff6a6a' };
+    // 構造物マーカー（四角／重要拠点は大きめ＋外周リング）＋範囲外は縁に方向矢印
     const structs = Array.isArray(st.structures) ? st.structures : [];
     for (const s of structs) {
       const dx = (s.x - px) * scale, dz = (s.z - pz) * scale;
-      const col = SCOL[s.type] || '#fff', dist = Math.hypot(dx, dz);
+      const m = STRUCT_META[s.type], col = (m && m.color) || '#fff', dist = Math.hypot(dx, dz);
       if (dist <= edge) {
+        const r = (m && m.big) ? 4.6 : 3.4; // 王国城など big は大きめに描く
         ctx.save(); ctx.translate(R + dx, R + dz);
-        ctx.fillStyle = col; ctx.fillRect(-3.4, -3.4, 6.8, 6.8);
-        ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1; ctx.strokeRect(-3.4, -3.4, 6.8, 6.8);
+        ctx.fillStyle = col; ctx.fillRect(-r, -r, r * 2, r * 2);
+        ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1; ctx.strokeRect(-r, -r, r * 2, r * 2);
+        if (m && m.big) { // 王国城は外周リングで一段目立たせる
+          ctx.globalAlpha = 0.85; ctx.strokeStyle = col; ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.arc(0, 0, r + 3, 0, Math.PI * 2); ctx.stroke();
+        }
         ctx.restore();
-      } else if (s.type === 'village' || s.type === 'fort' || s.type === 'dungeon') {
+      } else if (m && m.arrow) {
         const a = Math.atan2(dz, dx);
         ctx.save(); ctx.translate(R + Math.cos(a) * edge, R + Math.sin(a) * edge); ctx.rotate(a);
         ctx.fillStyle = col; ctx.globalAlpha = 0.9;
-        ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(-3, -3.2); ctx.lineTo(-3, 3.2); ctx.closePath(); ctx.fill();
+        const sz = (m && m.big) ? 6 : 5;
+        ctx.beginPath(); ctx.moveTo(sz, 0); ctx.lineTo(-sz + 2, -3.2); ctx.lineTo(-sz + 2, 3.2); ctx.closePath(); ctx.fill();
         ctx.restore();
       }
     }
@@ -1175,6 +1254,135 @@
     ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.5, 5); ctx.lineTo(-4.5, 5); ctx.closePath();
     ctx.fillStyle = '#ffd54a'; ctx.fill();
     ctx.restore();
+  }
+
+  // =====================================================================
+  // 構造物 発見トースト
+  //   ・主に state().structures への近接で自動検知（一度きり）。
+  //   ・1号機が明示通知したい時は window.onDiscover({type,name}) / window.UI.toast(text,opts)。
+  // =====================================================================
+  const DISCOVER_RANGE = 40;        // この距離まで近づくと「発見」（≒レーダー入り）
+  const discovered = new Set();     // 既発見キー（再通知しない）
+  const toasts = [];                // 表示中 {el, life, ttl}
+  const toastQueue = [];            // 未表示の {text, glyph, label, color}
+  const MAX_TOAST_SHOWN = 3;
+
+  function enqueueToast(t) {
+    toastQueue.push(t);
+    if (toastQueue.length > 10) toastQueue.shift(); // 暴発時の保険
+  }
+  // 構造物発見の自動検知（state 駆動・防御的）
+  function checkDiscovery(st) {
+    const structs = Array.isArray(st.structures) ? st.structures : [];
+    if (!structs.length) return;
+    const px = st.pos ? st.pos.x : 0, pz = st.pos ? st.pos.z : 0;
+    for (const s of structs) {
+      const m = STRUCT_META[s.type];
+      if (!m || !m.discover) continue;             // 主要ランドマークのみ（宝箱/スポナーは除外）
+      const k = structKey(s);
+      if (discovered.has(k)) continue;
+      const dx = s.x - px, dz = s.z - pz;
+      if (dx * dx + dz * dz <= DISCOVER_RANGE * DISCOVER_RANGE) {
+        discovered.add(k);
+        enqueueToast({ glyph: m.glyph, text: structName(s) + ' を発見！', label: m.big ? 'NEW LANDMARK' : '発見', color: m.color });
+      }
+    }
+  }
+  function spawnToastEl(t) {
+    const e = el('div', '', dom.toastWrap); e.className = 'ui-toast';
+    e.style.borderColor = t.color || '#fff';
+    e.style.boxShadow = `0 0 14px ${(t.color || '#fff')}55, 0 3px 10px rgba(0,0,0,.5)`;
+    const g = el('span', '', e); g.className = 'tg'; g.textContent = t.glyph || '📍';
+    const tx = el('span', '', e); tx.textContent = t.text || '';
+    if (t.label) { const l = el('span', '', e); l.className = 'tl'; l.textContent = t.label; }
+    return { el: e, life: 0, ttl: 3.6 };
+  }
+  function stepToasts(dt) {
+    if (!dom) return;
+    while (toasts.length < MAX_TOAST_SHOWN && toastQueue.length) toasts.push(spawnToastEl(toastQueue.shift()));
+    for (let i = toasts.length - 1; i >= 0; i--) {
+      const t = toasts[i]; t.life += dt;
+      const k = t.life / t.ttl;
+      if (k >= 1) { t.el.remove(); toasts.splice(i, 1); continue; }
+      let op = 1, ty = 0;
+      if (k < 0.12) { const e = k / 0.12; op = e; ty = (1 - e) * -16; }          // スライドイン
+      else if (k > 0.84) { const e = (k - 0.84) / 0.16; op = 1 - e; ty = e * -10; } // フェードアウト
+      t.el.style.opacity = op.toFixed(3);
+      t.el.style.transform = `translateY(${ty.toFixed(1)}px)`;
+    }
+  }
+
+  // =====================================================================
+  // ボスHPバー
+  //   ・主経路: state().boss = { name, hp, maxHp, color?, phase?, maxPhase?, id? }（不在=null/undefined で非表示）
+  //   ・push経路: window.onBossEncounter(boss) / onBossUpdate(boss) / onBossDefeated(boss)
+  //     （state を出さない実装でも push だけで動く。最終更新から ~10s で自動フェード）
+  // =====================================================================
+  let bossPushed = null, bossPushLife = 0;   // push 経路のキャッシュと寿命
+  let bossSeenId = null, bossLastRatio = 1;  // 出現/撃破の遷移検知用
+  let bossBannerT = 0;                        // 出現/撃破バナーの寿命
+  function bossId(b) { return b ? (b.id != null ? b.id : (b.name || 'boss')) : null; }
+  function setBossPush(b) { bossPushed = b || null; bossPushLife = b ? 10 : 0; }
+  function bossBanner(text, color) {
+    if (!dom || !dom.bossBan) return;
+    dom.bossBan.textContent = text; dom.bossBan.style.color = color || '#ff5a6e';
+    bossBannerT = 1.25; skillFlashT = Math.max(skillFlashT, 0.4); impactShake(0.4, true);
+  }
+  function renderBossPips(n, cur) {
+    if (dom.bossPipN === n) { // 数は据え置き、点灯のみ更新
+      for (let i = 0; i < dom.bossPips.children.length; i++)
+        dom.bossPips.children[i].className = 'pip' + (i < cur ? ' on' : '');
+      return;
+    }
+    dom.bossPips.innerHTML = ''; dom.bossPipN = n;
+    for (let i = 0; i < n; i++) { const p = el('div', '', dom.bossPips); p.className = 'pip' + (i < cur ? ' on' : ''); }
+  }
+  function stepBoss(dt, st) {
+    if (!dom) return;
+    if (bossPushLife > 0) bossPushLife = Math.max(0, bossPushLife - dt);
+    const boss = (st && st.boss) ? st.boss : (bossPushLife > 0 ? bossPushed : null);
+    const id = bossId(boss);
+
+    // --- 出現/撃破の遷移 ---
+    if (id && id !== bossSeenId) {                       // 新ボス出現
+      bossSeenId = id; bossLastRatio = 1;
+      bossBanner('⚔ ' + (boss.name || 'ボス') + ' 出現！', boss.color || '#ff5a6e');
+    } else if (!id && bossSeenId) {                      // state/push から消滅
+      if (bossLastRatio < 0.15) bossBanner('✦ 撃破！', '#ffe24a'); // 瀕死で消えた＝撃破とみなす
+      bossSeenId = null;
+    }
+
+    if (!boss) { if (dom.boss.style.display !== 'none') dom.boss.style.display = 'none'; stepBossBanner(dt); return; }
+    dom.boss.style.display = 'flex';
+
+    const max = (boss.maxHp > 0) ? boss.maxHp : Math.max(boss.hp || 1, 1);
+    const hp = Math.max(0, Math.min(max, (boss.hp != null) ? boss.hp : max));
+    const ratio = max > 0 ? hp / max : 0;
+    bossLastRatio = ratio;
+    dom.bossName.textContent = boss.name || 'ボス';
+    if (boss.color) dom.bossName.style.textShadow = `0 0 10px ${boss.color}, 0 2px 4px #000`;
+    dom.bossFill.style.width = (ratio * 100).toFixed(1) + '%';
+    dom.bossNum.textContent = Math.ceil(hp) + ' / ' + max;
+    dom.boss.classList.toggle('low', ratio < 0.25);
+
+    const maxPhase = (boss.maxPhase > 1) ? Math.min(boss.maxPhase, 10) : 0;
+    if (maxPhase) { dom.bossPips.style.display = 'flex'; renderBossPips(maxPhase, clampN(boss.phase || 0)); }
+    else if (dom.bossPipN !== 0) { dom.bossPips.innerHTML = ''; dom.bossPipN = 0; dom.bossPips.style.display = 'none'; }
+
+    stepBossBanner(dt);
+  }
+  function stepBossBanner(dt) {
+    if (!dom || !dom.bossBan) return;
+    if (bossBannerT > 0) {
+      bossBannerT = Math.max(0, bossBannerT - dt * 0.7);
+      const e = 1 - bossBannerT;
+      const sc = 0.7 + clamp01(e / 0.14) * 0.45;
+      const op = e < 0.1 ? e / 0.1 : (bossBannerT < 0.3 ? bossBannerT / 0.3 : 1);
+      dom.bossBan.style.opacity = clamp01(op).toFixed(3);
+      dom.bossBan.style.transform = `translate(-50%,-50%) scale(${sc.toFixed(3)})`;
+    } else if (dom.bossBan.style.opacity !== '0') {
+      dom.bossBan.style.opacity = '0';
+    }
   }
 
   // =====================================================================
@@ -1256,6 +1464,40 @@
     window.onLearnSkill = function (skill) {
       try { if (typeof prevLearn === 'function') prevLearn(skill); } catch (e) {}
       doLearnSkill(skill);
+    };
+    // ボスHPバー push 口（ui.jsが定義・coreは呼ぶだけ。state().boss を使うなら未使用でも可）
+    const prevBe = window.onBossEncounter;
+    window.onBossEncounter = function (boss) {
+      try { if (typeof prevBe === 'function') prevBe(boss); } catch (e) {}
+      setBossPush(boss); // 出現バナーは stepBoss の id 遷移検知が自動で出す
+    };
+    const prevBu = window.onBossUpdate;
+    window.onBossUpdate = function (boss) {
+      try { if (typeof prevBu === 'function') prevBu(boss); } catch (e) {}
+      setBossPush(boss); // 寿命を更新（HP変化の反映）
+    };
+    const prevBd = window.onBossDefeated;
+    window.onBossDefeated = function (boss) {
+      try { if (typeof prevBd === 'function') prevBd(boss); } catch (e) {}
+      bossBanner('✦ ' + ((boss && boss.name) || 'ボス') + ' 撃破！', '#ffe24a');
+      hits.push({ x: innerWidth / 2, y: innerHeight * 0.32, life: 0, ttl: 0.8, kind: 'level', crit: true, ang: 0 });
+      bossPushed = null; bossPushLife = 0; bossSeenId = null; bossLastRatio = 1;
+    };
+    // 構造物 発見 push 口（任意。自動検知と併用可・キーで重複抑止）
+    const prevDisc = window.onDiscover;
+    window.onDiscover = function (info) {
+      try { if (typeof prevDisc === 'function') prevDisc(info); } catch (e) {}
+      info = info || {};
+      const m = STRUCT_META[info.type] || {};
+      const k = info.type ? ('push:' + info.type + ':' + (info.name || '')) : ('push:' + (info.name || info.text || ''));
+      if (discovered.has(k)) return;
+      discovered.add(k);
+      enqueueToast({
+        glyph: info.glyph || m.glyph || '📍',
+        text: info.text || ((info.name || m.name || '構造物') + ' を発見！'),
+        label: info.label || (m.big ? 'NEW LANDMARK' : '発見'),
+        color: info.color || m.color || '#fff',
+      });
     };
   }
 
@@ -1601,6 +1843,11 @@
 
     // --- レーダー＆情報 ---
     paintRadar(st);
+
+    // --- ボスHPバー＆構造物発見トースト ---
+    stepBoss(dt, st);
+    checkDiscovery(st);
+    stepToasts(dt);
     const time = st.time || {};
     const hh = String(clampN(time.hh)).padStart(2, '0'), mm = String(clampN(time.mm)).padStart(2, '0');
     dom.info.innerHTML =
@@ -1658,6 +1905,11 @@
     window.UI.spawnHitEffect = spawnHitEffect;
     window.UI.settings = () => uiSettings;
     window.UI.setTouch = (b) => setTouchMode(!!b);
+    // ボス／発見トーストの簡易口（state() 不使用でも呼べる別名）
+    window.UI.boss = (boss) => setBossPush(boss);                 // null で消す
+    window.UI.bossDefeated = (boss) => window.onBossDefeated(boss);
+    window.UI.discover = (info) => window.onDiscover(info);
+    window.UI.toast = (text, opts) => { opts = opts || {}; enqueueToast({ glyph: opts.glyph || '📍', text: text || '', label: opts.label || '', color: opts.color || '#fff' }); };
 
     // タッチUIの構築＋端末判定（PCは非表示・操作不変）
     buildTouch();
