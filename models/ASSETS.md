@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 100 ファイル / 13.87 MB
+**合計**: 101 ファイル / 15.53 MB
 
 
 ## プレイヤー
@@ -34,6 +34,7 @@
 | `mob_fish_tropical.glb` | 0.1290 | `idle`, `swim` | 2/2 |
 | `mob_golem.glb` | 0.2460 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_horse.glb` | 0.1591 | `walk`, `idle`, `die`, `hit` | 6/6 |
+| `mob_kraken.glb` | 1.6576 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_pig.glb` | 0.1115 | `walk`, `idle`, `die`, `hit` | 7/7 |
 | `mob_sheep.glb` | 0.2026 | `walk`, `idle`, `die`, `hit` | 7/7 |
 | `mob_skeleton.glb` | 0.2962 | `idle`, `walk`, `attack` | 5/5 |

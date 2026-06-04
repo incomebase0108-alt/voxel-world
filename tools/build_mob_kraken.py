@@ -63,7 +63,7 @@ def tentacle(group, name, base, outdir, up, length, segs, r0,
         pts.append((x,y,z,r))
     # 連続した肉として読ませる：隣接球が必ず重なる密度＋接線方向へ少し伸長
     for i,(x,y,z,r) in enumerate(pts):
-        o=sphere(group,"%s_s%d"%(name,i),(x,y,z),(r,r,r),mt if i%2==0 else mt2,segs=8,rings=5)
+        o=sphere(group,"%s_s%d"%(name,i),(x,y,z),(r,r,r),mt if i%2==0 else mt2,segs=7,rings=4)
         # 接線方向(次の節へ)に1.35倍伸ばして隙間を橋渡し
         if i<len(pts)-1:
             nx,ny,nz,_=pts[i+1]; d=V((nx-x,ny-y,nz-z))
@@ -121,7 +121,7 @@ body_tents=[
     ("BT_b",  ( 0.0,-0.65,1.40), ( 0.0,-0.80), 0.22, 1.7),    # 後中央
 ]
 for nm,base,od,r0,ln in body_tents:
-    tentacle(BODY,nm,base,od,up=0.18,length=ln,segs=8,r0=r0,curl=0.30,droop=0.95,sucker_every=3)
+    tentacle(BODY,nm,base,od,up=0.18,length=ln,segs=7,r0=r0,curl=0.30,droop=0.95,sucker_every=3)
 
 # ===== ArmL / ArmR：前方の大触手（海面へ反り立つ・叩きつけ担当）=====
 #   pivot=付け根 (±0.5,0.45,1.45)。up大で高く反り、先端がわずかに巻く。威圧の rest。
