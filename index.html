@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04z7'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04z8'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -1040,7 +1040,9 @@ window.VoxelGame = {
   craft: (i) => { if (RECIPES[i]) craft(RECIPES[i]); },
   // スマホ向け入力口（ポインタロック不可端末用。移動/ジャンプ/ダッシュは ui.js の合成キーで動くのでここでは視点/攻撃/設置のみ）
   input: {
-    look: (dx, dy) => { player.yaw -= dx * 0.0045; player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch - dy * 0.0045)); },
+    // ★dx/dy を NaN ガード（undefined/NaN→0）。ui.js が look(dx) を1引数で呼ぶ経路があり、dy=undefined だと
+    //   player.pitch が NaN 化→カメラ破綻（スマホで空しか見えない/真上固定）になっていた根治。
+    look: (dx, dy) => { const ax = +dx || 0, ay = +dy || 0; player.yaw -= ax * 0.0045; player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch - ay * 0.0045)); },
     primary: (down) => { if (down) onAttackDown(); else onAttackUp(); }, // 攻撃/採掘（弓は押下で溜め→離しで発射）
     secondary: (down) => { if (down) placeBlock(); },                    // 設置
   },
@@ -1517,6 +1519,9 @@ function updatePlayer(dt) {
   } // 乗船分岐の else 終端
 
   // カメラ：一人称＝目の位置 / 三人称＝視線の後方へ引く
+  if (!Number.isFinite(player.yaw)) player.yaw = 0;       // NaN救済（不正な視点入力やセーブ破損から復帰）
+  if (!Number.isFinite(player.pitch)) player.pitch = 0;   // 真上固定/空のみ表示を起こさない
+  player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch)); // 念のため毎フレームclamp
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
   camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
