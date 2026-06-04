@@ -89,7 +89,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // ===================================================================
 // 定数まわり
 // ===================================================================
-const BUILD = '2026-06-04zd'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
+const BUILD = '2026-06-04ze'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
 const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
@@ -601,13 +601,26 @@ function buildCastle(ox, oz, gx, gz, sw) {
       for (let yy=base+1; yy<=base+11; yy++) sw(ox+dx, yy, oz+dz, B.air); // 天守の立つ中庭空間を空ける
     }
   }
-  addProp(ox, base+1, oz, 'castle_keep');                  // 天守（GLB・最終目標）
-  for (const [sx,sz] of [[-R,-R],[R,-R],[-R,R],[R,R]]) addProp(ox+sx, base+4, oz+sz, 'fort_flag'); // 四隅に王旗
-  addProp(ox, base+1, oz-R, 'fort_gate', Math.PI);         // 南門
-  addProp(ox-3, base+1, oz-3, 'torch'); addProp(ox+3, base+1, oz-3, 'torch');
-  garrisons.set('C'+gx+','+gz, { x: ox, z: oz, captain: true, r: R-1 }); // 近衛兵（隊長＋兵士）駐留
-  bossSpots.set(`${ox},${base+1},${oz}`, { x: ox, y: base+2, z: oz, type: 'dragon', cd: 0, mob: null, trig: 22 }); // 最奥のボス
-  sw(ox, base+1, oz+R-1, B.chest); addProp(ox, base+1, oz+R-1, 'chest'); // 特別報酬の宝箱
+  // ① 天守を「入れる建物」に：石レンガの屋根付きホール(7x7)。南に入口、中にドラゴン＋特別報酬＝掘らず歩いて入る。
+  const KR = 3, kTop = base + 5;
+  for (let dx=-KR; dx<=KR; dx++) for (let dz=-KR; dz<=KR; dz++) {
+    sw(ox+dx, base, oz+dz, B.stonebrick);                  // 天守の床
+    const edge = Math.abs(dx)===KR || Math.abs(dz)===KR;
+    if (edge) {
+      if (dz===-KR && dx===0) { sw(ox+dx, base+1, oz+dz, B.air); sw(ox+dx, base+2, oz+dz, B.air); continue; } // 南の入口(2高)
+      for (let yy=base+1; yy<=kTop; yy++) sw(ox+dx, yy, oz+dz, (yy===base+3 && (dx===0||dz===0)) ? B.glass : B.stonebrick); // 壁＋中段に窓
+    } else {
+      for (let yy=base+1; yy<=base+4; yy++) sw(ox+dx, yy, oz+dz, B.air); // 内部空洞(高さ4＝ドラゴンが入る)
+      sw(ox+dx, base+5, oz+dz, B.stonebrick);              // 屋根
+    }
+  }
+  addProp(ox, base+1, oz-KR, 'fort_gate', Math.PI);        // 天守の入口門（南向き）
+  for (const [sx,sz] of [[-R,-R],[R,-R],[-R,R],[R,R]]) addProp(ox+sx, base+4, oz+sz, 'fort_flag'); // 城壁四隅に王旗
+  addProp(ox-2, base+1, oz-2, 'torch'); addProp(ox+2, base+1, oz-2, 'torch'); // 天守内の灯り
+  garrisons.set('C'+gx+','+gz, { x: ox, z: oz, captain: true, r: R-1 }); // 近衛兵（隊長＋兵士）駐留＝中庭を守る
+  bossSpots.set(`${ox},${base+1},${oz}`, { x: ox, y: base+1, z: oz, type: 'dragon', cd: 0, mob: null, trig: 18 }); // 天守内のドラゴン
+  sw(ox+2, base+1, oz+2, B.chest); addProp(ox+2, base+1, oz+2, 'chest'); // 天守奥の特別報酬
+  sw(ox, base+1, oz+R-1, B.chest); addProp(ox, base+1, oz+R-1, 'chest'); // 中庭の宝箱
 }
 // 祠：聖域のGLB＋小宝箱＋松明（低頻度で散在）
 function buildShrine(ox, oz, gx, gz, sw) {
