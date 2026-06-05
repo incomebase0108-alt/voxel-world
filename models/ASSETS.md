@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 149 ファイル / 23.91 MB
+**合計**: 151 ファイル / 24.45 MB
 
 
 ## プレイヤー
@@ -53,11 +53,13 @@
 | `npc_elder.glb` | 0.2293 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 | `npc_farmer.glb` | 0.2132 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 | `npc_guard.glb` | 0.2306 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
+| `npc_keeper.glb` | 0.2557 | `idle`, `walk`, `sit` | 5/5 |
 | `npc_merchant.glb` | 0.2144 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 | `npc_soldier_captain.glb` | 0.2459 | `idle`, `walk`, `sit`, `work`, `talk`, `attack` | 5/5 |
 | `npc_soldier_spear.glb` | 0.2424 | `idle`, `walk`, `sit`, `work`, `talk`, `attack` | 5/5 |
 | `npc_soldier_sword.glb` | 0.2427 | `idle`, `walk`, `sit`, `work`, `talk`, `attack` | 5/5 |
 | `npc_villager.glb` | 0.2112 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
+| `npc_wife.glb` | 0.2831 | `idle`, `walk` | 5/5 |
 | `npc_woman.glb` | 0.2017 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 
 ## 構造物

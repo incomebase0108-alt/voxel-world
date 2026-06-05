@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 149,
-    "size_bytes": 25070740,
-    "size_mb": 23.909
+    "count": 151,
+    "size_bytes": 25635636,
+    "size_mb": 24.448
   },
   "assets": [
     {
@@ -501,6 +501,22 @@
       "error": null
     },
     {
+      "file": "npc_keeper.glb",
+      "name": "npc_keeper",
+      "category": "NPC",
+      "size_bytes": 268096,
+      "size_mb": 0.2557,
+      "clips": [
+        "idle",
+        "walk",
+        "sit"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 9,
+      "error": null
+    },
+    {
       "file": "npc_merchant.glb",
       "name": "npc_merchant",
       "category": "NPC",
@@ -591,6 +607,21 @@
       "meshes": 5,
       "nodes": 5,
       "materials": 9,
+      "error": null
+    },
+    {
+      "file": "npc_wife.glb",
+      "name": "npc_wife",
+      "category": "NPC",
+      "size_bytes": 296800,
+      "size_mb": 0.2831,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 11,
       "error": null
     },
     {
