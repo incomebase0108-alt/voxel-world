@@ -10,6 +10,7 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 環境音 切替 | `setAmbient('forest'|…)` / `setAmbient(null)` | 未呼出でも `getBiome()` 連動で自動 |
 | 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音＋恩人モチーフのこだま |
 | ストーリー演出 | `onMaguroAppear()` / `onMaguroVanish()` / `onChapterClear(idx)` / `onEnding()` | 恩人まぐろの霊／光になって消える／章クリア／大団円 |
+| ゲームイベント | `onTameSuccess()` `onCollect()` `onSave()` `onLoad()` `onFeed()` `onSandbathDone()` `onUiClick()` | 軽い確定音 |
 | 敵 aggro | `onEnemyAggro()` | 交戦突入の緊張スティンガー |
 | 既存ボス | `onBossAppear(type)` / `onBossDefeat(type)` | `type`=golem/dragon/skeleton_king/queen |
 | BGMシーン | `setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest')` | 1.8sクロスフェード |
@@ -178,6 +179,19 @@ window.getAmbientBiome();      // 現在鳴っている環境音タイプ（診�
 - **再帰**: 女王撃破 `onQueenDefeat()` でも勝利ファンファーレの後に恩人モチーフがこだまし、「恩人の祝福」で物語が締まる。任意で `playSFX('motif', {at,gain,mul,wave})` を直接呼べば、他のシーンにもモチーフを差し込める。
 
 > **1号機/3号機へ依頼（⑨）**: 演出のタイミングで上記を1回ずつ呼ぶだけ（**受け口実装済み**）。`onChapterClear` には章番号を渡すと盛り上がりが増します。
+
+### ⑩ ゲームイベントSE口（軽い確定音・呼ぶだけ）
+進行フィードバックの短く心地よい確定音。3号機UIのボタン音にも流用可。
+| 口 | 用途 |
+|---|---|
+| `onTameSuccess()` | なつかせ成功（温かい上昇＋下支え） |
+| `onCollect()` | コレクション/図鑑登録（キラッ） |
+| `onSave()` / `onLoad()` | セーブ（落ち着いた確定）／ロード（起動的な上昇） |
+| `onFeed()` | 餌やり（やわらかい「ぱく」＋ごきげん） |
+| `onSandbathDone()` | 砂浴び完了（すっきりした締め） |
+| `onUiClick()` | 汎用クリック/決定（最小・3号機UI用） |
+
+> すべて防御的＝未呼出でも無音で安全。個別倍率 `setSfxGain('ui_tame', 0.7)` 等で調整可。
 
 ---
 

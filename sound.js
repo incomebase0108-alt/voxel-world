@@ -18,6 +18,7 @@
     splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
     whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1, aggro_stinger: 1, escape_success: 1,
     maguro_appear: 1, maguro_vanish: 1, chapter_clear: 1, ending: 1, motif: 1, // ⑨ ストーリー演出音
+    ui_tame: 1, ui_collect: 1, ui_save: 1, ui_load: 1, ui_feed: 1, ui_sandbath: 1, ui_click: 1, // ⑩ ゲームイベント確定音
     companion_join: 1, companion_reply: 1, companion_hit: 1, companion_leave: 1, // 仲間システム
     // チンチラ世界の動物SE（敵/仲間/ペット）。個別倍率で「狼うるさい」等に即対応。
     wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, snake_strike: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, attack_bite: 1, // 敵
@@ -310,6 +311,15 @@
     // 恩人モチーフ単体（女王戦/エンディング等で再帰利用）。opts で at/gain/mul/wave を渡せる。
     motif(o) { playMotif(o); },
 
+    // === ⑩ ゲームイベントの軽い確定音（UI/進行フィードバック）。短く・控えめ・心地よく ===
+    ui_tame()     { [659.25, 880.00, 1318.51].forEach((f, i) => tone(f, 0.12, 'sine', 0.09, f, null, i * 0.07)); tone(523.25, 0.45, 'triangle', 0.04, 523.25); }, // なつかせ成功：温かい上昇＋下支え
+    ui_collect()  { tone(1318.51, 0.07, 'sine', 0.08, 1760.00); tone(1760.00, 0.10, 'sine', 0.07, 2093.00, null, 0.06); noise(0.04, 0.03, 5000, 'highpass'); },     // コレクション登録：図鑑のキラッ
+    ui_save()     { tone(392.00, 0.10, 'sine', 0.07, 523.25); tone(523.25, 0.13, 'sine', 0.06, 523.25, null, 0.08); },                                              // セーブ：落ち着いた確定2音
+    ui_load()     { tone(523.25, 0.10, 'triangle', 0.07, 783.99); tone(783.99, 0.13, 'triangle', 0.06, 1046.50, null, 0.07); },                                     // ロード：起動的な上昇
+    ui_feed()     { noise(0.05, 0.04, 800, 'lowpass'); tone(330.00, 0.10, 'sine', 0.07, 440.00, null, 0.03); tone(660.00, 0.08, 'sine', 0.05, 880.00, null, 0.12); }, // 餌やり：やわらかい「ぱく」＋ごきげん
+    ui_sandbath() { noise(0.10, 0.04, 1100, 'bandpass'); tone(880.00, 0.12, 'sine', 0.05, 1320.00, null, 0.08); },                                                  // 砂浴び完了：すっきりした締め
+    ui_click()    { tone(880.00, 0.03, 'square', 0.05, 1100.00); },                                                                                                 // 汎用クリック/決定（最小）
+
     // === 仲間システム（NPCが仲間になる新機能）。1号機が口を呼ぶだけ・未呼出なら無音待機 ===
     //   type は仲間種（'knight'|'archer'|'mage' 等）。省略でも汎用音として成立。
     // ① 仲間加入＝心強い・温かい上昇ファンファーレ（「頼れる味方が増えた」安心感。勝利感より温かさ寄り）。
@@ -483,6 +493,16 @@
   window.onMaguroVanish = () => window.playSFX('maguro_vanish');
   window.onChapterClear = (idx) => window.playSFX('chapter_clear', { idx: idx });
   window.onEnding       = () => window.playSFX('ending');
+
+  // === ⑩ ゲームイベントSE口（防御的: 1号機/3号機が呼ぶだけ・未呼出なら無音）=====
+  //   軽い確定音。なつかせ/コレクション/セーブ/ロード/餌やり/砂浴び完了 等の進行フィードバック。
+  window.onTameSuccess  = () => window.playSFX('ui_tame');
+  window.onCollect      = () => window.playSFX('ui_collect');
+  window.onSave         = () => window.playSFX('ui_save');
+  window.onLoad         = () => window.playSFX('ui_load');
+  window.onFeed         = () => window.playSFX('ui_feed');
+  window.onSandbathDone = () => window.playSFX('ui_sandbath');
+  window.onUiClick      = () => window.playSFX('ui_click'); // 任意：ボタン決定音（3号機UI用）
 
   // === 仲間システム連携（防御的: 1号機が口を呼ぶだけ・未呼出なら無音待機）=====
   //   window.onCompanionJoin(type)  … ① NPCが仲間になった時の心強い加入音。type=仲間種（'knight'|'archer'|'mage' 等／省略=汎用）
