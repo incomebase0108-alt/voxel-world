@@ -3747,7 +3747,7 @@ function updatePredator(m, dt, dx, dz, dist, dy) {
   const t = m.def.type;
   // 発見SE：索敵圏に入った瞬間に一度だけ鳴く（離れたらリセットして再発見でまた鳴く）
   const detect = dist < 14 && dy < 8;
-  if (detect && !m.spotted) { m.spotted = true; critterSE(m, 'spot'); }
+  if (detect && !m.spotted) { m.spotted = true; critterSE(m, 'spot'); try { if (window.onEnemyAggro) window.onEnemyAggro(); } catch (e) {} } // 交戦開始のスティンガー
   else if (!detect && dist > 20) m.spotted = false;
   // ---- 鳥：上空旋回 → 急降下アーク → 離脱 のループ（猛禽らしい一撃離脱）----
   if (t === 'bird') {
@@ -4113,6 +4113,8 @@ function updateMobs(dt) {
     m._lodMid = !lodProtected && dist > M.lodNear;       // 中：アニメ/仕草を凍結（critterGesture / mixer が参照）
     if (m.obj.visible === lodFar) m.obj.visible = !lodFar; // 遠景はレンダリングを止める（描画コスト最大の削減）
     if (lodFar && ((mobFrameTick + i) % 3 !== 0)) continue; // 遠景は3フレームに1回だけ更新（位置は保持＝瞬間移動を防ぐ）
+    // 交戦開始のスティンガー（汎用敵＝critter以外。critterは個性AI側のspotで発火）。立ち上がりエッジのみ
+    if (m.hostile && !m.def.critter) { const eng = dist < 20 && dy < 4; if (eng && !m._aggro) { m._aggro = true; try { if (window.onEnemyAggro) window.onEnemyAggro(); } catch (e) {} } else if (!eng) m._aggro = false; }
     if (m.pet) { updatePet(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 🐾 ペットは despawn しない・専用AI（機嫌/癖）
     if (m.companion) { updateCompanion(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 仲間は despawn しない・専用AI
     if (m.houseNpc) { updateHouseNpc(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 👫 飼い主/内縁の妻は despawn しない・専用AI
@@ -4474,7 +4476,8 @@ function updateSplashes(dt) {
 // ⑥ ボス出現の連携：威圧音(2号機 onBossAppear)＋出現fx(4号機 魔法陣/瘴気)。live湧き時のみ（復元時は鳴らさない）
 function onBossSpawned(m) {
   const t = m.def.type, p = m.obj.position;
-  try { window.onBossAppear && window.onBossAppear(t); } catch (e) {} // boss_roar（type別の威圧音）
+  // ★女王さくらだけ専用口（咆哮＋queenテーマ。setMusicScene('queen')は内部で呼ばれる）。汎用三系統は従来の onBossAppear。
+  try { if (m.def.queen) { if (window.onQueenAppear) window.onQueenAppear(); } else if (window.onBossAppear) window.onBossAppear(t); } catch (e) {}
   spawnFx('fx_magic_circle', p.x, p.y + 0.05, p.z, 3.2, 1.6); // 足元の魔法陣
   spawnFx('fx_miasma',       p.x, p.y + 0.4,  p.z, 4.0, 1.4); // 立ち上る瘴気
 }
@@ -4938,7 +4941,8 @@ function killMob(m) {
 // ⑥ ボス撃破：出現(roar＋魔法陣＋瘴気)→戦闘(bossBGM)→撃破(ファンファーレ＋崩壊＋特別報酬) で戦いを完結させる
 function defeatBoss(m) {
   const p = m.obj.position, t = m.def.type;
-  try { window.onBossDefeat && window.onBossDefeat(t); } catch (e) {}        // 撃破ファンファーレ（2号機）
+  // ★女王さくらだけ専用の撃破口（撃破後コアが平常BGMへ戻す）。汎用三系統は従来の onBossDefeat。
+  try { if (m.def.queen) { if (window.onQueenDefeat) window.onQueenDefeat(); } else if (window.onBossDefeat) window.onBossDefeat(t); } catch (e) {}
   spawnFx('fx_collapse', p.x, p.y + 0.3, p.z, 3.5, 1.8);                     // 崩壊演出（4号機・自走loop）
   const rw = BOSS_REWARD[t] || { exp: 40, gold: 2, coin: 4, equips: 1, name: t };
   gainExp(rw.exp);                                                          // 大量EXP（通常討伐EXPへ上乗せ）
@@ -5057,28 +5061,34 @@ function updateAttack(dt) {
 // 戦闘BGM：近くに敵がいれば combat、水中は water、それ以外は時間帯。切替時だけ口を叩く
 // BGMシーンは「毎フレーム再評価＋特殊→平常へ自動復帰」の一本ロジック（water/combat 固着の根絶）
 //   優先順位：水中 water ＞ 戦闘 combat(ヒステリシス付) ＞ 時間帯 day/night
-let musicScene = '', musicTimer = 0, combatHold = 0, bossHold = 0, dbgNearEnemies = 0, dbgMusicWater = false;
+let musicScene = '', musicTimer = 0, combatHold = 0, bossHold = 0, queenHold = 0, dbgNearEnemies = 0, dbgMusicWater = false;
+let ambientUnderground = false; // 環境音 cave 切替の現在状態（地下↔地上の立ち上がりで setAmbient）
 const COMBAT_RADIUS = 14;   // この距離内に敵がいれば戦闘
 const COMBAT_HOLD = 4;      // 敵がいなくなってから平常へ戻すまでの猶予秒（チャタリング防止）
 function updateCombatMusic(dt) {
   // 近接敵数は毎フレーム数える（ヒステリシスを正確に）
-  let near = 0, bossNear = false;
+  let near = 0, bossNear = false, queenNear = false;
   for (const m of mobs) {
-    if (m.hostile && !m.dying
-        && Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z) < COMBAT_RADIUS
-        && Math.abs(m.obj.position.y - player.pos.y) < 4) { near++; if (m.def.role === 'boss') bossNear = true; } // 高低差4超（地下/上空）の敵は戦闘BGMに数えない
+    if (!m.hostile || m.dying) continue;
+    const hd = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z), dyv = Math.abs(m.obj.position.y - player.pos.y);
+    if (hd < COMBAT_RADIUS && dyv < 4) near++;                 // 高低差4超（地下/上空）の雑魚は戦闘BGMに数えない
+    if (m.def.role === 'boss' && hd < COMBAT_RADIUS + 6 && dyv < 8) { if (m.def.queen) queenNear = true; else bossNear = true; } // ボスは大柄＝広め・高低差緩めで判定（テーマを確実に）
   }
   dbgNearEnemies = near;
+  // 環境音：基本オート（getBiome連動）。地下に入った/出た瞬間だけ明示で cave へ切替/解除
+  const ug = playerUnderground();
+  if (ug !== ambientUnderground) { ambientUnderground = ug; try { if (window.setAmbient) window.setAmbient(ug ? 'cave' : null); } catch (e) {} }
   if (near > 0) combatHold = COMBAT_HOLD; else combatHold = Math.max(0, combatHold - dt); // 0体になったら数秒で解除
   if (bossNear) bossHold = COMBAT_HOLD; else bossHold = Math.max(0, bossHold - dt); // ⑥ ボス戦BGMの保持（離脱/撃破後も数秒）
+  if (queenNear) queenHold = COMBAT_HOLD; else queenHold = Math.max(0, queenHold - dt); // ★女王テーマの保持（onQueenAppearが鳴らした queen を毎フレーム維持＝bossで上書きしない）
   musicTimer -= dt;
   if (musicTimer > 0) return;
   musicTimer = 0.25;
   const px = Math.floor(player.pos.x), pz = Math.floor(player.pos.z);
   const inWater = playerHeadInWater(); // ★物理/swim/溺れ と同じ統一基準（頭水中）
   dbgMusicWater = inWater;
-  // ⑥ ボスが近ければ最重厚の boss シーン（2号机）。次いで combat → 水中 → 夜/昼。
-  const sc = bossHold > 0 ? 'boss' : inWater ? 'water' : combatHold > 0 ? 'combat' : isNight() ? 'night' : 'day';
+  // ★女王さくらが近ければ専用 queen テーマ最優先。次いで汎用ボス boss → combat → 水中 → 夜/昼。
+  const sc = queenHold > 0 ? 'queen' : bossHold > 0 ? 'boss' : inWater ? 'water' : combatHold > 0 ? 'combat' : isNight() ? 'night' : 'day';
   if (sc !== musicScene) {
     // ★成功時のみキャッシュ更新：sound.js 未準備なら更新せず次フレーム再試行
     if (typeof window.setMusicScene === 'function') { try { window.setMusicScene(sc); musicScene = sc; } catch (e) {} }
