@@ -26,19 +26,33 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 攻撃 | `onAttackHit(weapon,isCrit)` / `onAttackWhiff()` / `onAttackCharge('start'|'full')` | — |
 | 音量（統一） | `setVolume(bus,0..1)` / `getVolume(bus)` | bus=`master`/`bgm`(music)/`sfx`(se)/`ambient`(amb) |
 | 一時停止 | `setAudioPaused(true/false)` / `isAudioPaused()` | Esc一時停止連携＝全音を黙らせ復帰（設定は保持） |
+| ミックス場面 | `setMixSnapshot('gameplay'|'title'|'cutscene'|'menu'|'quiet')` / `getMixSnapshot()` | 場面別の音楽/SE/環境バランス |
 | 音量/診断（個別） | `setMasterVolume/SfxVolume/BgmVolume/AmbVolume`・`setSfxGain(key,x)`・`getSoundDiag()` | ④設定・実機診断 |
 
 ## バス構成
 ```
-sfxBus ───────────────┐
-bgmBus → bgmDuck ──────┤→ master → limiter → 出力
-ambBus → ambDuck ──────┘
+sfxBus → sfxDuck ──┐
+bgmBus → bgmDuck ──┤→ master → limiter → 出力
+ambBus → ambDuck ──┘
 ```
-- `master` … 全体音量（ミュート時は0）
-- `sfxBus` … 効果音（**ダックしない**＝戦闘でも最前面） ／ `bgmBus` … BGM ／ `ambBus` … 環境音
-- `bgmDuck`/`ambDuck` … P2 ダッキング段。戦闘/ボス/女王で音楽・環境音だけを軽く下げ、SEを立たせる（係数は `getSoundDiag().duck`）
+- `master` … 全体音量（ミュート/一時停止時は0）
+- `sfxBus` … 効果音 ／ `bgmBus` … BGM ／ `ambBus` … 環境音（ユーザー音量 `vol.x` は各 *Bus.gain 側で独立）
+- `*Duck` … **ミックス段** = シーンダッキング × ミックススナップショット を掛けた係数（`getSoundDiag().duck`）。
+  - P2 シーンduck：戦闘/ボス/女王で **音楽・環境音だけ**を下げ SE を立たせる（SEのシーンduckは常に1）。
+  - ⑰ P5 スナップショット：場面別の相対バランス（後述）。両者は乗算で合成（単一ライター＝AudioParam衝突なし）。
 - `limiter` … master直前のセーフティ・リミッタ（クリップ防止）
 - さらに **個別SE倍率**（`gains`）が各効果音に乗る（後述）
+
+### ⑰ 場面別ミックス・スナップショット（P5）
+`window.setMixSnapshot(name)` で bgm/sfx/amb の相対バランスを名前で切替（ユーザー音量・シーンduckとは別レイヤーで乗算）。
+| name | bgm / sfx / amb | 用途 |
+|---|---|---|
+| `gameplay`（既定・別名 `normal`） | 1.0 / 1.0 / 1.0 | 通常プレイ |
+| `title` | 1.0 / 0.9 / 0.5 | タイトル：音楽前面・環境控えめ |
+| `cutscene`（別名 `story`/`event`） | 1.0 / 0.6 / 0.4 | 演出/ストーリー：曲・セリフを立てる |
+| `menu`（別名 `settings`/`pause`） | 0.7 / 1.0 / 0.3 | メニュー/設定：UI音を明瞭に |
+| `quiet` | 0.6 / 0.85 / 0.6 | 静かな場面 |
+- `getMixSnapshot()` / `listMixSnapshots()`。未知 name は無視。例：ストーリー演出に入る前 `setMixSnapshot('cutscene')` → 終わったら `setMixSnapshot('gameplay')`。
 
 ## アダプティブ音楽（P2）
 - **危険度レイヤー**: `setDangerLevel(0..1)` で、`bgmBus` 上の不穏ドローン（低い半音うなり＋心拍ゆらぎ）の音量を 0.4s 時定数で滑らかに増減。敵が近いほど 1 に近づけて呼べば緊張が高まり、離れたら 0 で消える。未呼出なら無音。

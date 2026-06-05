@@ -30,22 +30,26 @@
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
   let limiter = null; // ③ master 直前のセーフティ・リミッタ（多数のSE＋BGM重畳時のクリップ防止）
-  let bgmDuck = null, ambDuck = null; // P2 ダッキング段：戦闘/ボス時に music/ambient を軽く下げ SE を立たせる（SE は通さない）
+  let bgmDuck = null, ambDuck = null, sfxDuck = null; // P2/P5 ミックス段：シーンduck＋スナップショットを掛けた係数を流す（ユーザー音量とは別レイヤー）
+  let curDuck = { bgm: 1, amb: 1 };        // シーン由来のダック（applyDuck が更新・SEは常に1）
+  let mixSnap = { bgm: 1, sfx: 1, amb: 1 }; // P5 ミックススナップショット（setMixSnapshot が更新）
+  let mixSnapName = 'gameplay';
 
   function ac() {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       ctx = new AC();
-      // バス構成： sfxBus ─────────────┐
+      // バス構成： sfxBus → sfxDuck ──┐
       //           bgmBus → bgmDuck ──┤→ master → limiter → destination
-      //           ambBus → ambDuck ──┘   （duck段は戦闘/ボスで music/ambient だけ下げる。SEは下げない）
+      //           ambBus → ambDuck ──┘   （*Duck = シーンduck × ミックススナップショット。ユーザー音量は *Bus.gain 側で独立）
       master = ctx.createGain();
       sfxBus = ctx.createGain();
       bgmBus = ctx.createGain();
       ambBus = ctx.createGain(); // ① 環境音アンビエンス（BGMの下）
-      bgmDuck = ctx.createGain(); bgmDuck.gain.value = 1.0; // P2 ダッキング係数（1=素通し）
+      bgmDuck = ctx.createGain(); bgmDuck.gain.value = 1.0; // ミックス係数（1=素通し）
       ambDuck = ctx.createGain(); ambDuck.gain.value = 1.0;
+      sfxDuck = ctx.createGain(); sfxDuck.gain.value = 1.0; // SEはシーンduckしないがスナップショットでは下げ得る
       // セーフティ・リミッタ：ピークだけを抑える透明な設定（threshold高め＋速いattack＝音色は変えずクリップのみ防止）。
       limiter = ctx.createDynamicsCompressor();
       try {
@@ -55,9 +59,9 @@
         limiter.attack.value = 0.003;
         limiter.release.value = 0.25;
       } catch (e) {}
-      sfxBus.connect(master);                       // SE はダックしない（最前面に立たせる）
-      bgmBus.connect(bgmDuck).connect(master);      // 音楽はダック段経由
-      ambBus.connect(ambDuck).connect(master);      // 環境音もダック段経由
+      sfxBus.connect(sfxDuck).connect(master);      // SE（シーンduckなし・snapshotで調整可）
+      bgmBus.connect(bgmDuck).connect(master);      // 音楽はミックス段経由
+      ambBus.connect(ambDuck).connect(master);      // 環境音もミックス段経由
       master.connect(limiter); limiter.connect(ctx.destination); // master → limiter → 出力
       applyVolumes();
     }
@@ -66,11 +70,17 @@
   }
   // P2 ダッキング：シーンに応じて music/ambient の duck 係数を滑らかに変える。戦闘=やや下げ、ボス/女王=しっかり下げ。
   const DUCK = { combat: { bgm: 0.82, amb: 0.5 }, boss: { bgm: 0.78, amb: 0.4 }, queen: { bgm: 0.78, amb: 0.4 }, escape: { bgm: 0.92, amb: 0.7 } };
-  function applyDuck(scene) {
+  // P5 ミックス適用：シーンduck × スナップショット を3バスのミックス段へ滑らかに反映（単一ライターで AudioParam 衝突なし）。
+  function applyMix() {
     const c = ac(); if (!c || !bgmDuck) return;
+    bgmDuck.gain.setTargetAtTime(curDuck.bgm * mixSnap.bgm, c.currentTime, 0.4);
+    ambDuck.gain.setTargetAtTime(curDuck.amb * mixSnap.amb, c.currentTime, 0.4);
+    sfxDuck.gain.setTargetAtTime(1.0 * mixSnap.sfx, c.currentTime, 0.4); // SEはシーンduck=1、snapshotのみ
+  }
+  function applyDuck(scene) {
     const d = DUCK[scene] || { bgm: 1.0, amb: 1.0 };
-    bgmDuck.gain.setTargetAtTime(d.bgm, c.currentTime, 0.4); // 0.4s 時定数で自然に
-    ambDuck.gain.setTargetAtTime(d.amb, c.currentTime, 0.4);
+    curDuck.bgm = d.bgm; curDuck.amb = d.amb; // SE は常に 1（戦闘で下げない）
+    applyMix();
   }
   let audioPaused = false; // P5: Esc 一時停止などで全音を黙らせる（master を 0 に）
   function applyVolumes() {
@@ -1170,6 +1180,25 @@
   window.setAudioPaused = (p) => { audioPaused = !!p; applyVolumes(); };
   window.isAudioPaused   = () => audioPaused;
 
+  // ⑰ P5 場面別ミックス・スナップショット（bgm/sfx/amb の相対バランスを名前で切替）。ユーザー音量・シーンduckとは別レイヤーで乗算。
+  //   1号機/3号機が場面に応じて window.setMixSnapshot('gameplay'|'title'|'cutscene'|'menu'|'quiet') を呼ぶだけ。
+  const MIX_SNAPSHOTS = {
+    gameplay: { bgm: 1.0, sfx: 1.0, amb: 1.0 }, // 通常プレイ（既定）
+    title:    { bgm: 1.0, sfx: 0.9, amb: 0.5 }, // タイトル：音楽前面・環境控えめ
+    cutscene: { bgm: 1.0, sfx: 0.6, amb: 0.4 }, // 演出/ストーリー：SE/環境を引き、曲/セリフを立てる
+    menu:     { bgm: 0.7, sfx: 1.0, amb: 0.3 }, // メニュー/設定：音楽少し下げUI音を明瞭に
+    quiet:    { bgm: 0.6, sfx: 0.85, amb: 0.6 }, // 静かな場面
+  };
+  const MIX_ALIAS = { normal: 'gameplay', play: 'gameplay', story: 'cutscene', event: 'cutscene', settings: 'menu', pause: 'menu' };
+  window.setMixSnapshot = (name) => {
+    let n = String(name || '').toLowerCase(); if (n in MIX_ALIAS) n = MIX_ALIAS[n];
+    const s = MIX_SNAPSHOTS[n]; if (!s) return;          // 未知は無視（事故ゼロ）
+    mixSnap = { bgm: s.bgm, sfx: s.sfx, amb: s.amb }; mixSnapName = n;
+    applyMix();
+  };
+  window.getMixSnapshot = () => mixSnapName;
+  window.listMixSnapshots = () => Object.keys(MIX_SNAPSHOTS);
+
   // 決定的テスト：bgmBus 経路を直接鳴らす。鳴れば「bgmBus→master→出力」は生きていて
   // 原因は scene gain（gainで消えている）／鳴らなければ bgmBus 経路が断、と一発で切り分く。
   window.testBGMBeep = () => {
@@ -1204,7 +1233,8 @@
       sfxBusGain: sfxBus ? +sfxBus.gain.value.toFixed(3) : null,
       masterGain: master ? +master.gain.value.toFixed(3) : null,
       limiterReductionDb: limiter ? +limiter.reduction.toFixed(2) : null, // ③ リミッタが今どれだけ抑制中か（0=余裕／負=ピーク抑制中）
-      duck: { bgm: bgmDuck ? +bgmDuck.gain.value.toFixed(2) : null, amb: ambDuck ? +ambDuck.gain.value.toFixed(2) : null }, // P2 ダッキング係数（戦闘/ボスで<1）
+      duck: { bgm: bgmDuck ? +bgmDuck.gain.value.toFixed(2) : null, amb: ambDuck ? +ambDuck.gain.value.toFixed(2) : null, sfx: sfxDuck ? +sfxDuck.gain.value.toFixed(2) : null }, // P2/P5 ミックス係数（シーンduck×snapshot）
+      mixSnapshot: mixSnapName, // ⑰ 現在のミックススナップショット
       dangerLevel: dangerLevel, dangerLayer: !!dangerNodes, // P2 危険度レイヤー
       weather: weatherKind, reverbZone: reverbZone, // ⑫⑬ 天候音/残響ゾーン
       lowHP: lowHPOn, overheat: overheatOn, // ⑭ 状態音
