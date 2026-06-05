@@ -76,14 +76,22 @@ def set_origin(obj, point):
 # ----------------------------------------------------------------------
 # 1. 胴体（横長の楕円体）。中心 z=0.62、長手は Y（前後）。
 # ----------------------------------------------------------------------
-body = sphere("CowBody", (0, 0, 0.62), (0.24, 0.42, 0.27), M_BODY, segs=20, rings=14)
+body = sphere("CowBody", (0, -0.02, 0.62), (0.25, 0.46, 0.28), M_BODY, segs=22, rings=15)
+# 肩・胸（前を少し盛って獣らしく）と尻（後ろの張り）。深く重ねて1つの胴に見せる。
+chest = sphere("CowChest", (0, 0.30, 0.66), (0.225, 0.20, 0.255), M_BODY, segs=20, rings=14)
+rump  = sphere("CowRump",  (0, -0.34, 0.64), (0.215, 0.18, 0.245), M_BODY, segs=20, rings=14)
+# 首（胴→頭を滑らかに繋ぐ）と喉袋（dewlap）
+neck  = sphere("CowNeck",  (0, 0.44, 0.74), (0.145, 0.16, 0.155), M_BODY, segs=18, rings=12)
+dewlap= sphere("CowDewlap",(0, 0.50, 0.56), (0.085, 0.12, 0.10),  M_BODY, segs=14, rings=10)
+body_blend = [chest, rump, neck, dewlap]
 
-# 斑（body に従属）
+# 斑（body に従属・大小の変化を付け、こげ茶の乳牛らしく）
 spots = []
-for i,(x,y,z,s) in enumerate([(0.12,0.12,0.74,0.10),(-0.14,-0.05,0.70,0.12),
-                              (0.10,-0.22,0.60,0.09),(-0.08,0.24,0.66,0.08),
-                              (0.16,-0.10,0.55,0.07)]):
-    sp = sphere("Spot%d"%i, (x, y, z), (s, s*1.1, s), M_SPOT, segs=12, rings=8)
+for i,(x,y,z,sx,sy,sz) in enumerate([(0.13,0.10,0.76,0.13,0.14,0.12),(-0.16,-0.06,0.72,0.15,0.13,0.14),
+                              (0.12,-0.26,0.62,0.11,0.12,0.10),(-0.10,0.26,0.70,0.10,0.11,0.10),
+                              (0.18,-0.12,0.55,0.09,0.09,0.08),(-0.06,-0.40,0.66,0.10,0.09,0.10),
+                              (0.05,0.40,0.72,0.07,0.07,0.07)]):
+    sp = sphere("Spot%d"%i, (x, y, z), (sx, sy, sz), M_SPOT, segs=12, rings=9)
     spots.append(sp)
 
 # ----------------------------------------------------------------------
@@ -95,10 +103,12 @@ noseL = sphere("NoseL", (0.04, 0.73, 0.74), (0.02,0.015,0.02), M_NOSE, segs=10, 
 noseR = sphere("NoseR", (-0.04, 0.73, 0.74), (0.02,0.015,0.02), M_NOSE, segs=10, rings=8)
 eyeL  = sphere("EyeL", (0.09, 0.60, 0.86), (0.025,0.02,0.03), M_EYE, segs=10, rings=8)
 eyeR  = sphere("EyeR", (-0.09, 0.60, 0.86), (0.025,0.02,0.03), M_EYE, segs=10, rings=8)
-earL  = sphere("EarL", (0.15, 0.46, 0.88), (0.06,0.03,0.04), M_BODY)
-earR  = sphere("EarR", (-0.15, 0.46, 0.88), (0.06,0.03,0.04), M_BODY)
-hornL = sphere("HornL", (0.07, 0.44, 0.95), (0.03,0.03,0.05), M_HORN, segs=10, rings=8)
-hornR = sphere("HornR", (-0.07, 0.44, 0.95), (0.03,0.03,0.05), M_HORN, segs=10, rings=8)
+earL  = sphere("EarL", (0.17, 0.45, 0.85), (0.075,0.03,0.05), M_BODY)
+earR  = sphere("EarR", (-0.17, 0.45, 0.85), (0.075,0.03,0.05), M_BODY)
+earL.rotation_euler = (0, math.radians(-18), math.radians(-32))  # 横に張るたれ耳
+earR.rotation_euler = (0, math.radians( 18), math.radians( 32))
+hornL = sphere("HornL", (0.08, 0.45, 0.96), (0.028,0.028,0.055), M_HORN, segs=10, rings=8)
+hornR = sphere("HornR", (-0.08,0.45, 0.96), (0.028,0.028,0.055), M_HORN, segs=10, rings=8)
 head_children = [snout, noseL, noseR, eyeL, eyeR, earL, earR, hornL, hornR]
 
 # ----------------------------------------------------------------------
@@ -107,18 +117,20 @@ head_children = [snout, noseL, noseR, eyeL, eyeR, earL, earR, hornL, hornR]
 HIP_Z = 0.50
 LEG_LEN = 0.50
 def make_leg(name, x, y):
-    # 中心 z = HIP_Z - LEG_LEN/2 = 0.25、下端 0、上端 0.5
-    leg = cyl(name, (x, y, HIP_Z - LEG_LEN/2), 0.065, LEG_LEN, M_BODY)
-    hoof = cyl(name+"_hoof", (x, y, 0.03), 0.07, 0.06, M_HOOF)
+    # 細い脛(cyl)＝アニメ対象。腿(筋肉)・膝・蹄は子にして一緒に回す＝棒脚回避。
+    leg   = cyl(name, (x, y, HIP_Z - LEG_LEN/2), 0.052, LEG_LEN, M_BODY)
+    thigh = sphere(name+"_thigh", (x, y, HIP_Z-0.07), (0.088,0.090,0.115), M_BODY, segs=12, rings=9)
+    knee  = sphere(name+"_knee",  (x, y, HIP_Z-0.26), (0.058,0.058,0.062), M_BODY, segs=10, rings=8)
+    hoof  = cyl(name+"_hoof", (x, y, 0.020), 0.062, 0.10, M_HOOF)
     set_origin(leg, (x, y, HIP_Z))     # 股関節を原点に
-    return leg, hoof
+    return leg, [thigh, knee, hoof]
 
-legFL, hoofFL = make_leg("LegFL", 0.15, 0.28)
-legFR, hoofFR = make_leg("LegFR", -0.15, 0.28)
-legBL, hoofBL = make_leg("LegBL", 0.15, -0.28)
-legBR, hoofBR = make_leg("LegBR", -0.15, -0.28)
+legFL, exFL = make_leg("LegFL", 0.15, 0.30)
+legFR, exFR = make_leg("LegFR", -0.15, 0.30)
+legBL, exBL = make_leg("LegBL", 0.15, -0.32)
+legBR, exBR = make_leg("LegBR", -0.15, -0.32)
 legs = [legFL, legFR, legBL, legBR]
-hooves = {legFL:hoofFL, legFR:hoofFR, legBL:hoofBL, legBR:hoofBR}
+leg_extras = {legFL:exFL, legFR:exFR, legBL:exBL, legBR:exBR}
 
 # ----------------------------------------------------------------------
 # 4. 尾（背面 -Y）。tuft（房）は尾に従属。
@@ -130,7 +142,7 @@ tuft = sphere("Tuft", (0, -0.52, 0.50), (0.04,0.04,0.06), M_TUFT)
 # ----------------------------------------------------------------------
 # 5. ジオメトリ確定：subsurf1 + decimate + smooth（部品ごと）
 # ----------------------------------------------------------------------
-all_parts = [body]+spots+[head]+head_children+legs+list(hooves.values())+[tail, tuft]
+all_parts = [body]+body_blend+spots+[head]+head_children+legs+[e for lg in legs for e in leg_extras[lg]]+[tail, tuft]
 for o in all_parts:
     bpy.ops.object.select_all(action='DESELECT')
     o.select_set(True); bpy.context.view_layer.objects.active = o
@@ -150,10 +162,13 @@ def parent(child, par):
     bpy.context.view_layer.objects.active = par
     bpy.ops.object.parent_set(type='OBJECT', keep_transform=True)
 
+for b in body_blend: parent(b, body)
 for sp in spots: parent(sp, body)
 for c in head_children: parent(c, head)
 parent(head, body)
-for lg in legs: parent(hooves[lg], lg); parent(lg, body)
+for lg in legs:
+    for e in leg_extras[lg]: parent(e, lg)
+    parent(lg, body)
 parent(tuft, tail); parent(tail, body)
 
 # ----------------------------------------------------------------------

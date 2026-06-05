@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 131,
-    "size_bytes": 18958236,
-    "size_mb": 18.08
+    "count": 162,
+    "size_bytes": 28864848,
+    "size_mb": 27.528
   },
   "assets": [
     {
@@ -52,6 +52,114 @@
       "meshes": 5,
       "nodes": 5,
       "materials": 11,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla.glb",
+      "name": "player_chinchilla",
+      "category": "プレイヤー",
+      "size_bytes": 331044,
+      "size_mb": 0.3157,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_beige.glb",
+      "name": "player_chinchilla_beige",
+      "category": "プレイヤー",
+      "size_bytes": 331044,
+      "size_mb": 0.3157,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_brown.glb",
+      "name": "player_chinchilla_brown",
+      "category": "プレイヤー",
+      "size_bytes": 331020,
+      "size_mb": 0.3157,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_ebony.glb",
+      "name": "player_chinchilla_ebony",
+      "category": "プレイヤー",
+      "size_bytes": 330948,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_grey.glb",
+      "name": "player_chinchilla_grey",
+      "category": "プレイヤー",
+      "size_bytes": 330960,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_pink.glb",
+      "name": "player_chinchilla_pink",
+      "category": "プレイヤー",
+      "size_bytes": 331036,
+      "size_mb": 0.3157,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_sapphire.glb",
+      "name": "player_chinchilla_sapphire",
+      "category": "プレイヤー",
+      "size_bytes": 330964,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_violet.glb",
+      "name": "player_chinchilla_violet",
+      "category": "プレイヤー",
+      "size_bytes": 330948,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_white.glb",
+      "name": "player_chinchilla_white",
+      "category": "プレイヤー",
+      "size_bytes": 330976,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
       "error": null
     },
     {
@@ -109,13 +217,11 @@
       "file": "mob_chicken.glb",
       "name": "mob_chicken",
       "category": "モブ",
-      "size_bytes": 113160,
-      "size_mb": 0.1079,
+      "size_bytes": 117400,
+      "size_mb": 0.112,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
       "meshes": 7,
       "nodes": 7,
@@ -126,16 +232,14 @@
       "file": "mob_cow.glb",
       "name": "mob_cow",
       "category": "モブ",
-      "size_bytes": 261376,
-      "size_mb": 0.2493,
+      "size_bytes": 450572,
+      "size_mb": 0.4297,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
-      "meshes": 26,
-      "nodes": 26,
+      "meshes": 40,
+      "nodes": 40,
       "materials": 8,
       "error": null
     },
@@ -177,8 +281,8 @@
       "file": "mob_fish.glb",
       "name": "mob_fish",
       "category": "モブ",
-      "size_bytes": 131640,
-      "size_mb": 0.1255,
+      "size_bytes": 135244,
+      "size_mb": 0.129,
       "clips": [
         "idle",
         "swim"
@@ -192,8 +296,8 @@
       "file": "mob_fish_koi.glb",
       "name": "mob_fish_koi",
       "category": "モブ",
-      "size_bytes": 131948,
-      "size_mb": 0.1258,
+      "size_bytes": 135420,
+      "size_mb": 0.1291,
       "clips": [
         "idle",
         "swim"
@@ -207,8 +311,8 @@
       "file": "mob_fish_puffer.glb",
       "name": "mob_fish_puffer",
       "category": "モブ",
-      "size_bytes": 138952,
-      "size_mb": 0.1325,
+      "size_bytes": 141876,
+      "size_mb": 0.1353,
       "clips": [
         "idle",
         "swim"
@@ -222,8 +326,8 @@
       "file": "mob_fish_tropical.glb",
       "name": "mob_fish_tropical",
       "category": "モブ",
-      "size_bytes": 135264,
-      "size_mb": 0.129,
+      "size_bytes": 138928,
+      "size_mb": 0.1325,
       "clips": [
         "idle",
         "swim"
@@ -254,13 +358,11 @@
       "file": "mob_horse.glb",
       "name": "mob_horse",
       "category": "モブ",
-      "size_bytes": 166816,
-      "size_mb": 0.1591,
+      "size_bytes": 228380,
+      "size_mb": 0.2178,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
       "meshes": 6,
       "nodes": 6,
@@ -288,13 +390,11 @@
       "file": "mob_pig.glb",
       "name": "mob_pig",
       "category": "モブ",
-      "size_bytes": 116912,
-      "size_mb": 0.1115,
+      "size_bytes": 185548,
+      "size_mb": 0.177,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
       "meshes": 7,
       "nodes": 7,
@@ -305,8 +405,8 @@
       "file": "mob_queen_sakura.glb",
       "name": "mob_queen_sakura",
       "category": "モブ",
-      "size_bytes": 547188,
-      "size_mb": 0.5218,
+      "size_bytes": 1084452,
+      "size_mb": 1.0342,
       "clips": [
         "idle",
         "walk",
@@ -322,13 +422,11 @@
       "file": "mob_sheep.glb",
       "name": "mob_sheep",
       "category": "モブ",
-      "size_bytes": 212452,
-      "size_mb": 0.2026,
+      "size_bytes": 312996,
+      "size_mb": 0.2985,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
       "meshes": 7,
       "nodes": 7,
@@ -511,6 +609,22 @@
       "error": null
     },
     {
+      "file": "npc_keeper.glb",
+      "name": "npc_keeper",
+      "category": "NPC",
+      "size_bytes": 268096,
+      "size_mb": 0.2557,
+      "clips": [
+        "idle",
+        "walk",
+        "sit"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 9,
+      "error": null
+    },
+    {
       "file": "npc_merchant.glb",
       "name": "npc_merchant",
       "category": "NPC",
@@ -601,6 +715,21 @@
       "meshes": 5,
       "nodes": 5,
       "materials": 9,
+      "error": null
+    },
+    {
+      "file": "npc_wife.glb",
+      "name": "npc_wife",
+      "category": "NPC",
+      "size_bytes": 296800,
+      "size_mb": 0.2831,
+      "clips": [
+        "idle",
+        "walk"
+      ],
+      "meshes": 5,
+      "nodes": 5,
+      "materials": 11,
       "error": null
     },
     {
@@ -1258,6 +1387,234 @@
       "error": null
     },
     {
+      "file": "ally_guineapig.glb",
+      "name": "ally_guineapig",
+      "category": "その他",
+      "size_bytes": 91932,
+      "size_mb": 0.0877,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 16,
+      "error": null
+    },
+    {
+      "file": "ally_hedgehog.glb",
+      "name": "ally_hedgehog",
+      "category": "その他",
+      "size_bytes": 242428,
+      "size_mb": 0.2312,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 94,
+      "error": null
+    },
+    {
+      "file": "ally_rabbit.glb",
+      "name": "ally_rabbit",
+      "category": "その他",
+      "size_bytes": 126480,
+      "size_mb": 0.1206,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 18,
+      "error": null
+    },
+    {
+      "file": "ally_squirrel.glb",
+      "name": "ally_squirrel",
+      "category": "その他",
+      "size_bytes": 122548,
+      "size_mb": 0.1169,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 20,
+      "error": null
+    },
+    {
+      "file": "enemy_bird.glb",
+      "name": "enemy_bird",
+      "category": "その他",
+      "size_bytes": 250056,
+      "size_mb": 0.2385,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 53,
+      "error": null
+    },
+    {
+      "file": "enemy_snake.glb",
+      "name": "enemy_snake",
+      "category": "その他",
+      "size_bytes": 276876,
+      "size_mb": 0.264,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 50,
+      "error": null
+    },
+    {
+      "file": "enemy_weasel.glb",
+      "name": "enemy_weasel",
+      "category": "その他",
+      "size_bytes": 342076,
+      "size_mb": 0.3262,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 65,
+      "error": null
+    },
+    {
+      "file": "enemy_wolf.glb",
+      "name": "enemy_wolf",
+      "category": "その他",
+      "size_bytes": 261972,
+      "size_mb": 0.2498,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 42,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla.glb",
+      "name": "pet_chinchilla",
+      "category": "その他",
+      "size_bytes": 348280,
+      "size_mb": 0.3321,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 46,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_beige.glb",
+      "name": "pet_chinchilla_beige",
+      "category": "その他",
+      "size_bytes": 348280,
+      "size_mb": 0.3321,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 46,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_brown.glb",
+      "name": "pet_chinchilla_brown",
+      "category": "その他",
+      "size_bytes": 348260,
+      "size_mb": 0.3321,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 46,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_ebony.glb",
+      "name": "pet_chinchilla_ebony",
+      "category": "その他",
+      "size_bytes": 348180,
+      "size_mb": 0.3321,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 46,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_grey.glb",
+      "name": "pet_chinchilla_grey",
+      "category": "その他",
+      "size_bytes": 348196,
+      "size_mb": 0.3321,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 46,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_pink.glb",
+      "name": "pet_chinchilla_pink",
+      "category": "その他",
+      "size_bytes": 348280,
+      "size_mb": 0.3321,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 46,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_sapphire.glb",
+      "name": "pet_chinchilla_sapphire",
+      "category": "その他",
+      "size_bytes": 348204,
+      "size_mb": 0.3321,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 46,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_violet.glb",
+      "name": "pet_chinchilla_violet",
+      "category": "その他",
+      "size_bytes": 348176,
+      "size_mb": 0.332,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 46,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_violet_baby.glb",
+      "name": "pet_chinchilla_violet_baby",
+      "category": "その他",
+      "size_bytes": 288952,
+      "size_mb": 0.2756,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 37,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_white.glb",
+      "name": "pet_chinchilla_white",
+      "category": "その他",
+      "size_bytes": 348220,
+      "size_mb": 0.3321,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 46,
+      "error": null
+    },
+    {
+      "file": "sakura_tree.glb",
+      "name": "sakura_tree",
+      "category": "その他",
+      "size_bytes": 238156,
+      "size_mb": 0.2271,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 30,
+      "error": null
+    },
+    {
       "file": "fx_ally_halo.glb",
       "name": "fx_ally_halo",
       "category": "演出（ボス出現FX）",
@@ -1339,6 +1696,18 @@
       "meshes": 3,
       "nodes": 3,
       "materials": 4,
+      "error": null
+    },
+    {
+      "file": "fx_petal_sakura.glb",
+      "name": "fx_petal_sakura",
+      "category": "演出（ボス出現FX）",
+      "size_bytes": 12116,
+      "size_mb": 0.0116,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
       "error": null
     },
     {

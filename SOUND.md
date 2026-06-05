@@ -2,12 +2,68 @@
 
 WebAudio による合成音。本体コードと疎結合で、コアは `window.playSFX(name, opts)` や `window.on*` の口を呼ぶだけ。`sound.js` 未読込でも本体は壊れません。素材は仮の合成音で、後から音声ファイル再生に差し替え可能です。
 
+## 1号機向け 公開API早見表（呼ぶだけ・未呼出でも無音で安全）
+| 用途 | 口 | 備考 |
+|---|---|---|
+| 動物SE（敵/仲間/ペット） | `playAnimalSFX(species, event, {x,y,z,vol})` | **推奨**。種×イベント→SE。座標で3D定位。`critterSE` から委譲済 |
+| 効果音 個別 | `playSFX('key', opts)` | 上表の個別キーを直叩き |
+| 環境音 切替 | `setAmbient('forest'|…)` / `setAmbient(null)` | 未呼出でも `getBiome()` 連動で自動 |
+| 天候音 | `setWeatherAudio('rain'|'thunder'|'snow'|'clear')` / `getWeatherAudio()` | 雨/雷雨/雪風の連続レイヤー。`clear`/`null`で止む |
+| 残響ゾーン | `setReverbZone('cave'|'indoor'|'open')` / `getReverbZone()` | SEの響きを空間で切替（洞窟=長/屋内=箱鳴り/野外=無響） |
+| 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音＋恩人モチーフのこだま |
+| ストーリー演出 | `onMaguroAppear()` / `onMaguroVanish()` / `onChapterClear(idx)` / `onEnding()` | 恩人まぐろの霊／光になって消える／章クリア／大団円（一発） |
+| タイトル/ED曲 | `onTitleScreen()` / `onEndingTheme()` | 恩人モチーフ回収のループBGM（title/ending シーン） |
+| ゲームイベント | `onTameSuccess()` `onCollect()` `onSave()` `onLoad()` `onFeed()` `onSandbathDone()` | 軽い確定音 |
+| UI音セット | `onUiClick/Button/Hover/Open/Close/Error()` `onDexRegister()` | 3号機の設定/図鑑用 |
+| 敵 aggro | `onEnemyAggro()` | 交戦突入の緊張スティンガー |
+| 既存ボス | `onBossAppear(type)` / `onBossDefeat(type)` | `type`=golem/dragon/skeleton_king/queen |
+| BGMシーン | `setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest'|'title'|'ending')` | 1.8sクロスフェード |
+| 序章『脱走』 | `setMusicScene('escape')` ＋ `onEscapeSuccess()` | 忍び/緊張テーマ＋脱走成功ジングル |
+| 探索BGM自動切替 | `setBiomeMusic(true)` / `isBiomeMusicOn()` | `getBiome()`連動で岩場/森/平原テーマへ。戦闘/ボス/脱走/水中は尊重（opt-in・既定OFF） |
+| 危険度レイヤー | `setDangerLevel(0..1)` / `getDangerLevel()` | 敵接近で緊張ドローンがfade in／離れると引く。毎フレーム/定期で呼ぶだけ |
+| 状態音 | `onLowHP(on)` / `onOverheat(on)` | 低HPの心音＋緊張／暑さ(85+)の陽炎・警告。on/offトグル |
+| 仲間 | `onCompanionJoin/Reply/Hit/Leave(type)` | — |
+| 攻撃 | `onAttackHit(weapon,isCrit)` / `onAttackWhiff()` / `onAttackCharge('start'|'full')` | — |
+| 音量（統一） | `setVolume(bus,0..1)` / `getVolume(bus)` | bus=`master`/`bgm`(music)/`sfx`(se)/`ambient`(amb) |
+| 一時停止 | `setAudioPaused(true/false)` / `isAudioPaused()` | Esc一時停止連携＝全音を黙らせ復帰（設定は保持） |
+| ミックス場面 | `setMixSnapshot('gameplay'|'title'|'cutscene'|'menu'|'quiet')` / `getMixSnapshot()` | 場面別の音楽/SE/環境バランス |
+| 音量/診断（個別） | `setMasterVolume/SfxVolume/BgmVolume/AmbVolume`・`setSfxGain(key,x)`・`getSoundDiag()` | ④設定・実機診断 |
+
 ## バス構成
-`各音源 → (sfxBus | bgmBus) → master → 出力`
-- `master` … 全体音量（ミュート時は0）
-- `sfxBus` … 効果音
-- `bgmBus` … BGM
+```
+sfxBus → sfxDuck ──┐
+bgmBus → bgmDuck ──┤→ master → limiter → 出力
+ambBus → ambDuck ──┘
+```
+- `master` … 全体音量（ミュート/一時停止時は0）
+- `sfxBus` … 効果音 ／ `bgmBus` … BGM ／ `ambBus` … 環境音（ユーザー音量 `vol.x` は各 *Bus.gain 側で独立）
+- `*Duck` … **ミックス段** = シーンダッキング × ミックススナップショット を掛けた係数（`getSoundDiag().duck`）。
+  - P2 シーンduck：戦闘/ボス/女王で **音楽・環境音だけ**を下げ SE を立たせる（SEのシーンduckは常に1）。
+  - ⑰ P5 スナップショット：場面別の相対バランス（後述）。両者は乗算で合成（単一ライター＝AudioParam衝突なし）。
+- `limiter` … master直前のセーフティ・リミッタ（クリップ防止）
 - さらに **個別SE倍率**（`gains`）が各効果音に乗る（後述）
+
+### ⑰ 場面別ミックス・スナップショット（P5）
+`window.setMixSnapshot(name)` で bgm/sfx/amb の相対バランスを名前で切替（ユーザー音量・シーンduckとは別レイヤーで乗算）。
+| name | bgm / sfx / amb | 用途 |
+|---|---|---|
+| `gameplay`（既定・別名 `normal`） | 1.0 / 1.0 / 1.0 | 通常プレイ |
+| `title` | 1.0 / 0.9 / 0.5 | タイトル：音楽前面・環境控えめ |
+| `cutscene`（別名 `story`/`event`） | 1.0 / 0.6 / 0.4 | 演出/ストーリー：曲・セリフを立てる |
+| `menu`（別名 `settings`/`pause`） | 0.7 / 1.0 / 0.3 | メニュー/設定：UI音を明瞭に |
+| `quiet` | 0.6 / 0.85 / 0.6 | 静かな場面 |
+- `getMixSnapshot()` / `listMixSnapshots()`。未知 name は無視。例：ストーリー演出に入る前 `setMixSnapshot('cutscene')` → 終わったら `setMixSnapshot('gameplay')`。
+
+## アダプティブ音楽（P2）
+- **危険度レイヤー**: `setDangerLevel(0..1)` で、`bgmBus` 上の不穏ドローン（低い半音うなり＋心拍ゆらぎ）の音量を 0.4s 時定数で滑らかに増減。敵が近いほど 1 に近づけて呼べば緊張が高まり、離れたら 0 で消える。未呼出なら無音。
+- **シーン遷移ダッキング**: `setMusicScene` 切替時に自動でダック係数を更新（combat: 音楽0.82/環境0.5、boss・queen: 0.78/0.4、escape: 0.92/0.7、平穏: 1.0/1.0）。SEバスは下げないので戦闘中もヒット音がはっきり立つ。
+- **滑らかな遷移**: combat↔boss↔queen は既存の equal-power クロスフェード（1.8s）で繋がる。`setDangerLevel` と組み合わせると「探索→敵接近で緊張→交戦でcombat」の流れが自然。
+
+## ⑭ 状態音（持続・on/offトグル）
+プレイヤーの状態を音で知らせる。1号機が状態の出入りで `on=true/false` を1回ずつ呼ぶだけ（内部で自己再武装ループ・例外で死なない）。
+- **低HP**: `window.onLowHP(true/false)` → 緊迫した心音（lub-dub ≒86bpm）＋ごく微かな耳鳴り的緊張。HP回復で `false`。
+- **オーバーヒート（暑さ85+）**: `window.onOverheat(true/false)` → ゆらぐ陽炎の高音＋熱気のジリジリ＋たまの警告ピッ。涼しくなったら `false`。
+- `isLowHP()` / `isOverheat()` で現在状態を取得。未呼出なら無音で安全。
 
 ---
 
@@ -45,7 +101,9 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 ---
 
 ## BGM（②）
-`window.setMusicScene('day'|'night'|'combat'|'water'|'boss')` でシーン切替（1.8sクロスフェード）。初回ユーザー操作で `day` を自動開始。`window.startMusic()` / `window.stopMusic()` で明示制御も可。
+`window.setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest'|'title'|'ending')` でシーン切替（1.8sクロスフェード）。初回ユーザー操作で `day` を自動開始。`window.startMusic()` / `window.stopMusic()` で明示制御も可。
+
+> **情感の流れ（音楽②の設計意図）**: 序章『脱走』(`escape`／緊張)→ 探索(`explore_rocky`/`explore_forest`／穏やか・故郷)→ 敵接近で `setDangerLevel` の緊張レイヤーがせり上がる → 交戦(`combat`)→ ボス(`boss`)→ 女王(`queen`) と**情感豊かに切替**わり、要所で**ダッキング**がSEを立たせる。物語面では `onMaguroAppear/Vanish`・`onChapterClear`・`onEnding` の演出音と**恩人モチーフ**の再帰で締める。すべて防御的口＝1号機/3号機が呼ぶだけ・未配線でも無音で安全。
 
 | シーン | 雰囲気 | テンポ | 備考 |
 |---|---|---|---|
@@ -54,6 +112,12 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | `combat` | 疾走 | 148 | キックドラムあり |
 | `water` | 浮遊（水中だと分かる程度に） | 72 | |
 | `boss` | ① ボス戦・**重厚**（低音域+三全音テンション+重いサブベース） | 132 | キックドラム＋鋸波pad。combatより低く・重い |
+| `queen` | ⑧ 女王さくら（最終ボス）・**気高くも威圧的**（Fマイナー寄りクラスタ+shimmerの艶） | 138 | bossより速く張りつめ。`setMusicScene('queen')` |
+| `escape` | ⓪ 序章『脱走』・**忍び/緊張**（低密度・小音量・半音A↔A#の不穏＋心臓の鼓動） | 100 | `setMusicScene('escape')`。`setDangerLevel(0..1)`で緊張増 |
+| `explore_rocky` | ① 探索・岩場（チンチラの故郷／開けて気高く少し寂しい Aマイナーペンタ） | 80 | 穏やか長尺。`setBiomeMusic(true)`で自動 or `setMusicScene` |
+| `explore_forest` | ① 探索・森（あたたかく優しい Cメジャーペンタ） | 92 | 穏やか長尺。同上 |
+| `title` | ⑯ タイトルテーマ（恩人モチーフを約8秒ごとに提示・希望的） | 84 | `onTitleScreen()` or `setMusicScene('title')` |
+| `ending` | ⑯ エンディング本編曲（恩人モチーフ＋1oct上ハモリで締める） | 92 | `onEndingTheme()`。一発の締め音は `onEnding()` |
 
 各シーンは `level`（音量バランス）を持ち、water は静かめ。陸地に出れば day/night のはっきりしたBGMに切り替わります。`boss` は combat より低い音域・重いサブベース・三全音(G#3 vs 根音D)の不協和で威圧感を出しています。
 
@@ -71,31 +135,63 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 ---
 
 ## 3D空間音響（③）
-コアの読み取り口があれば自動有効化（無ければ黙って無効）。
+コアの読み取り口があれば自動有効化（無ければ黙って無効）。**1号機が実装済み**（`getMobPositions`/`getPlayerPose`/`getBiome`）なので実機で稼働。
 - `window.getMobPositions()` → `[{x, y, z, type, hostile}, ...]`
-- `window.getPlayerPose()` → `{x, y, z, yaw, pitch}`
+- `window.getPlayerPose()` → `{x, y, z, yaw, pitch}`（リスナー位置・向きに反映）
 
 周囲モブ（半径36m）の鳴き声を距離・方向で減衰（PannerNode）。`playSFX('mob', {type, x, y, z})` の push 型3Dにも対応。
 
+**動物SE（critter）の空間化（P2）**: `playAnimalSFX(species, event, {x,y,z})` は座標があれば内部で `makePanner` を生成し、`tone/noise → panner → sfxBus → master → limiter → 出力` の経路で**距離減衰つきの定位音**になる。`critterSE`（index.html）は常に座標を渡すので全 critter SE が空間化される。パンナーは `inverse`/`equalpower`・`refDistance 4`/`maxDistance 40`/`rolloff 1`、発音後 2 秒で自動 `disconnect`（ノードリーク防止）。
+- **セーフティ・リミッタ**: `master` 直前に `DynamicsCompressor`（threshold −3dB / ratio 20 / 速attack）を挿入し、多数のSE＋BGM重畳時も**クリップしない**。抑制量は `getSoundDiag().limiterReductionDb` で確認可（0＝余裕／負＝ピーク抑制中）。
+
 ---
 
-## 環境音アンビエンス（①／ambバス・BGMの下）
-連続音の「寝床」（bandpassノイズ）＋散発の単発音を biome で切替。コアが `window.getBiome()` を実装すれば連動、無ければ `bgmScene` から代替推定（防御的・事故ゼロ）。音量は `setAmbVolume()`／`amb` バス。
+## 環境音アンビエンス（①⑤⑥／ambバス・BGMの下）
+連続音の「寝床」（bandpassノイズ＝風/波/こもり）＋散発の単発音を biome で切替。**1号機が `window.getBiome()` 実装済み**（`plains/forest/rocky/desert/snow/ocean`＋`castle/shrine`）なので**自動で連動**。未実装環境でも `bgmScene` から代替推定（防御的・事故ゼロ）。音量は `setAmbVolume()`／`amb` バス。
 
-| biome | 雰囲気 | 散発音 |
+| biome | 雰囲気（寝床） | 散発音 |
 |---|---|---|
-| `plains` | 草原 | bird |
-| `desert` | 砂漠 | — |
-| `snow` | 雪原 | — |
-| `ocean` | 海 | — |
+| `plains` | 草原 | bird（小鳥） |
+| `forest` | 森 | forest（小鳥＋葉擦れ） |
+| `rocky` | 岩場（チンチラの故郷）＝吹き抜ける風 | gust（風の一吹き） |
+| `desert` | 砂漠＝乾いた熱風 | gust（熱風） |
+| `snow` | 雪原＝こもった静寂 | windhowl（遠い風鳴り・控えめ） |
+| `ocean` | 海＝寄せる波 | wave（ザザーと寄せ返す波） |
 | `water` | 水中こもり | — |
-| `cave` | 洞窟 | drip |
+| `cave` | 洞窟＝反響 | drip（水滴） |
 | `night` | 夜 | cricket |
 | `village` | 村 | murmur |
 | `castle` | ③ 王国城・**荘厳**（低い大広間のうなり） | choir（聖歌/オルガンのswell） |
 | `shrine` | ③ 祠・**静謐** | chime（清らかな鈴） |
 
-> **1号機へ依頼（③）**: `window.getBiome()` が王国城内で `'castle'`、祠で `'shrine'` を返せば、その場の荘厳な環境音に自動で切り替わります（口が無くても他biomeは不変）。
+**公開口（⑥）**:
+```js
+window.setAmbient('forest');   // 明示切替（既知 biome のみ採用・未知は無視）
+window.setAmbient(null);       // または 'auto' で getBiome 連動へ復帰
+window.getAmbientBiome();      // 現在鳴っている環境音タイプ（診断/UI）
+```
+- `setAmbient` を呼ばなくても `getBiome()` 連動で自動切替。呼べば手動上書きが最優先（`null`/`'auto'` で連動へ戻す）。切替時は寝床のフィルタ/音量をクロスで滑らかに変化。
+- **1号機へ**: `getBiome()` は実装済みのため**追加配線は不要**。任意で `setAmbient(biome)` を使えば演出上の強制切替（例: イベントシーン）も可能です。
+
+### ⑫ 天候音レイヤー（biome環境音の上に重なる連続音・`ambBus`）
+`window.setWeatherAudio(kind)` を天候変化で1回呼ぶだけ。biome環境音の上に重なる。
+| kind | 音 |
+|---|---|
+| `'rain'` | 雨のサーッ（高めの bandpass ノイズ bed） |
+| `'thunder'`（別名 `storm`） | 雨＋遠雷のゴロゴロ（散発）＋たまに地響き |
+| `'snow'`（別名 `blizzard`） | 低くこもった雪風＋ヒューと鳴るうなり |
+| `'clear'`/`'none'`/`null` | 止む（ゆっくりフェードアウト） |
+- 別名: `storm`/`thunderstorm`/`rainstorm`→`thunder`、`blizzard`/`snowstorm`/`windy`→`snow`、`sunny`/`fine`/`off`→止む。未知 kind は無視（事故ゼロ）。
+- `getWeatherAudio()` で現在の天候音を取得。落雷の単発は従来の `onThunderSound()` も併用可。
+
+### ⑬ 残響ゾーン（reverb・SEの空間の響き）
+`window.setReverbZone(zone)` を空間に入った時に呼ぶだけ。`sfxBus` を `ConvolverNode`（合成IR＝減衰ノイズ）へ並列センドし、SEに残響を付加（dryはそのまま）。
+| zone | 響き |
+|---|---|
+| `'open'`（既定・別名 `outdoor`） | ほぼ無響（野外） |
+| `'indoor'`（別名 `house`/`room`） | 短い箱鳴り（屋内・家） |
+| `'cave'`（別名 `dungeon`） | 長く豊かな残響（洞窟） |
+- zone ごとに IR 長さ・減衰・wet量を切替（wetは0.3sで滑らかに）。未知 zone は無視。`getReverbZone()` で現在ゾーン取得。
 
 ---
 
@@ -117,6 +213,41 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 
 > **1号機へ依頼**: コアの `updateCombatMusic()`（index.html）は現在 `water>combat>night>day` のみ送出。近接敵にボス（role:`boss`）が含まれる場合に `'combat'` の代わりに `'boss'` を送れば、自動でボスBGMへ。出現/aggro時に `onBossAppear(m.def.type)`、撃破確定時に `onBossDefeat(m.def.type)` も1回呼んでください。**sound.js側は受け口を実装済み・呼ぶだけで動作**します。
 
+### ⑧ 女王さくら（最終ボス）＆ 敵 aggro スティンガー
+- **女王さくら出現**: `window.onQueenAppear()` を1回 → 咆哮スティンガー `boss_roar('queen')`（巨大チンチラ女王の気高い金切り＋荘厳な低和音＋鐘）＋専用威圧テーマ `setMusicScene('queen')` を同時発火。`boss_roar` の `type` に `'queen'` を渡しても同じ咆哮。
+- **女王撃破**: `window.onQueenDefeat()` → 既存の勝利ファンファーレ。撃破後コアが `setMusicScene('day'|…)` で平常へ戻す。
+- **敵 aggro スティンガー**: `window.onEnemyAggro()`（= `playSFX('aggro_stinger')`）→ 敵が交戦状態に入った瞬間の短い緊張の刺し（低い衝撃＋上昇2音）。頻発OK・軽量。
+- `boss_roar` の `type`: `golem` / `dragon` / `skeleton_king` / **`queen`**（省略でも汎用咆哮）。
+
+> **1号機へ依頼（⑧）**: 女王さくらの出現確定で `onQueenAppear()`、撃破で `onQueenDefeat()` を1回ずつ。任意の敵が aggro 状態へ遷移した瞬間に `onEnemyAggro()` を呼べば緊張スティンガーが鳴ります（**sound.js側は受け口実装済み・呼ぶだけ**）。
+
+### ⑨ ストーリー演出音（チンチラ革命記）
+物語の核を音で締める。**恩人モチーフ**（A4→C5→E5→D5 のほろ苦く優しい4音）を節目で再帰させ、物語に一本の糸を通す。
+- **まぐろ登場**: `window.onMaguroAppear()` → 恩人の霊の幻想ジングル（聖歌のロング和音swell＋鐘の恩人モチーフ＋霊性の高倍音／聖・切ない）。
+- **まぐろ消滅**: `window.onMaguroVanish()` → 光になって昇り溶けるきらめき＋光の粒の拡散。
+- **章クリア**: `window.onChapterClear(idx)` → 達成の解決カデンツ＋恩人モチーフのほのめかし。`idx`（章番号）で僅かに高揚（最大3半音上げ・省略可）。
+- **エンディング**: `window.onEnding()` → 恩人モチーフを温かくフル再帰（主旋律＋1oct上ハモリ）させる大団円。
+- **再帰**: 女王撃破 `onQueenDefeat()` でも勝利ファンファーレの後に恩人モチーフがこだまし、「恩人の祝福」で物語が締まる。任意で `playSFX('motif', {at,gain,mul,wave})` を直接呼べば、他のシーンにもモチーフを差し込める。
+
+> **1号機/3号機へ依頼（⑨）**: 演出のタイミングで上記を1回ずつ呼ぶだけ（**受け口実装済み**）。`onChapterClear` には章番号を渡すと盛り上がりが増します。
+
+### ⑩ ゲームイベントSE口（軽い確定音・呼ぶだけ）
+進行フィードバックの短く心地よい確定音。3号機UIのボタン音にも流用可。
+| 口 | 用途 |
+|---|---|
+| `onTameSuccess()` | なつかせ成功（温かい上昇＋下支え） |
+| `onCollect()` | コレクション/図鑑登録（キラッ） |
+| `onSave()` / `onLoad()` | セーブ（落ち着いた確定）／ロード（起動的な上昇） |
+| `onFeed()` | 餌やり（やわらかい「ぱく」＋ごきげん） |
+| `onSandbathDone()` | 砂浴び完了（すっきりした締め） |
+| `onUiClick()` / `onUiButton()` | 汎用クリック/ボタン決定（最小・3号機UI用） |
+| `onUiHover()` | ホバー（極小ティック・頻発OK） |
+| `onUiOpen()` / `onUiClose()` | パネル/メニューの開く（上昇）／閉じる（下降） |
+| `onUiError()` | 無効操作/エラー（耳に痛くない低い二音） |
+| `onDexRegister()` | 図鑑登録（= `onCollect` のキラッ） |
+
+> すべて防御的＝未呼出でも無音で安全。個別倍率 `setSfxGain('ui_tame', 0.7)` 等で調整可。
+
 ---
 
 ## 仲間システムの音（新機能・NPCが仲間になる連携）
@@ -132,17 +263,61 @@ NPCが仲間になる新機能向け。口は防御的（未呼出なら無音�
 
 ---
 
+## チンチラ世界の動物SE（敵8種＋仲間＋ペット）
+チンチラ世界の生き物向けプロシージャル合成音。口は防御的（**呼ぶだけ・未配線でも無音で安全**）。1号機は次のどちらでも鳴らせます。
+
+- **推奨**: `window.playAnimalSFX(species, event, opts?)` … 種×イベントを自動でSEへ写像。
+- **個別**: `window.playSFX('wolf_howl', opts?)` … 下表の `key` を直接指定。
+- `opts.x/y/z` を渡せば**3D定位＋距離減衰**（③のPannerNode経由・座標が無ければ通常再生）。`opts.vol` で個体ごとの強弱（既定1）。
+
+### 動物SE一覧（`playAnimalSFX(species, event, {x,y,z,vol})`）
+1号機の `critterSE()`（index.html）は**この `playAnimalSFX` に委譲済み**（`bafbbec`）。種は `m.def.type`、座標も渡るので**実機で 3D 定位つきで鳴る**。`event` は種ごとに下表のキーへ写像（未定義 event は `default` にフォールバック＝無音回避）。
+
+| species | spot（発見） | attack（打撃） | hurt（被ダメ） | die（死亡） | その他 event → key |
+|---|---|---|---|---|---|
+| `wolf` | `wolf_growl` うなり | `attack_bite` 噛みつき | `animal_hurt`※ | `animal_die`※ | `howl`→`wolf_howl` 遠吠え / `skill`→`wolf_howl` |
+| `snake` | `snake_hiss` シューッ | `snake_strike` 毒牙ラッシュ | `animal_hurt`※ | `animal_die`※ | `skill`→`snake_hiss` |
+| `weasel` | `weasel_screech` 甲高い威嚇 | `attack_bite` 噛みつき | `animal_hurt`※ | `animal_die`※ | `skill`→`weasel_screech` |
+| `bird`（猛禽） | `bird_screech` 猛禽の鳴き | `bird_wingflap` 急降下の羽ばたき | `animal_hurt`※ | `animal_die`※ | `dive`/`skill`→`bird_wingflap` |
+| `squirrel` | `squirrel_chitter` チチッ | `squirrel_chitter` | `animal_hurt`※ | `animal_die`※ | `skill`/`tamed`/`happy`→`squirrel_chitter` |
+| `rabbit` | `rabbit_thump` 後足ドン | — | `animal_hurt`※ | `animal_die`※ | `alert`/`skill`/`tamed`→`rabbit_thump` |
+| `guineapig` | `guineapig_wheek` ウィーク | — | `animal_hurt`※ | `animal_die`※ | `skill`/`tamed`/`happy`→`guineapig_wheek` |
+| `hedgehog` | `hedgehog_huff` フスフス | — | `animal_hurt`※ | `animal_die`※ | `curl`/`skill`/`tamed`→`hedgehog_huff` |
+| `pet`（さくら） | `pet_squeak` 鳴き | `pet_bite` 噛みつき | `pet_squeak` | `pet_squeak` | `skill`→`pet_pee` / `happy`・`tamed`→`pet_happy` / `purr`・`petted`→`pet_purr` なでられ満足 / `sandbath`・`dust`→`pet_sandbath` 砂浴び |
+
+※ `animal_hurt` / `animal_die` は**全種共通のジェネリック音**。`playAnimalSFX` が `opts.species` を注入し、種ごとに基準ピッチ・音色（`VOICE` 表）を変えるので**種が聞き分け可能**。蛇だけは噴気的（hiss）に分岐。
+
+**個別キー一覧（`playSFX('key')` 直叩きも可）**: `wolf_howl` / `wolf_growl` / `snake_hiss` / `snake_strike` / `weasel_screech` / `bird_screech` / `bird_wingflap` / `attack_bite`（捕食者の噛みつき共通） / `animal_hurt` / `animal_die`（種別ピッチ） / `squirrel_chitter` / `rabbit_thump` / `guineapig_wheek` / `hedgehog_huff` / `critter_step`（小動物の足音・極小） / `pet_squeak` / `pet_bite` / `pet_happy` / `pet_pee` / `pet_purr` / `pet_sandbath`。
+
+**⑨ 足音（任意・控えめ）**: `playAnimalSFX(species, 'step'|'move', {x,y,z})` は**種に依らず**極小音量の `critter_step`（パタッ）を鳴らす（誤って鳴き声を出さない設計）。頻発するので 1号機側で**間引いて**呼ぶ想定。
+
+- **species**: `wolf / snake / weasel / bird / squirrel / rabbit / guineapig / hedgehog / pet`。別名: `sakura`・`さくら`→`pet`、`raptor/hawk/eagle/owl`→`bird`、`cavy`→`guineapig`。
+- **event**: `spot` / `attack` / `hurt` / `die` / `skill` / `tamed` / `happy`、および 1号機語彙 `howl` / `dive` / `curl` / `alert` / `tame`（=`tamed`）。未定義 event は `default` フォールバック。未知 species は無音（事故ゼロ）。
+- 旧来の `on*` スタイル用の別名 `window.onAnimalSound(species, event, opts)` も用意（任意）。
+
+> **整合メモ（2号機）**: 1号機の先行スタブ8キー（`e96451b`）は3D対応リッチ版に一本化。`critterSE` が `playAnimalSFX` へ委譲（`bafbbec`）したので互換シム `bird_chirp`/`bird_flap` は撤去済み（呼び元が消えたため安全）。`weasel`/`guineapig` も委譲経由で正規の `weasel_screech`/`guineapig_wheek` が鳴る（旧 `pickup` 代用は解消）。**P1 追加**: 全種に `hurt`/`die`（種別ピッチ）と捕食者の `attack`（噛みつき/毒牙）を足し、`spot`（鳴き声）と聞き分け可能に。
+
+---
+
 ## 音量・バランス調整（④）
 全体音量・個別SE倍率はいつでも変更でき、`localStorage`（`vw_sound_v1`）に永続化されます。変更時に `window` へ `soundsettingschange` イベントを発火。
 
 ### 全体音量（0..1）
 ```js
+// ⑪ 統一API（3号機 設定UI 推奨）：bus = 'master'|'bgm'(music)|'sfx'(se)|'ambient'(amb)
+window.setVolume('bgm', 0.4);   window.getVolume('bgm');
+window.listVolumeBuses();        // ['master','bgm','sfx','ambient']
+// ⑪ 一時停止（Esc連携）：全音を黙らせ→復帰（音量設定は保持）
+window.setAudioPaused(true);    window.isAudioPaused();
+
+// 個別の従来API（同じ値を操作・互換）
 window.setMasterVolume(0.8);  window.getMasterVolume();
 window.setSfxVolume(0.7);     window.getSfxVolume();
 window.setBgmVolume(0.4);     window.getBgmVolume();
+window.setAmbVolume(0.5);     window.getAmbVolume();   // 環境音
 window.setMuted(true);        window.isMuted();
 // まとめて
-window.SoundSettings.get();           // {master, sfx, bgm, muted, gains}
+window.SoundSettings.get();           // {master, sfx, bgm, amb, muted, gains}
 window.SoundSettings.set('sfx', 0.6);
 ```
 
@@ -153,7 +328,7 @@ window.setSfxGain('thunder', 1.5);    // 雷を強調
 window.getSfxGain('footstep');        // 現在の倍率
 window.SoundSettings.getGains();       // 全倍率の一覧
 ```
-対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat / companion_join / companion_reply / companion_hit / companion_leave`）。
+対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat / companion_join / companion_reply / companion_hit / companion_leave`、`aggro_stinger`、動物SE `wolf_howl / wolf_growl / snake_hiss / snake_strike / weasel_screech / bird_screech / bird_wingflap / attack_bite / animal_hurt / animal_die / squirrel_chitter / rabbit_thump / guineapig_wheek / hedgehog_huff / pet_squeak / pet_bite / pet_happy / pet_pee / pet_purr / pet_sandbath / pet_dust`）。
 
 > 体感後に「この音だけ大きい/小さい」が出たら、上記 `setSfxGain` で1行調整 → そのまま保存されます。
 

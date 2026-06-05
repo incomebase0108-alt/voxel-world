@@ -65,6 +65,10 @@ def build_fish(name, cfg):
     # 胸びれ（両側・薄板）
     for sx in (1,-1):
         CB(BODY,"Pect%d"%sx,(sx*W*0.95,L*0.18,cz-H*0.2),(0.10,0.06,0.012),finc,rot=(0,math.radians(20*sx),math.radians(-12*sx)))
+    # 腹びれ（下・対）＋尻びれ（下後方）＝ヒレの作り込み
+    for sx in (1,-1):
+        CB(BODY,"Pelv%d"%sx,(sx*W*0.55,-L*0.02,cz-H*0.72),(0.05,0.05,0.010),finc,rot=(math.radians(22),0,math.radians(-22*sx)))
+    CB(BODY,"Anal",(0,-L*0.28,cz-H*0.78),(W*0.5,0.06,0.010),finc,rot=(math.radians(14),0,0))
     # 縞（tropical）
     if cfg.get('stripes'):
         for sy in (0.16,0.0,-0.16):
@@ -72,7 +76,11 @@ def build_fish(name, cfg):
 
     # --- 尾ヒレ（別ノード・付け根 y=-L*0.46 を原点に水平振り）---
     ty=-L*0.46
-    CO(TAIL,"TailFin",(0,ty-0.10,cz),H*0.9,0.22,finc,verts=4,rot=(math.radians(90),0,0))
+    if cfg.get('puffer'):   # フグは小さな丸尾
+        CO(TAIL,"TailFin",(0,ty-0.08,cz),H*0.7,0.16,finc,verts=4,rot=(math.radians(90),0,0))
+    else:                   # 二又の尾ヒレ（上下ロブ）＝魚らしいシルエット
+        CO(TAIL,"TailUp",(0,ty-0.09,cz+H*0.42),H*0.6,0.20,finc,verts=4,rot=(math.radians(90),0,math.radians(20)))
+        CO(TAIL,"TailLo",(0,ty-0.09,cz-H*0.42),H*0.6,0.20,finc,verts=4,rot=(math.radians(90),0,math.radians(-20)))
     CB(TAIL,"TailRoot",(0,ty+0.02,cz),(W*0.5,0.06,H*0.5),col)
 
     # --- 結合・原点・軽量化・親子・接地 ---
