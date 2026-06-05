@@ -4529,6 +4529,7 @@ const fxList = []; // { obj, mixer, life }
 function spawnFx(kind, x, y, z, life, scale) {
   const tpl = fxTemplates[kind];
   if (!tpl) return;
+  if (fxList.length >= 48) { const old = fxList.shift(); scene.remove(old.obj); } // 安定保険：FXが溜まり過ぎたら最古を即回収（暴走防止）
   const obj = tpl.scene.clone(true);
   obj.position.set(x, y, z);
   if (scale) obj.scale.setScalar(scale);
