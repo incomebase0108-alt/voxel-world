@@ -139,35 +139,30 @@ NPCが仲間になる新機能向け。口は防御的（未呼出なら無音�
 - **個別**: `window.playSFX('wolf_howl', opts?)` … 下表の `key` を直接指定。
 - `opts.x/y/z` を渡せば**3D定位＋距離減衰**（③のPannerNode経由・座標が無ければ通常再生）。`opts.vol` で個体ごとの強弱（既定1）。
 
-### 動物SE一覧
-**配線状況**の凡例: 「critterSE 済」= 1号機の `critterSE()`（index.html）が既に該当キーを発火＝**配線完了で実機で鳴る**。「依頼中」= sound.js 側は実装済みだが index.html 側の呼び出しは未配線（呼べば鳴る）。
+### 動物SE一覧（`playAnimalSFX(species, event, {x,y,z,vol})`）
+1号機の `critterSE()`（index.html）は**この `playAnimalSFX` に委譲済み**（`bafbbec`）。種は `m.def.type`、座標も渡るので**実機で 3D 定位つきで鳴る**。`event` は種ごとに下表のキーへ写像（未定義 event は `default` にフォールバック＝無音回避）。
 
-| key | 用途 | 種(species) | 鳴る event | 配線状況 |
-|---|---|---|---|---|
-| `wolf_howl` | 遠吠え（立ち上がり→長い下降） | `wolf` | howl / die / skill | critterSE 済（howl） |
-| `wolf_growl` | うなり（低い鋸波のビート） | `wolf` | spot / attack / hurt / tame | critterSE 済 |
-| `snake_hiss` | シューッ（高域ノイズ持続） | `snake` | spot / attack / tame | critterSE 済 |
-| `bird_screech` | 猛禽の鳴き（高域から下降を2発） | `bird` | spot / hurt / die / screech | critterSE 済（`bird_chirp` 経由） |
-| `bird_wingflap` | 羽ばたき（低い風切りを3拍） | `bird` | attack / dive / skill | critterSE 済（`bird_flap` 経由） |
-| `bird_chirp`→`bird_screech` | 互換シム（forward） | `bird` | （1号機 critterSE spot/attack/tame） | critterSE 済（互換） |
-| `bird_flap`→`bird_wingflap` | 互換シム（forward） | `bird` | （1号機 critterSE dive） | critterSE 済（互換） |
-| `weasel_screech` | 甲高い威嚇（鋭い金切り） | `weasel` | spot / attack | **依頼中**（critterSE に weasel 行なし） |
-| `squirrel_chitter` | チチッ（高い連打） | `squirrel` | spot / attack / skill / tame | critterSE 済 |
-| `rabbit_thump` | 後足スタンピング（低い打撃2発） | `rabbit` | alert / skill / tame | critterSE 済 |
-| `guineapig_wheek` | ウィーク鳴き（上昇→下降） | `guineapig` | spot / skill / tame | **依頼中**（現状 critterSE は `pickup` で代用中） |
-| `hedgehog_huff` | 丸まりフスフス（鼻息を3拍） | `hedgehog` | curl / skill / tame | critterSE 済 |
-| `pet_squeak` | さくらの鳴き（かわいい高い短音） | `pet`（=`sakura`） | spot / hurt | 依頼中 |
-| `pet_bite` | さくらの噛みつき（鋭いスナップ） | `pet` | attack | 依頼中 |
-| `pet_happy` | さくらのごきげん（きらきらチャープ） | `pet` | happy / tamed | 依頼中 |
-| `pet_pee` | さくらの威嚇オシッコ（噴射＋キュッ） | `pet` | skill | 依頼中 |
+| species | spot（発見） | attack（打撃） | hurt（被ダメ） | die（死亡） | その他 event → key |
+|---|---|---|---|---|---|
+| `wolf` | `wolf_growl` うなり | `attack_bite` 噛みつき | `animal_hurt`※ | `animal_die`※ | `howl`→`wolf_howl` 遠吠え / `skill`→`wolf_howl` |
+| `snake` | `snake_hiss` シューッ | `snake_strike` 毒牙ラッシュ | `animal_hurt`※ | `animal_die`※ | `skill`→`snake_hiss` |
+| `weasel` | `weasel_screech` 甲高い威嚇 | `attack_bite` 噛みつき | `animal_hurt`※ | `animal_die`※ | `skill`→`weasel_screech` |
+| `bird`（猛禽） | `bird_screech` 猛禽の鳴き | `bird_wingflap` 急降下の羽ばたき | `animal_hurt`※ | `animal_die`※ | `dive`/`skill`→`bird_wingflap` |
+| `squirrel` | `squirrel_chitter` チチッ | `squirrel_chitter` | `animal_hurt`※ | `animal_die`※ | `skill`/`tamed`/`happy`→`squirrel_chitter` |
+| `rabbit` | `rabbit_thump` 後足ドン | — | `animal_hurt`※ | `animal_die`※ | `alert`/`skill`/`tamed`→`rabbit_thump` |
+| `guineapig` | `guineapig_wheek` ウィーク | — | `animal_hurt`※ | `animal_die`※ | `skill`/`tamed`/`happy`→`guineapig_wheek` |
+| `hedgehog` | `hedgehog_huff` フスフス | — | `animal_hurt`※ | `animal_die`※ | `curl`/`skill`/`tamed`→`hedgehog_huff` |
+| `pet`（さくら） | `pet_squeak` 鳴き | `pet_bite` 噛みつき | `pet_squeak` | `pet_squeak` | `skill`→`pet_pee` / `happy`・`tamed`→`pet_happy` |
+
+※ `animal_hurt` / `animal_die` は**全種共通のジェネリック音**。`playAnimalSFX` が `opts.species` を注入し、種ごとに基準ピッチ・音色（`VOICE` 表）を変えるので**種が聞き分け可能**。蛇だけは噴気的（hiss）に分岐。
+
+**個別キー一覧（`playSFX('key')` 直叩きも可）**: `wolf_howl` / `wolf_growl` / `snake_hiss` / `snake_strike` / `weasel_screech` / `bird_screech` / `bird_wingflap` / `attack_bite`（捕食者の噛みつき共通） / `animal_hurt` / `animal_die`（種別ピッチ） / `squirrel_chitter` / `rabbit_thump` / `guineapig_wheek` / `hedgehog_huff` / `pet_squeak` / `pet_bite` / `pet_happy` / `pet_pee`。
 
 - **species**: `wolf / snake / weasel / bird / squirrel / rabbit / guineapig / hedgehog / pet`。別名: `sakura`・`さくら`→`pet`、`raptor/hawk/eagle/owl`→`bird`、`cavy`→`guineapig`。
-- **event**: `spot`（発見）/ `attack` / `hurt` / `die` / `skill` / `tamed` / `happy`、および 1号機 `critterSE` 語彙 `howl` / `dive` / `curl` / `alert` / `tame`（=`tamed`）。**未知の event は各種の代表音（default）に自動フォールバック**。未知の species は黙って無音（事故ゼロ）。
-- 旧来の `on*` スタイルを好む場合の別名 `window.onAnimalSound(species, event, opts)` も用意（任意）。
+- **event**: `spot` / `attack` / `hurt` / `die` / `skill` / `tamed` / `happy`、および 1号機語彙 `howl` / `dive` / `curl` / `alert` / `tame`（=`tamed`）。未定義 event は `default` フォールバック。未知 species は無音（事故ゼロ）。
+- 旧来の `on*` スタイル用の別名 `window.onAnimalSound(species, event, opts)` も用意（任意）。
 
-> **1号機との整合（2号機メモ）**: 1号機が先行投入した動物SEスタブ8キー（`e96451b`）は、3D定位対応の**リッチ版に一本化**しました（後勝ちで既に有効だったため挙動は不変）。`critterSE` が直接呼ぶ `bird_chirp` / `bird_flap` は**実キーとして残置**（削除すると bird SE が無音化するため／音は1号機の元実装と同等）。`bird_screech` / `bird_wingflap` は猛禽らしい別音として併設し、`playAnimalSFX` から利用可能です。
->
-> **1号機へ依頼**: ① `weasel`（critterSE に行が無い）→ `critterSE` の MAP に weasel 行を足すか `playAnimalSFX('weasel', ev, {x,y,z})` を呼べば `weasel_screech` が鳴ります。② `guineapig` は現状 `pickup` で代用中 → `guineapig_wheek` に差し替え可能。③ ペット（さくら）の `pet_squeak` / `pet_bite` / `pet_happy` / `pet_pee` は未配線 → 鳴き/噛みつき/ごきげん/威嚇オシッコの瞬間に `playSFX('pet_xxx')` か `playAnimalSFX('sakura', ev)` を呼んでください（近接なので座標省略可）。`playAnimalSFX` に座標 `{x,y,z}` を渡せば自動で3D定位します。
+> **整合メモ（2号機）**: 1号機の先行スタブ8キー（`e96451b`）は3D対応リッチ版に一本化。`critterSE` が `playAnimalSFX` へ委譲（`bafbbec`）したので互換シム `bird_chirp`/`bird_flap` は撤去済み（呼び元が消えたため安全）。`weasel`/`guineapig` も委譲経由で正規の `weasel_screech`/`guineapig_wheek` が鳴る（旧 `pickup` 代用は解消）。**P1 追加**: 全種に `hurt`/`die`（種別ピッチ）と捕食者の `attack`（噛みつき/毒牙）を足し、`spot`（鳴き声）と聞き分け可能に。
 
 ---
 
@@ -192,7 +187,7 @@ window.setSfxGain('thunder', 1.5);    // 雷を強調
 window.getSfxGain('footstep');        // 現在の倍率
 window.SoundSettings.getGains();       // 全倍率の一覧
 ```
-対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat / companion_join / companion_reply / companion_hit / companion_leave`、動物SE `wolf_howl / wolf_growl / snake_hiss / weasel_screech / bird_screech / bird_wingflap / squirrel_chitter / rabbit_thump / guineapig_wheek / hedgehog_huff / pet_squeak / pet_bite / pet_happy / pet_pee`）。
+対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat / companion_join / companion_reply / companion_hit / companion_leave`、動物SE `wolf_howl / wolf_growl / snake_hiss / snake_strike / weasel_screech / bird_screech / bird_wingflap / attack_bite / animal_hurt / animal_die / squirrel_chitter / rabbit_thump / guineapig_wheek / hedgehog_huff / pet_squeak / pet_bite / pet_happy / pet_pee`）。
 
 > 体感後に「この音だけ大きい/小さい」が出たら、上記 `setSfxGain` で1行調整 → そのまま保存されます。
 

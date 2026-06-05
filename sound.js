@@ -19,7 +19,8 @@
     whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1,
     companion_join: 1, companion_reply: 1, companion_hit: 1, companion_leave: 1, // 仲間システム
     // チンチラ世界の動物SE（敵/仲間/ペット）。個別倍率で「狼うるさい」等に即対応。
-    wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, bird_chirp: 1, bird_flap: 1, // 敵
+    wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, snake_strike: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, attack_bite: 1, // 敵
+    animal_hurt: 1, animal_die: 1,                                                                     // 被ダメ/死亡（共通・種別ピッチ）
     squirrel_chitter: 1, rabbit_thump: 1, guineapig_wheek: 1, hedgehog_huff: 1,                       // 仲間
     pet_squeak: 1, pet_bite: 1, pet_happy: 1, pet_pee: 1,                                              // ペット(さくら)
   };
@@ -77,6 +78,33 @@
   }
   // 動物SEの 3D 定位先（opts.dest にパンナーが入っていれば 3D 経由・無ければ sfxBus）。distance減衰は makePanner 側の inverse モデル。
   const aDest = (o) => (o && o.dest) || null;
+
+  // 被ダメ(hurt)/死亡(die)は種ごとに基準ピッチと音色を変えて聞き分け可能に（playAnimalSFX が opts.species を注入）。
+  //   hurt=短い痛みの悲鳴／die=力尽きる下降。snake だけは噴気的（hiss系）に分岐。汎用 animal_hurt/animal_die から呼ぶ。
+  const VOICE = {
+    wolf:      { base: 430,  wave: 'sawtooth' }, // キャイン（中低）
+    snake:     { base: 0,    wave: 'hiss'     }, // 噴気
+    weasel:    { base: 1500, wave: 'square'   }, // 甲高い
+    bird:      { base: 1700, wave: 'sawtooth' }, // 鋭い
+    squirrel:  { base: 1700, wave: 'square'   },
+    rabbit:    { base: 780,  wave: 'sine'     },
+    guineapig: { base: 950,  wave: 'sawtooth' },
+    hedgehog:  { base: 1250, wave: 'square'   },
+    pet:       { base: 1100, wave: 'sine'     },
+  };
+  function animHurt(sp, o) {
+    const V = VOICE[sp] || VOICE.pet, d = aDest(o), v = (o && o.vol) || 1;
+    if (V.wave === 'hiss') { noise(0.12, 0.10 * v, 5000, 'highpass', d); tone(320, 0.08, 'square', 0.05 * v, 180, d); return; } // 蛇のシュッと縮む
+    tone(V.base, 0.12, V.wave, 0.12 * v, V.base * 0.55, d);    // 痛みの悲鳴（下降）
+    noise(0.05, 0.05 * v, 2200, 'highpass', d);               // ヒットのざらつき
+  }
+  function animDie(sp, o) {
+    const V = VOICE[sp] || VOICE.pet, d = aDest(o), v = (o && o.vol) || 1;
+    if (V.wave === 'hiss') { noise(0.32, 0.07 * v, 3500, 'highpass', d); tone(230, 0.30, 'sawtooth', 0.06 * v, 90, d); noise(0.18, 0.04 * v, 500, 'lowpass', d, 0.06); return; }
+    tone(V.base * 0.92, 0.32, V.wave, 0.11 * v, V.base * 0.30, d);        // 力尽きる下降
+    tone(V.base * 0.88, 0.32, 'sine', 0.05 * v, V.base * 0.28, d, 0.02);  // デチューンの厚み
+    noise(0.18, 0.04 * v, 600, 'lowpass', d, 0.06);                      // 崩れ落ち
+  }
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
   // ── 素材別パラメータ（足音・破壊・設置で材質感を出す）─────────────
@@ -250,10 +278,15 @@
                         noise(0.10, 0.02 * v, 4000, 'highpass', d); },
     bird_wingflap(o)  { const d = aDest(o), v = (o && o.vol) || 1;                 // 羽ばたき：低い風切りノイズを3拍
                         for (let i = 0; i < 3; i++) { noise(0.10, 0.07 * v, 700, 'lowpass', d, i * 0.16); tone(120, 0.08, 'sine', 0.03 * v, 80, d, i * 0.16); } },
-    // 1号機 critterSE(index.html) が直接呼ぶ旧キー → 正準音へ forward で一本化（実装は1か所＝上の2関数）。
-    //   1号機が playAnimalSFX へ移行すれば不要になる互換シム。bird_chirp→猛禽の鳴き / bird_flap→羽ばたき。
-    bird_chirp(o)     { SFX.bird_screech(o); },
-    bird_flap(o)      { SFX.bird_wingflap(o); },
+    // 近接攻撃のヒット（spot の鳴き声と聞き分けるための「噛みつき」系。捕食者の attack に使用）
+    attack_bite(o)    { const d = aDest(o), v = (o && o.vol) || 1;                 // 噛みつき：鋭いスナップ＋肉を捉える低い衝撃
+                        noise(0.05, 0.11 * v, 2400, 'highpass', d);
+                        tone(170, 0.07, 'square', 0.10 * v, 90, d);
+                        noise(0.06, 0.06 * v, 500, 'lowpass', d, 0.02); },
+    snake_strike(o)   { const d = aDest(o), v = (o && o.vol) || 1;                 // 蛇の毒牙ラッシュ：素早い噴気→噛みつき
+                        noise(0.10, 0.10 * v, 6000, 'highpass', d);
+                        noise(0.05, 0.09 * v, 2200, 'highpass', d, 0.07);
+                        tone(150, 0.05, 'square', 0.08 * v, 80, d, 0.07); },
     // ── 仲間 ──
     squirrel_chitter(o){ const d = aDest(o), v = (o && o.vol) || 1;                // チチッ：高い square を素早く連打
                         for (let i = 0; i < 4; i++) tone(2000 + Math.random() * 400, 0.04, 'square', 0.05 * v, 2600, d, i * 0.06); },
@@ -276,6 +309,9 @@
     pet_pee(o)        { const d = aDest(o), v = (o && o.vol) || 1;                 // 威嚇オシッコ：噴射のシャーッ＋威嚇のキュッ
                         noise(0.35, 0.05 * v, 3500, 'highpass', d);
                         tone(1300, 0.10, 'square', 0.05 * v, 1900, d); },
+    // ── 全種共通の被ダメ/死亡（opts.species で種ごとにピッチ・音色を変える＝聞き分け。playAnimalSFX が species を注入）──
+    animal_hurt(o)    { animHurt(o && o.species, o); },                            // 短い痛みの悲鳴
+    animal_die(o)     { animDie(o && o.species, o); },                             // 力尽きる下降
   };
 
   // 公開API：playSFX(name, opts) ── opts は省略可（後方互換）
@@ -340,16 +376,17 @@
   const ANIMAL_ALIAS = { sakura: 'pet', 'さくら': 'pet', raptor: 'bird', hawk: 'bird', eagle: 'bird', owl: 'bird', cavy: 'guineapig' };
   const ANIMAL_SFX = {
     //   ※ 1号機 critterSE(index.html) の event 語彙（howl/dive/curl/alert/spot/attack/tame…）も網羅。'tame' は下で 'tamed' へ正規化。
+    //   spot=鳴き声で発見を知らせる／attack=噛みつき等の打撃音で聞き分け／hurt・die=共通ジェネリック(種別ピッチ)。
     // 敵
-    wolf:      { spot: 'wolf_growl',     howl: 'wolf_howl',       attack: 'wolf_growl',    hurt: 'wolf_growl',     die: 'wolf_howl',      skill: 'wolf_howl',     default: 'wolf_growl' },
-    snake:     { spot: 'snake_hiss',     attack: 'snake_hiss',    hurt: 'snake_hiss',      skill: 'snake_hiss',                            default: 'snake_hiss' },
-    weasel:    { spot: 'weasel_screech', attack: 'weasel_screech',hurt: 'weasel_screech',  skill: 'weasel_screech',                        default: 'weasel_screech' },
-    bird:      { spot: 'bird_screech',   dive: 'bird_wingflap',   attack: 'bird_wingflap', hurt: 'bird_screech',   die: 'bird_screech',   skill: 'bird_wingflap', screech: 'bird_screech', default: 'bird_screech' },
+    wolf:      { spot: 'wolf_growl',     howl: 'wolf_howl',       attack: 'attack_bite',   hurt: 'animal_hurt',    die: 'animal_die',     skill: 'wolf_howl',     default: 'wolf_growl' },
+    snake:     { spot: 'snake_hiss',     attack: 'snake_strike',  hurt: 'animal_hurt',     die: 'animal_die',      skill: 'snake_hiss',                            default: 'snake_hiss' },
+    weasel:    { spot: 'weasel_screech', attack: 'attack_bite',   hurt: 'animal_hurt',     die: 'animal_die',      skill: 'weasel_screech',                        default: 'weasel_screech' },
+    bird:      { spot: 'bird_screech',   dive: 'bird_wingflap',   attack: 'bird_wingflap', hurt: 'animal_hurt',    die: 'animal_die',     skill: 'bird_wingflap', screech: 'bird_screech', default: 'bird_screech' },
     // 仲間
-    squirrel:  { spot: 'squirrel_chitter', attack: 'squirrel_chitter', tamed: 'squirrel_chitter', skill: 'squirrel_chitter', happy: 'squirrel_chitter', default: 'squirrel_chitter' },
-    rabbit:    { spot: 'rabbit_thump',     alert: 'rabbit_thump',     skill: 'rabbit_thump',     tamed: 'rabbit_thump',                     default: 'rabbit_thump' },
-    guineapig: { spot: 'guineapig_wheek',  tamed: 'guineapig_wheek',  skill: 'guineapig_wheek',  happy: 'guineapig_wheek',                  default: 'guineapig_wheek' },
-    hedgehog:  { spot: 'hedgehog_huff',    curl: 'hedgehog_huff',     skill: 'hedgehog_huff',    hurt: 'hedgehog_huff',                     default: 'hedgehog_huff' },
+    squirrel:  { spot: 'squirrel_chitter', attack: 'squirrel_chitter', hurt: 'animal_hurt', die: 'animal_die', skill: 'squirrel_chitter', tamed: 'squirrel_chitter', happy: 'squirrel_chitter', default: 'squirrel_chitter' },
+    rabbit:    { spot: 'rabbit_thump',     alert: 'rabbit_thump',      hurt: 'animal_hurt', die: 'animal_die', skill: 'rabbit_thump',     tamed: 'rabbit_thump',                               default: 'rabbit_thump' },
+    guineapig: { spot: 'guineapig_wheek',  hurt: 'animal_hurt',        die: 'animal_die',   skill: 'guineapig_wheek',  tamed: 'guineapig_wheek',  happy: 'guineapig_wheek',                   default: 'guineapig_wheek' },
+    hedgehog:  { spot: 'hedgehog_huff',    curl: 'hedgehog_huff',      hurt: 'animal_hurt', die: 'animal_die', skill: 'hedgehog_huff',    tamed: 'hedgehog_huff',                              default: 'hedgehog_huff' },
     // ペット（さくら）
     pet:       { spot: 'pet_squeak', attack: 'pet_bite', skill: 'pet_pee', happy: 'pet_happy', tamed: 'pet_happy', hurt: 'pet_squeak', die: 'pet_squeak', default: 'pet_squeak' },
   };
@@ -367,7 +404,7 @@
       const ev = EVENT_ALIAS[event] || event;
       const tbl = ANIMAL_SFX[sp]; if (!tbl) return;             // 未知種は黙って無音
       const key = tbl[ev] || tbl.default; if (!key) return;
-      playAnimalKey(key, opts);
+      playAnimalKey(key, Object.assign({}, opts, { species: sp })); // species を注入＝共通 hurt/die が種別ピッチで鳴る
     } catch (e) { /* 防御 */ }
   };
   // 旧来の onXxx スタイルを好む配線向けの別名（任意・未使用でも安全）
