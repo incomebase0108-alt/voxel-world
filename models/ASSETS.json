@@ -16,8 +16,8 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 24237584,
-    "size_mb": 23.115
+    "size_bytes": 24287632,
+    "size_mb": 23.162
   },
   "assets": [
     {
@@ -1321,12 +1321,12 @@
       "file": "enemy_snake.glb",
       "name": "enemy_snake",
       "category": "その他",
-      "size_bytes": 226828,
-      "size_mb": 0.2163,
+      "size_bytes": 276876,
+      "size_mb": 0.264,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 38,
+      "materials": 50,
       "error": null
     },
     {
