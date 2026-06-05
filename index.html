@@ -1643,6 +1643,11 @@ function updatePlayer(dt) {
     }
     playerAvatar.rotation.y = avatarYaw;
     playerAvatar.visible = thirdPerson;
+    // チンチラ主人公：アニメが無いので移動中はコードでぴょこぴょこ弾ませる（地上のみ）
+    if (playerIsChinchilla) {
+      playerHopT += dt * (moving ? 11 : 5);
+      if (moving && player.onGround) playerAvatar.position.y = player.pos.y + Math.max(0, Math.sin(playerHopT)) * 0.13;
+    }
     // 水中うつ伏せ：★物理と同じ「頭水中」基準で発火（浅瀬で腹だけ浸かる時に陸で泳ぐ誤発火を防ぐ＝判定一本化）。
     //   頭が水中＝潜水/遊泳の時だけ前傾90°。水面より上に出たら立ち姿勢へ。swimクリップがあればクリップ再生に委譲。
     const swimming = !ridingBoat && !ridingMob && playerHeadInWater(); // ★swim/walk の選択は playerHeadInWater() の即値のみで決める
@@ -2272,6 +2277,8 @@ let playerAvatar = null;
 let mixer = null, actIdle = null, actWalk = null, actAttack = null, actSwim = null, curAction = null;
 let avatarAttackTimer = 0; // >0 の間は攻撃モーション再生中（idle/walk へ戻さない）
 let avatarPitch = 0;       // 三人称アバターの前傾（0=立ち / -PI/2=うつ伏せ＝泳ぎ姿勢）。滑らかに補間
+let playerIsChinchilla = false; // 主人公がチンチラか（アニメ無し→コードでぴょこぴょこ＆スケール調整）
+let playerHopT = 0;        // チンチラ主人公の弾みタイマー
 let wasMoving = false;            // 前フレームの移動状態（移動開始の立ち上がり検出用）
 let moveStartAnimName = '-';      // 直近の「歩き始め」で選ばれたアニメ名（H診断用＝開始時に泳いでないか確認）
 function playAvatarAnim(moving, swimming) {
@@ -2407,15 +2414,19 @@ function updateHeldShield() {
   if (!playerAvatar) return;
   if (equip.shield && equipTemplates.shield) { heldShield = equipTemplates.shield.clone(true); attachWorldFollow(heldShield, SHIELD_HOLD.hand, SHIELD_HOLD.rotX, SHIELD_HOLD.offset); } // 盾は左前腕
 }
-// (C) プレイヤー色選択：5色から選んでアバターを読み込む（選択は保存）
+// (C) プレイヤー＝チンチラ。8色から選んでアバターを読み込む（選択は保存）
 const PLAYER_SKINS = [
-  { file:'models/player.glb',         name:'標準', color:'#8fb5e0' },
-  { file:'models/player_crimson.glb', name:'深紅', color:'#b23a48' },
-  { file:'models/player_azure.glb',   name:'蒼',   color:'#3a6db2' },
-  { file:'models/player_emerald.glb', name:'翠',   color:'#3aa86a' },
-  { file:'models/player_gold.glb',    name:'金',   color:'#d4af37' },
+  { file:'models/pet_chinchilla_grey.glb',     name:'標準',     color:'#8f9196' },
+  { file:'models/pet_chinchilla_beige.glb',    name:'ベージュ', color:'#b0a392' },
+  { file:'models/pet_chinchilla_white.glb',    name:'ホワイト', color:'#ece9e6' },
+  { file:'models/pet_chinchilla_ebony.glb',    name:'エボニー', color:'#353539' },
+  { file:'models/pet_chinchilla_violet.glb',   name:'バイオレット', color:'#9b93a6' },
+  { file:'models/pet_chinchilla_sapphire.glb', name:'サファイア', color:'#8a98ad' },
+  { file:'models/pet_chinchilla_brown.glb',    name:'ブラウン', color:'#7a6450' },
+  { file:'models/pet_chinchilla_pink.glb',     name:'ピンク',   color:'#f0d9d6' },
 ];
-let currentPlayerFile = localStorage.getItem('voxel_player_model') || 'models/player.glb';
+const DEFAULT_PLAYER_FILE = 'models/pet_chinchilla_grey.glb';
+let currentPlayerFile = localStorage.getItem('voxel_player_model') || DEFAULT_PLAYER_FILE;
 
 // ===================================================================
 // 武器・装備の状態（loadWorld より前に宣言＝セーブ復元時の参照を可能に）。挙動関数は後述
@@ -2442,6 +2453,7 @@ let ownedShield = false; // 盾を一度でも入手したか（toggleの可否�
 // 起動時にセーブデータがあれば復元（currentPlayerFile・装備を含む状態をここで確定 → 直後の loadAvatar が反映）
 loadWorld();
 function loadAvatar(file) {
+  if (!file || file.indexOf('chinchilla') < 0) file = DEFAULT_PLAYER_FILE; // 主人公は必ずチンチラ（旧人間アバターは弾く）
   currentPlayerFile = file;
   try { localStorage.setItem('voxel_player_model', file); } catch (e) {}
   // 既存アバター・ミキサーを破棄
@@ -2452,6 +2464,8 @@ function loadAvatar(file) {
     (gltf) => {
       playerAvatar = gltf.scene;
       playerAvatar.rotation.order = 'YXZ'; // ヨー(向き)→ピッチ(前傾)の順＝うつ伏せ時も頭が進行方向を向く
+      playerIsChinchilla = /chinchilla/.test(file);     // チンチラ主人公＝アニメ無し・専用の弾み/スケール
+      if (playerIsChinchilla) playerAvatar.scale.setScalar(1.8); // ちょっと大きめの「ヒーローチンチラ」（~1.4m）
       playerAvatar.visible = thirdPerson; // 三人称なら即表示
       scene.add(playerAvatar);
       captureHandRig(); // ★装着リグ(手アンカー/腕回転)を bind pose で採取（mixer 更新前＝中立）。§3 ワールド追従の基準
@@ -2479,6 +2493,8 @@ function loadAvatar(file) {
     }
   );
 }
+// 旧セーブ/旧設定が人間アバターを指していたらチンチラへ移行（主人公＝チンチラ）
+if (!PLAYER_SKINS.some(s => s.file === currentPlayerFile)) currentPlayerFile = DEFAULT_PLAYER_FILE;
 loadAvatar(currentPlayerFile);
 
 // タイトル画面のキャラ選択ボタンを構築
