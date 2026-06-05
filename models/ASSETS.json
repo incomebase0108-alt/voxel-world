@@ -16,7 +16,7 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 23091708,
+    "size_bytes": 23091644,
     "size_mb": 22.022
   },
   "assets": [
@@ -1441,8 +1441,8 @@
       "file": "pet_chinchilla_violet.glb",
       "name": "pet_chinchilla_violet",
       "category": "その他",
-      "size_bytes": 348240,
-      "size_mb": 0.3321,
+      "size_bytes": 348176,
+      "size_mb": 0.332,
       "clips": [],
       "meshes": 1,
       "nodes": 1,

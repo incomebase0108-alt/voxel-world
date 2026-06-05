@@ -171,7 +171,7 @@
 | `pet_chinchilla_grey.glb` | 0.3321 | —（静物） | 1/1 |
 | `pet_chinchilla_pink.glb` | 0.3321 | —（静物） | 1/1 |
 | `pet_chinchilla_sapphire.glb` | 0.3321 | —（静物） | 1/1 |
-| `pet_chinchilla_violet.glb` | 0.3321 | —（静物） | 1/1 |
+| `pet_chinchilla_violet.glb` | 0.3320 | —（静物） | 1/1 |
 | `pet_chinchilla_violet_baby.glb` | 0.2756 | —（静物） | 1/1 |
 | `pet_chinchilla_white.glb` | 0.3321 | —（静物） | 1/1 |
 
