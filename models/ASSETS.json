@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 148,
-    "size_bytes": 22802672,
-    "size_mb": 21.746
+    "count": 149,
+    "size_bytes": 23091636,
+    "size_mb": 22.022
   },
   "assets": [
     {
@@ -1447,6 +1447,18 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 46,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_violet_baby.glb",
+      "name": "pet_chinchilla_violet_baby",
+      "category": "その他",
+      "size_bytes": 288964,
+      "size_mb": 0.2756,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 37,
       "error": null
     },
     {

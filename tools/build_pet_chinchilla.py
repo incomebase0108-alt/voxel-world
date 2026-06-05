@@ -224,8 +224,69 @@ def build_parts(C):
     # --- 毛皮ノイズ＋AO焼き込み＋接地 ---
     finalize()
 
-def finalize():
-    """毛皮パーツに法線方向のノイズ凹凸を与え、足元を y=0 に接地し、頂点カラーにAOを焼く。"""
+def build_parts_baby(C):
+    """子チンチラ（赤ちゃん体型）。大人の比率を変えた上で全体0.8倍を焼き込む。
+       ・頭：体 を頭寄りに（まんまる頭）・目を大きく丸く下＆前へ・うるうるキャッチライト
+       ・マズル短く丸く鼻パッド小・ヒゲ短く控えめ・手足ずんぐり短く・体ぷっくり
+       ・目は黒目固定（violet babyは黒が正）"""
+    PARTS.clear()
+    (FUR, BELLY, EAR_OUT, EAR_IN, NOSE, EYE, EYE_EMIS, PAW, TAIL, TAILTIP) = C
+    EYE = (0.05, 0.05, 0.07)   # 赤ちゃんは黒目で固定（あどけなさ）
+    EYE_EMIS = None
+    SB, RB = 24, 16
+    SM, RM = 18, 12
+    # 体（小さめ・ぷっくりまんまる。頭を相対的に大きく見せる）
+    ellipsoid(0.0, 0.205, 0.00, 0.232, 0.218, 0.222, FUR, seg=SB, ring=RB, fur=0.010)
+    # 腹〜胸（クリーム）
+    ellipsoid(0.0, 0.165, 0.165, 0.130, 0.140, 0.078, BELLY, seg=SM, ring=RM, fur=0.007)
+    # 頭（特大・まんまる。体のすぐ上＝首は短い）
+    ellipsoid(0.0, 0.520, 0.040, 0.238, 0.230, 0.228, FUR, seg=SB, ring=RB, fur=0.011)
+    # 頬毛（ぷっくり・大きめ）
+    for sx in (-1, 1):
+        ellipsoid(sx*0.180, 0.450, 0.105, 0.092, 0.090, 0.085, FUR, seg=SM, ring=RM, fur=0.013)
+    # マズル（短く丸く・低め）
+    ellipsoid(0.0, 0.420, 0.205, 0.110, 0.090, 0.072, BELLY, seg=SM, ring=RM, fur=0.006)
+    # 鼻パッド（小さめ）
+    ellipsoid(0.0, 0.438, 0.262, 0.024, 0.019, 0.018, NOSE, seg=12, ring=9, fur=0.0)
+    # 目（大きく・丸く・やや下＆前。あどけなさの核）＋強めキャッチライト
+    for sx in (-1, 1):
+        ellipsoid(sx*0.108, 0.500, 0.210, 0.078, 0.080, 0.066, EYE, seg=20, ring=14,
+                  rough=0.10, emis=EYE_EMIS, fur=0.0)
+        # 大きめキャッチライト（うるうる感）
+        ellipsoid(sx*0.088, 0.528, 0.258, 0.028, 0.028, 0.020, (1.0,1.0,1.0), seg=10, ring=8,
+                  rough=0.04, emis=(1.0, 1.0, 1.0), fur=0.0, ao=False)
+        # 小さな副ハイライト（下側）
+        ellipsoid(sx*0.122, 0.476, 0.252, 0.013, 0.013, 0.010, (1.0,1.0,1.0), seg=8, ring=6,
+                  rough=0.04, emis=(0.85, 0.85, 0.9), fur=0.0, ao=False)
+    # 耳（大きいまま・頭が大きいので相対的に丸く可愛く）＋内耳
+    for sx in (-1, 1):
+        ellipsoid(sx*0.198, 0.752, 0.000, 0.140, 0.152, 0.050, EAR_OUT,
+                  seg=18, ring=12, rotZ=sx*0.12, rotX=-0.05, rough=0.6, fur=0.004)
+        ellipsoid(sx*0.198, 0.752, 0.028, 0.092, 0.106, 0.030, EAR_IN,
+                  seg=16, ring=10, rotZ=sx*0.12, rotX=-0.05, rough=0.6, fur=0.0)
+    # 前足（ずんぐり短い手・体の前で軽く合わせる・指は短く3本）
+    for sx in (-1, 1):
+        ellipsoid(sx*0.060, 0.150, 0.215, 0.052, 0.050, 0.052, PAW, seg=14, ring=9, fur=0.003)
+        for fx in (0.030, 0.058, 0.086):
+            ellipsoid(sx*fx, 0.180, 0.232, 0.015, 0.020, 0.016, PAW, seg=8, ring=6, rotX=0.3, fur=0.0)
+    # 後足（座って支える・ずんぐり）＋短い指
+    for sx in (-1, 1):
+        ellipsoid(sx*0.130, 0.030, 0.070, 0.072, 0.032, 0.118, PAW, seg=14, ring=9, fur=0.005)
+        for fz in (0.140, 0.168):
+            ellipsoid(sx*0.130, 0.024, fz, 0.020, 0.017, 0.024, PAW, seg=8, ring=6, fur=0.0)
+    # 尻尾（ふさふさ・赤ちゃんは短め2節）
+    ellipsoid(0.0, 0.150, -0.215, 0.088, 0.110, 0.098, TAIL, seg=SM, ring=RM, fur=0.016)
+    ellipsoid(0.0, 0.300, -0.245, 0.062, 0.078, 0.066, TAILTIP, seg=SM, ring=RM, fur=0.014)
+    # ヒゲ（短く・細く・本数控えめ＝左右2本ずつ）
+    for sx in (-1, 1):
+        base = (sx*0.05, 0.420, 0.250)
+        for (dx, dy, dz) in [(0.24, 0.04, 0.05), (0.23, -0.05, 0.05)]:
+            whisker(base, (sx*dx, 0.420+dy, 0.250+dz), 0.004, WHISK)
+    # 比率変更後に全体スケールを焼き込む（“一回り小さい”を固定。総高が大人の約0.8になる係数）
+    finalize(scale=0.85)
+
+def finalize(scale=1.0):
+    """毛皮ノイズ→接地(y=0)→任意の全体スケール→AO焼き込み。scale<1で“一回り小さい”を焼く。"""
     # 毛皮ノイズ：素体の法線方向へ ±amp 変位（毛のふわつき）
     for p in PARTS:
         if p['fur'] > 0.0:
@@ -240,6 +301,10 @@ def finalize():
     miny = min(v[1] for p in PARTS for v in p['verts'])
     for p in PARTS:
         p['verts'] = [(x, y - miny, z) for (x, y, z) in p['verts']]
+    # 全体スケール（原点=足元 y=0 を中心に拡縮するので接地Yは0のまま不変）
+    if scale != 1.0:
+        for p in PARTS:
+            p['verts'] = [(x*scale, y*scale, z*scale) for (x, y, z) in p['verts']]
     # AO：天空遮蔽（上ほど明るい）＋下向き面のキャビティ。頂点カラーCOLOR_0に格納。
     ys = [v[1] for p in PARTS for v in p['verts']]
     ymin, ymax = min(ys), max(ys)
@@ -370,30 +435,15 @@ def build_glb(path):
 # ======================================================================
 # プレビュー（標準ライブラリだけのソフトレンダ・AO頂点カラー反映）
 # ======================================================================
-def render_panel(W, H, ry, rx):
-    buf = [[(238, 236, 232) for _ in range(W)] for _ in range(H)]
-    depth = [[-1e9]*W for _ in range(H)]
-    R = matmul(rotx(rx), roty(ry))
-    light = (-0.4, 0.75, 0.55)
-    ll = math.sqrt(sum(c*c for c in light)); light = tuple(c/ll for c in light)
-    allv = []
-    for p in PARTS:
-        for v in p['verts']:
-            x, y, z = v
-            allv.append((R[0]*x+R[1]*y+R[2]*z, R[4]*x+R[5]*y+R[6]*z, R[8]*x+R[9]*y+R[10]*z))
-    minx = min(v[0] for v in allv); maxx = max(v[0] for v in allv)
-    miny = min(v[1] for v in allv); maxy = max(v[1] for v in allv)
-    cxw = (minx+maxx)/2; cyw = (miny+maxy)/2
-    span = max(maxx-minx, maxy-miny) * 1.18
-    scale = min(W, H) / span
-    ox, oy = W/2, H/2 + 6
+def _raster(buf, depth, W, H, parts, R, light, scale, cxw, cyw, ox, oy):
+    """parts を指定スケール・指定中心で buf へ描画（比較用に scale/baseline を外から固定可能）。"""
     def project(v):
         x, y, z = v
         vx = R[0]*x+R[1]*y+R[2]*z; vy = R[4]*x+R[5]*y+R[6]*z; vz = R[8]*x+R[9]*y+R[10]*z
         return ox + (vx-cxw)*scale, oy - (vy-cyw)*scale, vz
     def rotn(n):
         return (R[0]*n[0]+R[1]*n[1]+R[2]*n[2], R[4]*n[0]+R[5]*n[1]+R[6]*n[2], R[8]*n[0]+R[9]*n[1]+R[10]*n[2])
-    for p in PARTS:
+    for p in parts:
         verts = p['verts']; faces = p['faces']
         col = p['color']; emis = p['emis']; vcol = p['vcol']
         vn = [rotn(n) for n in smooth_normals(verts, faces)]
@@ -432,6 +482,28 @@ def render_panel(W, H, ry, rx):
                     bb = min(255, int(col[2]*255*shade + (emis[2]*70 if emis else 0)))
                     depth[py][px] = zz
                     buf[py][px] = (r, g, bb)
+
+def _light():
+    light = (-0.4, 0.75, 0.55)
+    ll = math.sqrt(sum(c*c for c in light)); return tuple(c/ll for c in light)
+
+def _rot_bounds(parts, R):
+    xs, ys = [], []
+    for p in parts:
+        for (x, y, z) in p['verts']:
+            xs.append(R[0]*x+R[1]*y+R[2]*z); ys.append(R[4]*x+R[5]*y+R[6]*z)
+    return min(xs), max(xs), min(ys), max(ys)
+
+def render_panel(W, H, ry, rx, parts=None):
+    parts = PARTS if parts is None else parts
+    buf = [[(238, 236, 232) for _ in range(W)] for _ in range(H)]
+    depth = [[-1e9]*W for _ in range(H)]
+    R = matmul(rotx(rx), roty(ry))
+    minx, maxx, miny, maxy = _rot_bounds(parts, R)
+    cxw = (minx+maxx)/2; cyw = (miny+maxy)/2
+    span = max(maxx-minx, maxy-miny) * 1.18
+    scale = min(W, H) / span
+    _raster(buf, depth, W, H, parts, R, _light(), scale, cxw, cyw, W/2, H/2 + 6)
     return buf
 
 def compose(panels, cols, W, H, gap=12):
@@ -463,6 +535,23 @@ def render_contact_sheet(path, keys, W=300, H=340):
     write_png(path, out, GW, GH)
     print(f"wrote {path}  ({GW}x{GH})  variants={','.join(keys)}")
 
+def render_compare(path, partsA, partsB, W=460, H=580):
+    """大人(左)と赤ちゃん(右)を同一スケール・同一ベースラインで並べ、体格差が分かる比較1枚。"""
+    R = matmul(rotx(math.radians(8)), roty(math.radians(26)))
+    light = _light()
+    _, _, ayL, ayH = _rot_bounds(partsA, R)        # 大人の高さでスケールを決める
+    scale = (H * 0.80) / (ayH - ayL)               # 両者共通スケール（赤ちゃんが小さく写る）
+    oy = H - 46                                     # 共通ベースライン（足元 y=0）
+    def panel(parts):
+        buf = [[(238, 236, 232) for _ in range(W)] for _ in range(H)]
+        depth = [[-1e9]*W for _ in range(H)]
+        minx, maxx, miny, _ = _rot_bounds(parts, R)
+        _raster(buf, depth, W, H, parts, R, light, scale, (minx+maxx)/2, miny, W/2, oy)
+        return buf
+    out, GW, GH = compose([panel(partsA), panel(partsB)], 2, W, H)
+    write_png(path, out, GW, GH)
+    print(f"wrote {path}  ({GW}x{GH})  compare: adult-violet | baby-violet")
+
 def write_png(path, buf, W, H):
     raw = bytearray()
     for y in range(H):
@@ -491,6 +580,13 @@ if __name__ == '__main__':
     # ベージュを「さくら」用の基本ファイルにも複製（pet_chinchilla.glb・セーブ互換）
     build_parts(VARIANTS['beige'])
     build_glb(os.path.join(models, 'pet_chinchilla.glb'))
-    # プレビュー：さくら（ベージュ）の3面＋全カラーのコンタクトシート
+    # プレビュー：さくら（ベージュ）の3面＋全カラーのコンタクトシート（PARTS=ベージュのまま描画）
     render_preview(os.path.join(here, 'preview_pet_chinchilla.png'))
     render_contact_sheet(os.path.join(here, 'preview_pet_chinchilla_colors.png'), list(VARIANTS.keys()))
+    # 子チンチラ（まぐろ専用・バイオレット／黒目・赤ちゃん体型・大人の約0.8）
+    build_parts_baby(VARIANTS['violet'])
+    build_glb(os.path.join(models, 'pet_chinchilla_violet_baby.glb'))
+    # プレビュー：大人violet と 子baby の体格比較（1枚）
+    build_parts(VARIANTS['violet']);      adult = [dict(p) for p in PARTS]
+    build_parts_baby(VARIANTS['violet']); baby = [dict(p) for p in PARTS]
+    render_compare(os.path.join(here, 'preview_pet_chinchilla_baby_compare.png'), adult, baby)
