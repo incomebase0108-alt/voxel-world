@@ -16,8 +16,8 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 24095632,
-    "size_mb": 22.979
+    "size_bytes": 24515572,
+    "size_mb": 23.38
   },
   "assets": [
     {
@@ -126,16 +126,14 @@
       "file": "mob_cow.glb",
       "name": "mob_cow",
       "category": "モブ",
-      "size_bytes": 261376,
-      "size_mb": 0.2493,
+      "size_bytes": 450572,
+      "size_mb": 0.4297,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
-      "meshes": 26,
-      "nodes": 26,
+      "meshes": 40,
+      "nodes": 40,
       "materials": 8,
       "error": null
     },
@@ -254,13 +252,11 @@
       "file": "mob_horse.glb",
       "name": "mob_horse",
       "category": "モブ",
-      "size_bytes": 166816,
-      "size_mb": 0.1591,
+      "size_bytes": 228380,
+      "size_mb": 0.2178,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
       "meshes": 6,
       "nodes": 6,
@@ -288,13 +284,11 @@
       "file": "mob_pig.glb",
       "name": "mob_pig",
       "category": "モブ",
-      "size_bytes": 116912,
-      "size_mb": 0.1115,
+      "size_bytes": 185548,
+      "size_mb": 0.177,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
       "meshes": 7,
       "nodes": 7,
@@ -322,13 +316,11 @@
       "file": "mob_sheep.glb",
       "name": "mob_sheep",
       "category": "モブ",
-      "size_bytes": 212452,
-      "size_mb": 0.2026,
+      "size_bytes": 312996,
+      "size_mb": 0.2985,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
       "meshes": 7,
       "nodes": 7,

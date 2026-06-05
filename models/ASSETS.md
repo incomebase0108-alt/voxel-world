@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 149 ファイル / 22.98 MB
+**合計**: 149 ファイル / 23.38 MB
 
 
 ## プレイヤー
@@ -25,7 +25,7 @@
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
 | `mob_chicken.glb` | 0.1079 | `walk`, `idle`, `die`, `hit` | 7/7 |
-| `mob_cow.glb` | 0.2493 | `walk`, `idle`, `die`, `hit` | 26/26 |
+| `mob_cow.glb` | 0.4297 | `idle`, `walk` | 40/40 |
 | `mob_demon.glb` | 0.4007 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_dragon.glb` | 0.3086 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_fish.glb` | 0.1255 | `idle`, `swim` | 2/2 |
@@ -33,11 +33,11 @@
 | `mob_fish_puffer.glb` | 0.1325 | `idle`, `swim` | 2/2 |
 | `mob_fish_tropical.glb` | 0.1290 | `idle`, `swim` | 2/2 |
 | `mob_golem.glb` | 0.2460 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
-| `mob_horse.glb` | 0.1591 | `walk`, `idle`, `die`, `hit` | 6/6 |
+| `mob_horse.glb` | 0.2178 | `idle`, `walk` | 6/6 |
 | `mob_kraken.glb` | 1.6576 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
-| `mob_pig.glb` | 0.1115 | `walk`, `idle`, `die`, `hit` | 7/7 |
+| `mob_pig.glb` | 0.1770 | `idle`, `walk` | 7/7 |
 | `mob_queen_sakura.glb` | 0.5218 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
-| `mob_sheep.glb` | 0.2026 | `walk`, `idle`, `die`, `hit` | 7/7 |
+| `mob_sheep.glb` | 0.2985 | `idle`, `walk` | 7/7 |
 | `mob_skeleton.glb` | 0.2962 | `idle`, `walk`, `attack` | 5/5 |
 | `mob_skeleton_king.glb` | 0.3635 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_slime.glb` | 0.0429 | `attack`, `walk`, `idle`, `die`, `hit` | 1/1 |
