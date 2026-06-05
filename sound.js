@@ -133,6 +133,15 @@
     charge_start(){ tone(160, 0.25, 'sawtooth', 0.07, 320); },                                       // 溜め開始（上昇）
     charge_full() { tone(880, 0.10, 'sine', 0.10, 1320); tone(1320, 0.08, 'sine', 0.07, 1760); },    // 溜め完了（チャイム）
     pet_dust()    { noise(0.12, 0.05, 1100, 'bandpass'); tone(420, 0.06, 'sine', 0.03, 240); },        // ペット砂浴び（やわらかい砂の「ふっ」）
+    // ── 動物8種の種別SE（短い合成音。発見/攻撃/仲間スキル/なつかせ で発火）──
+    wolf_howl()      { tone(300, 0.6, 'sawtooth', 0.10, 520); tone(520, 0.5, 'sawtooth', 0.07, 360, null, 0.25); }, // 遠吠え（上がって下がる）
+    wolf_growl()     { tone(90, 0.35, 'sawtooth', 0.12, 60); noise(0.18, 0.05, 300, 'lowpass'); },                  // 低いうなり
+    snake_hiss()     { noise(0.32, 0.07, 5000, 'highpass'); noise(0.22, 0.04, 3500, 'bandpass'); },                 // シューッ
+    squirrel_chitter(){ for (let i = 0; i < 4; i++) tone(1700 + i*120, 0.04, 'square', 0.05, 2000, null, i*0.05); },// チチッ（高い連続音）
+    rabbit_thump()   { tone(70, 0.12, 'sine', 0.16, 45); noise(0.06, 0.06, 400, 'lowpass'); },                      // 後ろ足スタンピング（ドン）
+    bird_flap()      { noise(0.07, 0.05, 700, 'lowpass'); noise(0.07, 0.04, 600, 'lowpass', null); },               // 羽ばたき（バサッ）
+    bird_chirp()     { tone(2400, 0.05, 'sine', 0.06, 2900); tone(2900, 0.05, 'sine', 0.05, 2600, null, 0.06); },   // 鳴き（ピチュ）
+    hedgehog_huff()  { for (let i = 0; i < 3; i++) noise(0.05, 0.045, 1400, 'bandpass'); },                         // 丸まりフスフス
     // レベルアップ（1号機の playSFX('levelup') 連携）：上昇アルペジオ＋締めのきらめき
     levelup() {
       const seq = [523.25, 659.25, 783.99, 1046.50]; // C5-E5-G5-C6
