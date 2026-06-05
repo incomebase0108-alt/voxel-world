@@ -140,6 +140,38 @@ const bossKills = {}; // ⑥ ボス種別ごとの討伐数（達成感の記録
 //   chapter: prologue(序章・脱走前) → escape(脱走演出中) → world(自由探索) → boss(女王さくら出現中) → cleared(撃破)
 function defaultProgress() { return { version: 1, chapter: 'prologue', escaped: false, queenSeen: false, queenDefeated: false }; }
 let progress = defaultProgress();
+// 📖 クエスト/章立て（データのみ。表示は3号機が window.getQuestState() を読んで描画）。
+//   章: prologue/escape（序章＝脱走）→ world（自由探索＝なつかせ/共闘）→ boss（女王さくら出現）→ cleared（撃破）
+const CHAPTER_NAMES = { prologue: '序章「脱走」', escape: '序章「脱走」', world: '第一章「チンチラ革命」', boss: '最終章「女王さくら」', cleared: 'エピローグ' };
+function getQuestState() {
+  const petN = (typeof pets !== 'undefined') ? pets.length : 0;
+  const allyN = (typeof companions !== 'undefined') ? companions.length : 0;
+  const ch = progress.chapter;
+  let objectives;
+  if (ch === 'prologue' || ch === 'escape') {
+    objectives = [
+      { id: 'wake', label: 'ケージの中で目を覚ます', done: true },
+      { id: 'door', label: 'まぐろが扉を開けるのを待つ', done: ch === 'escape' || progress.escaped },
+      { id: 'escape', label: '1階の玄関から脱走する（妻に捕まらない）', done: !!progress.escaped },
+    ];
+  } else if (ch === 'cleared') {
+    objectives = [ { id: 'win', label: '女王さくらを倒した — 革命成就', done: true } ];
+  } else { // world / boss
+    objectives = [
+      { id: 'tame', label: `野生チンチラをなつかせる（${petN}/${MAX_PETS}）`, done: petN >= 1 },
+      { id: 'ally', label: '小動物を仲間にして共闘する', done: allyN >= 1 },
+      { id: 'find', label: '「さくらの間」で女王さくらを見つける', done: !!progress.queenSeen },
+      { id: 'boss', label: '最終ボス・女王さくらを倒す', done: !!progress.queenDefeated },
+    ];
+  }
+  return {
+    chapter: ch, chapterName: CHAPTER_NAMES[ch] || ch,
+    escaped: !!progress.escaped, queenSeen: !!progress.queenSeen, queenDefeated: !!progress.queenDefeated,
+    pets: petN, petMax: MAX_PETS, allies: allyN,
+    objectives, done: objectives.every(o => o.done),
+  };
+}
+window.getQuestState = () => { try { return getQuestState(); } catch (e) { return null; } }; // 3号機UI向けの読み取り口
 
 // ===================================================================
 // ⑤ (D)バランスの数値基盤：ゲームの体感を決める数値を1か所に集約
@@ -4491,6 +4523,7 @@ function onBossSpawned(m) {
   const t = m.def.type, p = m.obj.position;
   // ★女王さくらだけ専用口（咆哮＋queenテーマ。setMusicScene('queen')は内部で呼ばれる）。汎用三系統は従来の onBossAppear。
   try { if (m.def.queen) { if (window.onQueenAppear) window.onQueenAppear(); } else if (window.onBossAppear) window.onBossAppear(t); } catch (e) {}
+  if (m.def.queen) { progress.queenSeen = true; if (progress.chapter === 'world') progress.chapter = 'boss'; scheduleSave(); } // 📖 女王と遭遇＝最終章へ
   spawnFx('fx_magic_circle', p.x, p.y + 0.05, p.z, 3.2, 1.6); // 足元の魔法陣
   spawnFx('fx_miasma',       p.x, p.y + 0.4,  p.z, 4.0, 1.4); // 立ち上る瘴気
 }
@@ -4956,6 +4989,7 @@ function defeatBoss(m) {
   const p = m.obj.position, t = m.def.type;
   // ★女王さくらだけ専用の撃破口（撃破後コアが平常BGMへ戻す）。汎用三系統は従来の onBossDefeat。
   try { if (m.def.queen) { if (window.onQueenDefeat) window.onQueenDefeat(); } else if (window.onBossDefeat) window.onBossDefeat(t); } catch (e) {}
+  if (m.def.queen) { progress.queenDefeated = true; progress.chapter = 'cleared'; scheduleSave(); } // 📖 女王撃破＝革命成就（エピローグ）
   spawnFx('fx_collapse', p.x, p.y + 0.3, p.z, 3.5, 1.8);                     // 崩壊演出（4号機・自走loop）
   const rw = BOSS_REWARD[t] || { exp: 40, gold: 2, coin: 4, equips: 1, name: t };
   gainExp(rw.exp);                                                          // 大量EXP（通常討伐EXPへ上乗せ）
