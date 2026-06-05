@@ -19,6 +19,7 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 序章『脱走』 | `setMusicScene('escape')` ＋ `onEscapeSuccess()` | 忍び/緊張テーマ＋脱走成功ジングル |
 | 探索BGM自動切替 | `setBiomeMusic(true)` / `isBiomeMusicOn()` | `getBiome()`連動で岩場/森/平原テーマへ。戦闘/ボス/脱走/水中は尊重（opt-in・既定OFF） |
 | 危険度レイヤー | `setDangerLevel(0..1)` / `getDangerLevel()` | 敵接近で緊張ドローンがfade in／離れると引く。毎フレーム/定期で呼ぶだけ |
+| 状態音 | `onLowHP(on)` / `onOverheat(on)` | 低HPの心音＋緊張／暑さ(85+)の陽炎・警告。on/offトグル |
 | 仲間 | `onCompanionJoin/Reply/Hit/Leave(type)` | — |
 | 攻撃 | `onAttackHit(weapon,isCrit)` / `onAttackWhiff()` / `onAttackCharge('start'|'full')` | — |
 | 音量（統一） | `setVolume(bus,0..1)` / `getVolume(bus)` | bus=`master`/`bgm`(music)/`sfx`(se)/`ambient`(amb) |
@@ -41,6 +42,12 @@ ambBus → ambDuck ──────┘
 - **危険度レイヤー**: `setDangerLevel(0..1)` で、`bgmBus` 上の不穏ドローン（低い半音うなり＋心拍ゆらぎ）の音量を 0.4s 時定数で滑らかに増減。敵が近いほど 1 に近づけて呼べば緊張が高まり、離れたら 0 で消える。未呼出なら無音。
 - **シーン遷移ダッキング**: `setMusicScene` 切替時に自動でダック係数を更新（combat: 音楽0.82/環境0.5、boss・queen: 0.78/0.4、escape: 0.92/0.7、平穏: 1.0/1.0）。SEバスは下げないので戦闘中もヒット音がはっきり立つ。
 - **滑らかな遷移**: combat↔boss↔queen は既存の equal-power クロスフェード（1.8s）で繋がる。`setDangerLevel` と組み合わせると「探索→敵接近で緊張→交戦でcombat」の流れが自然。
+
+## ⑭ 状態音（持続・on/offトグル）
+プレイヤーの状態を音で知らせる。1号機が状態の出入りで `on=true/false` を1回ずつ呼ぶだけ（内部で自己再武装ループ・例外で死なない）。
+- **低HP**: `window.onLowHP(true/false)` → 緊迫した心音（lub-dub ≒86bpm）＋ごく微かな耳鳴り的緊張。HP回復で `false`。
+- **オーバーヒート（暑さ85+）**: `window.onOverheat(true/false)` → ゆらぐ陽炎の高音＋熱気のジリジリ＋たまの警告ピッ。涼しくなったら `false`。
+- `isLowHP()` / `isOverheat()` で現在状態を取得。未呼出なら無音で安全。
 
 ---
 

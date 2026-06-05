@@ -1054,6 +1054,41 @@
   };
   window.getReverbZone = () => reverbZone; // 現在の残響ゾーン（診断/UI用）
 
+  // === ⑭ P2 状態音（持続・on/offトグル）。低HPの心音＋オーバーヒート警告。防御的: 呼ぶだけ・未呼出なら無音 ===
+  //   1号機が状態に入った/出た時に on=true/false を1回ずつ。内部で自己再武装ループ（例外で死なない）。
+  let lowHPOn = false, lowHPTimer = null;
+  function heartbeatTick() {
+    lowHPTimer = null;
+    try {
+      if (lowHPOn) {
+        tone(62, 0.10, 'sine', 0.18, 46);                 // ドク（lub）
+        tone(56, 0.12, 'sine', 0.14, 40, null, 0.16);     // ドクン（dub）
+        noise(0.05, 0.03, 200, 'lowpass');                // 鼓動の質感
+        tone(5200, 0.5, 'sine', 0.008, 5200);             // 耳鳴り的な緊張のティン（ごく微か）
+      }
+    } catch (e) { /* 防御 */ }
+    if (lowHPOn) lowHPTimer = setTimeout(heartbeatTick, 700); // ≒86bpm（緊迫）
+  }
+  //   window.onLowHP(true/false) … 低HP状態の心音＋緊張。on で心音ループ開始、off で停止。
+  window.onLowHP = (on) => { lowHPOn = !!on; const c = ac(); if (!c) return; if (lowHPOn && !lowHPTimer) heartbeatTick(); };
+  window.isLowHP = () => lowHPOn;
+
+  let overheatOn = false, overheatTimer = null;
+  function overheatTick() {
+    overheatTimer = null;
+    try {
+      if (overheatOn) {
+        tone(1300 + Math.random() * 120, 0.45, 'sine', 0.035, 1180, null, 0.0); // 陽炎のゆらぐ高音
+        noise(0.50, 0.020, 3000, 'bandpass');                                    // 熱気のジリジリ
+        if (Math.random() < 0.4) tone(2100, 0.10, 'square', 0.03, 1800, null, 0.2); // たまに警告のピッ
+      }
+    } catch (e) { /* 防御 */ }
+    if (overheatOn) overheatTimer = setTimeout(overheatTick, 850);
+  }
+  //   window.onOverheat(true/false) … 暑さ(85+)の警告。on で陽炎/ジリジリ＋警告ループ開始、off で停止。
+  window.onOverheat = (on) => { overheatOn = !!on; const c = ac(); if (!c) return; if (overheatOn && !overheatTimer) overheatTick(); };
+  window.isOverheat = () => overheatOn;
+
   // ④ サウンド設定の受け渡し口（UIは3号機。ここは値とロジックのみ）
   //   get() → {master,sfx,bgm,muted} / set(key,value) / setMuted(bool)
   const clampGain = (v) => Math.max(0, Math.min(4, Number(v))); // 個別倍率は 0..4
@@ -1132,6 +1167,7 @@
       duck: { bgm: bgmDuck ? +bgmDuck.gain.value.toFixed(2) : null, amb: ambDuck ? +ambDuck.gain.value.toFixed(2) : null }, // P2 ダッキング係数（戦闘/ボスで<1）
       dangerLevel: dangerLevel, dangerLayer: !!dangerNodes, // P2 危険度レイヤー
       weather: weatherKind, reverbZone: reverbZone, // ⑫⑬ 天候音/残響ゾーン
+      lowHP: lowHPOn, overheat: overheatOn, // ⑭ 状態音
       spatial: { listenerHook: typeof window.getPlayerPose === 'function', mobHook: typeof window.getMobPositions === 'function', biomeHook: typeof window.getBiome === 'function' }, // ③ コア側の読み取り口が揃っているか
       muted: vol.muted, audioPaused: audioPaused, // P5 一時停止状態
       vol: { master: vol.master, sfx: vol.sfx, bgm: vol.bgm, amb: vol.amb },
