@@ -3980,13 +3980,15 @@ function spawnHostileNear(cave) {
     spawnMob(type, x, z);
   }
 }
-function spawnNeutralNear() {
+function spawnNeutralNear(chinOnly) {
   // 動物のみ（villager・住人NPCは村/砦に定住／魚は水中専用＝ここ(地上)では湧かせない）
-  // ★チンチラだらけ：85%の確率で色違いチンチラ、残りは従来の動物
+  // ★チンチラだらけ：85%の確率で色違いチンチラ、残りは従来の動物＋仲間小動物
+  //   chinOnly=true（夜の控えめ湧き）なら色違いチンチラのみ＝仲間/家畜は昼に限定
   const chins  = MOB_DEFS.filter(d => d.chin && mobTemplates[d.type]);
   const others = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && !d.resident && !d.aquatic && !d.petbase && !d.chin && mobTemplates[d.type]);
   let def = null;
-  if (chins.length && (Math.random() < 0.85 || !others.length)) def = chins[Math.floor(Math.random()*chins.length)];
+  if (chinOnly) { if (chins.length) def = chins[Math.floor(Math.random()*chins.length)]; }
+  else if (chins.length && (Math.random() < 0.85 || !others.length)) def = chins[Math.floor(Math.random()*chins.length)];
   else if (others.length) def = others[Math.floor(Math.random()*others.length)];
   if (!def) return;
   const ang = Math.random()*Math.PI*2, dist = M.spawnMin + Math.random()*(M.spawnMax-M.spawnMin);
@@ -4049,7 +4051,11 @@ function spawnLogic(dt) {
     }
     return;
   }
-  if (neutralN < M.neutralCap) spawnNeutralNear(); // 牛/羊/豚/鶏/馬（村の近くでも湧く）
+  // 中立の地上湧き：昼＝動物/仲間小動物が徘徊（昼徘徊）／夜＝チンチラのみ控えめ（仲間・家畜は出さない）
+  if (neutralN < M.neutralCap) {
+    if (isDay()) spawnNeutralNear();
+    else if (Math.random() < 0.3) spawnNeutralNear(true); // 夜：色違いチンチラだけまばらに
+  }
 }
 function updateMobs(dt) {
   // セーブされたモブの復元（テンプレ読込が済んだら1回だけ。完了まで自動湧きは待たせる）
