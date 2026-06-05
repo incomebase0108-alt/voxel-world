@@ -2521,7 +2521,7 @@ const MOB_DEFS = [
   { type:'fish_koi',      file:'models/mob_fish_koi.glb',      role:'neutral', aquatic:true },
   { type:'fish_tropical', file:'models/mob_fish_tropical.glb', role:'neutral', aquatic:true },
   { type:'fish_puffer',   file:'models/mob_fish_puffer.glb',   role:'neutral', aquatic:true },
-  // ペット：チンチラ「もふ」（pet_chinchilla）。petbase=ランダム湧き対象外・コードからのみ生成し initPet で相棒化
+  // ペット：チンチラ「さくら」（pet_chinchilla）。petbase=ランダム湧き対象外・コードからのみ生成し initPet で相棒化
   { type:'chinchilla', file:'models/pet_chinchilla.glb', role:'neutral', petbase:true },
   // 王国軍 兵士NPC（4号機・villager骨格＝idle/walk/attack）。resident=城/砦/村に駐留・警戒徘徊
   { type:'soldier_spear',   file:'models/npc_soldier_spear.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
@@ -2748,7 +2748,7 @@ function updateAllyMarker(m, dt) {
   if (m.allyMixer) m.allyMixer.update(dt);                            // loopクリップ
 }
 // ===================================================================
-// ペットシステム（実物チンチラ「もふ」がモデル）
+// ペットシステム（実物チンチラ「さくら」がモデル）
 //   ・機嫌(mood 0..100)：そばにいる/餌/なでるで上がり、放置/空腹/恐怖で下がる
 //   ・癖(traits)：やんちゃ/なまけ/甘えん坊/食いしん坊/びびり/つんでれ → 距離・速さ・仕草が変わる
 //   ・見た目の動き：ごきげんだとぴょこぴょこ弾みワグ、不機嫌だとそっぽ向いて拗ねる
@@ -2766,7 +2766,7 @@ const PET_TRAITS = {
   glutton: { label: '食いしん坊' }, timid: { label: 'びびり' }, aloof: { label: 'つんでれ' },
   wary: { label: '警戒心' },
 };
-const PET_NAMES = ['もふ', 'チビ', 'マル', 'ココ', 'むぎ', 'きなこ', 'あずき', 'そら'];
+const PET_NAMES = ['ふく', 'チビ', 'マル', 'ココ', 'むぎ', 'きなこ', 'あずき', 'そら'];
 const clampPet = (v, a, b) => Math.max(a, Math.min(b, v));
 function petMoodBand(v) { return v >= 66 ? 'happy' : v >= 33 ? 'normal' : 'grumpy'; }
 function petMoodLabel(m) { const b = petMoodBand(m.mood); return b === 'happy' ? 'ごきげん' : b === 'normal' ? 'ふつう' : 'ごきげんななめ'; }
@@ -2792,6 +2792,7 @@ function initPet(m, opts = {}) {
   m.pet = true; m.hostile = false; m.home = null; m.companion = false; m.cmdMode = null;
   m.pid = ++petIdSeq;
   m.petName = opts.petName || PET_NAMES[Math.floor(Math.random() * PET_NAMES.length)];
+  if (m.petName === 'もふ') m.petName = 'さくら'; // 旧セーブの名前を本名へ移行
   m.traits = (Array.isArray(opts.traits) && opts.traits.length) ? opts.traits.filter(t => PET_TRAITS[t]) : pickPetTraits();
   if (!m.traits.length) m.traits = pickPetTraits();
   m.mood = Number.isFinite(opts.mood) ? clampPet(opts.mood, 0, 100) : 60;
@@ -2992,7 +2993,7 @@ function updatePet(m, dt, dx, dz, dist) {
   if (m.emoteCd <= 0) { m.emoteCd = band === 'happy' ? 2.0 + Math.random() * 1.4 : 7 + Math.random() * 4; if (band === 'happy') petEmote(m); }
   setMobAnim(m, anim);
 }
-// 起動時に一度だけ「もふ」を連れてくる（セーブに居れば復元が優先）
+// 起動時に一度だけ「さくら」を連れてくる（セーブに居れば復元が優先）
 let petIntroDone = false;
 function maybeIntroducePet() {
   if (petIntroDone || !mobsRestored || !mobTemplates['chinchilla']) return;
@@ -3001,9 +3002,9 @@ function maybeIntroducePet() {
   const a = player.yaw + Math.PI, sx = player.pos.x + Math.sin(a) * 2.2, sz = player.pos.z + Math.cos(a) * 2.2;
   const m = spawnMob('chinchilla', sx, sz, { hp: 30 });
   if (m) {
-    initPet(m, { petName: 'もふ', traits: ['playful', 'wary'], mood: 72, petHunger: 10 });
+    initPet(m, { petName: 'さくら', traits: ['playful', 'wary'], mood: 72, petHunger: 10 });
     if ((itemCounts.himawari || 0) < 12) itemCounts.himawari = 12; // 大好物のひまわりを少し持たせて始める
-    if (typeof toast === 'function') toast('🐾 チンチラ「もふ」がついてきた！ 🌻ひまわりを持ってP＝寄ってきて手で食べる（やんちゃ/警戒心）');
+    if (typeof toast === 'function') toast('🐾 チンチラ「さくら」がついてきた！ 🌻ひまわりを持ってP＝寄ってきて手で食べる（やんちゃ/警戒心）');
   }
 }
 // 海ボス クラーケンAI：海面に半身を出して定位置に留まり、船(プレイヤー)が近いと触手で攻撃。陸へ上がらない。
@@ -3303,7 +3304,7 @@ function updateMobs(dt) {
     if (Object.keys(mobTemplates).length) restorePendingMobs();
     return;
   }
-  maybeIntroducePet(); // 🐾 起動後に一度だけペット「もふ」を連れてくる（復元優先・早期return多めで軽量）
+  maybeIntroducePet(); // 🐾 起動後に一度だけペット「さくら」を連れてくる（復元優先・早期return多めで軽量）
   spawnLogic(dt);     // ④ 昼夜・地下を考慮した湧き
   updateSpawners(dt); // ② ダンジョンのスポナー稼働
   updateBossSpots(dt); // ⑥ 城/砦/魔窟のボス出現点
@@ -4126,7 +4127,7 @@ function killMob(m) {
     if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); } else m.dieTimer = 0; // 死亡演出後に mobs から除去
     scheduleSave(); return; // 仲間死亡では討伐EXP/ドロップは出さない（味方なので）
   }
-  if (m.pet) { // 🐾 ペットが倒れたら pets から即削除（次回起動で「もふ」は戻ってくる）。EXP/ドロップは出さない
+  if (m.pet) { // 🐾 ペットが倒れたら pets から即削除（次回起動で「さくら」は戻ってくる）。EXP/ドロップは出さない
     const pi = pets.indexOf(m); if (pi >= 0) pets.splice(pi, 1);
     m.pet = false; removePetMarker(m);
     if (typeof toast === 'function') toast(`🐾 ペット「${m.petName || ''}」が倒れた…`);
