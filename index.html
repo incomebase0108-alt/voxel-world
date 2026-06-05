@@ -264,20 +264,29 @@ const WATER_LEVEL = SEA - 2; // 水面の高さ（これ以下の窪地は水で
 function continental(wx, wz) { return valueNoise(wx*0.006 + 100, wz*0.006 + 100); }
 function heightAt(wx, wz) {
   const cont = continental(wx, wz);          // 0..1
-  const offset = (cont - 0.45) * 26;         // 海(低)〜内陸(高)の連続オフセット（境界の崖を抑える）
+  const offset = (cont - 0.33) * 26;         // 海(低)〜内陸(高)の連続オフセット（0.33＝陸の多いチンチラ世界＝岩場/森が主役）
   const h = SEA + Math.floor(fbm(wx*0.018, wz*0.018) * AMP * 0.55 + offset);
   return Math.max(1, Math.min(HEIGHT-8, h));
 }
-// バイオーム（地表ブロックの決定に使用）
+// バイオーム（地表ブロックの決定に使用）。チンチラの故郷＝岩場(rocky)＋森(forest)を主役に。
+//   ※valueNoise は低めに偏る分布なので、しきい値は実測分布に合わせて調整（岩場/森が land の主役になるよう）。
 function biomeAt(wx, wz) {
-  if (heightAt(wx, wz) <= WATER_LEVEL + 1) return 'ocean';  // 水際・海
-  const temp = valueNoise(wx*0.005 + 50, wz*0.005 + 50);
-  if (temp > 0.66) return 'desert';
-  if (temp < 0.34) return 'snow';
+  const h = heightAt(wx, wz);
+  if (h <= WATER_LEVEL + 1) return 'ocean';                 // 水際・海
+  const veg  = valueNoise(wx*0.009 - 30, wz*0.009 - 30);    // 植生/岩のムラ
+  const temp = valueNoise(wx*0.006 + 50, wz*0.006 + 50);
+  if (h >= SEA + 5) return 'rocky';                          // 高所＝岩山（チンチラの故郷）
+  if (veg < 0.17) return 'rocky';                            // 低地の岩場
+  if (veg > 0.29) return 'forest';                          // 森（木が密に茂る）
+  if (temp > 0.33) return 'desert';
+  if (temp < 0.155) return 'snow';
   return 'plains';
 }
 function surfaceBlock(bi) {
-  return (bi === 'desert' || bi === 'ocean') ? B.sand : bi === 'snow' ? B.snow : B.grass;
+  if (bi === 'desert' || bi === 'ocean') return B.sand;
+  if (bi === 'snow') return B.snow;
+  if (bi === 'rocky') return B.stone;                       // 岩場＝むき出しの石
+  return B.grass;                                           // plains / forest
 }
 function treeAt(wx, wz) {
   // まばらに木を生やす（決定論的）
@@ -369,7 +378,7 @@ function generateChunk(cx, cz) {
     const wx = cx*CHUNK+x, wz = cz*CHUNK+z;
     const h = heightAt(wx, wz);
     const top = surfaceBlock(biomeAt(wx, wz));
-    const sub = (top === B.sand) ? B.sand : B.dirt; // 砂地は地下も砂
+    const sub = (top === B.sand) ? B.sand : (top === B.stone) ? B.stone : B.dirt; // 砂地は地下も砂／岩場は地下も石
     for (let y=0; y<=h && y<HEIGHT; y++) {
       let b;
       if (y === h)       b = top;
@@ -390,12 +399,15 @@ function generateChunk(cx, cz) {
     for (let y=h+1; y<=WATER_LEVEL && y<HEIGHT; y++) data[idx(x,y,z)] = B.water;
   }
   // 木（葉が隣チャンクにはみ出しても整合するよう、周囲2マスまで走査して刈り込み配置）
+  //   森(forest)=密に茂る／草原=ほどほど／雪原=まばら。砂漠・海・岩場には生やさない。
   for (let z=-2; z<CHUNK+2; z++) for (let x=-2; x<CHUNK+2; x++) {
     const wx = cx*CHUNK+x, wz = cz*CHUNK+z;
-    if (!treeAt(wx, wz)) continue;
-    const h = heightAt(wx, wz);
     const bi = biomeAt(wx, wz);
-    if (h <= WATER_LEVEL || (bi !== 'plains' && bi !== 'snow')) continue; // 砂漠・海には生やさない
+    if (bi !== 'plains' && bi !== 'snow' && bi !== 'forest') continue;
+    const thr = bi === 'forest' ? 0.855 : bi === 'plains' ? 0.972 : 0.988; // 森ほど低しきい＝密（ただし歩ける程度）
+    if (hash2(wx*1.7+11, wz*1.7+7) <= thr) continue;
+    const h = heightAt(wx, wz);
+    if (h <= WATER_LEVEL) continue;
     const th = 4 + (hashi(wx,wz) % 3); // 幹の高さ 4〜6
     for (let t=1; t<=th; t++) stamp(x, h+t, z, B.log);
     const top = h + th;
@@ -405,6 +417,20 @@ function generateChunk(cx, cz) {
           if (Math.abs(lx)+Math.abs(lz)+Math.abs(ly-top) > 3) continue;
           stamp(x+lx, ly, z+lz, B.leaves, true);
         }
+  }
+  // 岩場の岩（岩場biome＝点在する石の塊。チンチラが跳ねて遊べる起伏）。葉のはみ出し同様、周囲2マス走査
+  for (let z=-2; z<CHUNK+2; z++) for (let x=-2; x<CHUNK+2; x++) {
+    const wx = cx*CHUNK+x, wz = cz*CHUNK+z;
+    const bi = biomeAt(wx, wz);
+    if (bi !== 'rocky') continue;
+    const h = heightAt(wx, wz);
+    if (h <= WATER_LEVEL) continue;
+    if (hash2(wx*2.3+3, wz*2.3+5) <= 0.88) continue;        // 約12%に岩塊
+    const s = 1 + (hashi(wx, wz) % 2);                       // 大きさ 1〜2
+    for (let by=0; by<=s; by++) {
+      const r = s - by;
+      for (let bx=-r; bx<=r; bx++) for (let bz=-r; bz<=r; bz++) stamp(x+bx, h+1+by, z+bz, B.stone, true);
+    }
   }
   // ② 構造物（村・ダンジョン）。チャンク跨ぎは各チャンクが自分の領域だけ stamp する
   buildStructures(cx, cz, stamp);
@@ -441,7 +467,7 @@ function buildStructures(cx, cz, stamp) {
       if (hash2(gx*13+1, gz*13+7) > 0.34) continue; // 約1/3のセルに村
       const ox = gx*VILLAGE_CELL + 8 + Math.floor(hash2(gx+2, gz+5) * (VILLAGE_CELL-16));
       const oz = gz*VILLAGE_CELL + 8 + Math.floor(hash2(gx+9, gz+3) * (VILLAGE_CELL-16));
-      if (biomeAt(ox, oz) !== 'plains') continue;       // 平原のみ
+      { const vb = biomeAt(ox, oz); if (vb !== 'plains' && vb !== 'forest') continue; } // 平原・森の開けた所
       if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue; // 水際は不可
       buildVillage(ox, oz, gx, gz, sw);
     }
@@ -461,7 +487,7 @@ function buildStructures(cx, cz, stamp) {
       const ox = gx*FORT_CELL + 12 + Math.floor(hash2(gx+11, gz+6) * (FORT_CELL-24));
       const oz = gz*FORT_CELL + 12 + Math.floor(hash2(gx+8, gz+13) * (FORT_CELL-24));
       const bi = biomeAt(ox, oz);
-      if (bi !== 'plains' && bi !== 'snow') continue; // 平地/雪原（丘含む）
+      if (bi !== 'plains' && bi !== 'snow' && bi !== 'forest') continue; // 平地/雪原/森
       if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue;
       buildFort(ox, oz, sw);
     }
@@ -482,7 +508,7 @@ function buildStructures(cx, cz, stamp) {
       const ox = gx*CASTLE_CELL + 20 + Math.floor(hash2(gx+17, gz+23) * (CASTLE_CELL-40));
       const oz = gz*CASTLE_CELL + 20 + Math.floor(hash2(gx+29, gz+11) * (CASTLE_CELL-40));
       const bi = biomeAt(ox, oz);
-      if (bi !== 'plains' && bi !== 'snow') continue;
+      if (bi !== 'plains' && bi !== 'snow' && bi !== 'forest') continue;
       if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue;
       buildCastle(ox, oz, gx, gz, sw);
     }
