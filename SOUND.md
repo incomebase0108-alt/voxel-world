@@ -12,7 +12,8 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 残響ゾーン | `setReverbZone('cave'|'indoor'|'open')` / `getReverbZone()` | SEの響きを空間で切替（洞窟=長/屋内=箱鳴り/野外=無響） |
 | 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音＋恩人モチーフのこだま |
 | ストーリー演出 | `onMaguroAppear()` / `onMaguroVanish()` / `onChapterClear(idx)` / `onEnding()` | 恩人まぐろの霊／光になって消える／章クリア／大団円 |
-| ゲームイベント | `onTameSuccess()` `onCollect()` `onSave()` `onLoad()` `onFeed()` `onSandbathDone()` `onUiClick()` | 軽い確定音 |
+| ゲームイベント | `onTameSuccess()` `onCollect()` `onSave()` `onLoad()` `onFeed()` `onSandbathDone()` | 軽い確定音 |
+| UI音セット | `onUiClick/Button/Hover/Open/Close/Error()` `onDexRegister()` | 3号機の設定/図鑑用 |
 | 敵 aggro | `onEnemyAggro()` | 交戦突入の緊張スティンガー |
 | 既存ボス | `onBossAppear(type)` / `onBossDefeat(type)` | `type`=golem/dragon/skeleton_king/queen |
 | BGMシーン | `setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest')` | 1.8sクロスフェード |
@@ -222,7 +223,11 @@ window.getAmbientBiome();      // 現在鳴っている環境音タイプ（診�
 | `onSave()` / `onLoad()` | セーブ（落ち着いた確定）／ロード（起動的な上昇） |
 | `onFeed()` | 餌やり（やわらかい「ぱく」＋ごきげん） |
 | `onSandbathDone()` | 砂浴び完了（すっきりした締め） |
-| `onUiClick()` | 汎用クリック/決定（最小・3号機UI用） |
+| `onUiClick()` / `onUiButton()` | 汎用クリック/ボタン決定（最小・3号機UI用） |
+| `onUiHover()` | ホバー（極小ティック・頻発OK） |
+| `onUiOpen()` / `onUiClose()` | パネル/メニューの開く（上昇）／閉じる（下降） |
+| `onUiError()` | 無効操作/エラー（耳に痛くない低い二音） |
+| `onDexRegister()` | 図鑑登録（= `onCollect` のキラッ） |
 
 > すべて防御的＝未呼出でも無音で安全。個別倍率 `setSfxGain('ui_tame', 0.7)` 等で調整可。
 

@@ -19,6 +19,7 @@
     whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1, aggro_stinger: 1, escape_success: 1,
     maguro_appear: 1, maguro_vanish: 1, chapter_clear: 1, ending: 1, motif: 1, // ⑨ ストーリー演出音
     ui_tame: 1, ui_collect: 1, ui_save: 1, ui_load: 1, ui_feed: 1, ui_sandbath: 1, ui_click: 1, // ⑩ ゲームイベント確定音
+    ui_hover: 1, ui_open: 1, ui_close: 1, ui_error: 1, // ⑮ UI音セット
     companion_join: 1, companion_reply: 1, companion_hit: 1, companion_leave: 1, // 仲間システム
     // チンチラ世界の動物SE（敵/仲間/ペット）。個別倍率で「狼うるさい」等に即対応。
     wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, snake_strike: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, attack_bite: 1, // 敵
@@ -320,6 +321,11 @@
     ui_feed()     { noise(0.05, 0.04, 800, 'lowpass'); tone(330.00, 0.10, 'sine', 0.07, 440.00, null, 0.03); tone(660.00, 0.08, 'sine', 0.05, 880.00, null, 0.12); }, // 餌やり：やわらかい「ぱく」＋ごきげん
     ui_sandbath() { noise(0.10, 0.04, 1100, 'bandpass'); tone(880.00, 0.12, 'sine', 0.05, 1320.00, null, 0.08); },                                                  // 砂浴び完了：すっきりした締め
     ui_click()    { tone(880.00, 0.03, 'square', 0.05, 1100.00); },                                                                                                 // 汎用クリック/決定（最小）
+    // ⑮ P3 UI音セット（3号機の設定/図鑑が呼ぶ）。ホバー/開閉/エラー。短く上品に。
+    ui_hover()    { tone(1200.00, 0.02, 'sine', 0.022, 1400.00); },                                                                                                  // ホバー：ごく小さなティック（頻発するので極小）
+    ui_open()     { tone(440.00, 0.06, 'sine', 0.06, 880.00); tone(880.00, 0.07, 'sine', 0.05, 1320.00, null, 0.05); noise(0.03, 0.02, 3000, 'highpass'); },          // 開く：上昇のシュッ
+    ui_close()    { tone(880.00, 0.06, 'sine', 0.06, 440.00); tone(440.00, 0.07, 'sine', 0.045, 300.00, null, 0.05); },                                               // 閉じる：下降のシュッ
+    ui_error()    { tone(220.00, 0.10, 'square', 0.07, 185.00); tone(185.00, 0.12, 'square', 0.055, 150.00, null, 0.10); },                                            // エラー：低い二音「ブブッ」（耳に痛くない）
 
     // === 仲間システム（NPCが仲間になる新機能）。1号機が口を呼ぶだけ・未呼出なら無音待機 ===
     //   type は仲間種（'knight'|'archer'|'mage' 等）。省略でも汎用音として成立。
@@ -504,6 +510,13 @@
   window.onFeed         = () => window.playSFX('ui_feed');
   window.onSandbathDone = () => window.playSFX('ui_sandbath');
   window.onUiClick      = () => window.playSFX('ui_click'); // 任意：ボタン決定音（3号機UI用）
+  // ⑮ P3 UI音セット（3号機の設定/図鑑が呼ぶ口）。図鑑登録は ⑩ onCollect を流用。
+  window.onUiHover      = () => window.playSFX('ui_hover'); // ホバー
+  window.onUiOpen       = () => window.playSFX('ui_open');  // パネル/メニュー開く
+  window.onUiClose      = () => window.playSFX('ui_close'); // 閉じる
+  window.onUiError      = () => window.playSFX('ui_error'); // 無効操作/エラー
+  window.onUiButton     = () => window.playSFX('ui_click'); // ボタン押下（onUiClick 別名）
+  window.onDexRegister  = () => window.playSFX('ui_collect'); // 図鑑登録（onCollect 別名・図鑑文脈用）
 
   // === 仲間システム連携（防御的: 1号機が口を呼ぶだけ・未呼出なら無音待機）=====
   //   window.onCompanionJoin(type)  … ① NPCが仲間になった時の心強い加入音。type=仲間種（'knight'|'archer'|'mage' 等／省略=汎用）
