@@ -1021,6 +1021,39 @@
   };
   window.getWeatherAudio = () => weatherKind; // 現在の天候音（診断/UI用・null=なし）
 
+  // === ⑬ P1 残響ゾーン（reverb）。洞窟/屋内/野外で SE の響きを切替。防御的: 呼ぶだけ・未呼出なら野外(残響なし) ===
+  //   sfxBus を ConvolverNode へ並列センド（dry はそのまま master）。zone ごとに合成IR(減衰ノイズ)と wet量を変える。
+  //   1号機が空間に入った時 window.setReverbZone('cave'|'indoor'|'open') を呼ぶだけ。
+  const REVERB = {
+    open:   { seconds: 0.25, decay: 8.0, wet: 0.00 }, // 野外＝ほぼ無響
+    indoor: { seconds: 0.70, decay: 4.0, wet: 0.18 }, // 屋内(家)＝短く箱鳴り
+    cave:   { seconds: 2.40, decay: 2.2, wet: 0.34 }, // 洞窟＝長く豊かな残響
+  };
+  const REVERB_ALIAS = { outdoor: 'open', outside: 'open', field: 'open', house: 'indoor', building: 'indoor', room: 'indoor', dungeon: 'cave', cavern: 'cave' };
+  let convolver = null, reverbWet = null, reverbZone = 'open';
+  function buildIR(seconds, decay) {
+    const c = ac(); if (!c) return null;
+    const rate = c.sampleRate, len = Math.max(1, Math.floor(rate * seconds)), ir = c.createBuffer(2, len, rate);
+    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay); } // 減衰ノイズ＝合成IR
+    return ir;
+  }
+  function ensureReverb() {
+    const c = ac(); if (!c || convolver) return;
+    convolver = c.createConvolver(); reverbWet = c.createGain(); reverbWet.gain.value = 0.0001;
+    sfxBus.connect(convolver); convolver.connect(reverbWet).connect(master); // 並列ウェット（dry sfxBus→master はそのまま）
+    const ir = buildIR(REVERB.open.seconds, REVERB.open.decay); if (ir) convolver.buffer = ir;
+  }
+  //   window.setReverbZone('cave'|'indoor'|'open') … 別名 dungeon/house/outdoor 等も可。未知は無視。
+  window.setReverbZone = (zone) => {
+    let z = String(zone || '').toLowerCase(); if (z in REVERB_ALIAS) z = REVERB_ALIAS[z];
+    const cfg = REVERB[z]; if (!cfg) return; // 未知は無視（事故ゼロ）
+    reverbZone = z; const c = ac(); if (!c) return;
+    ensureReverb();
+    const ir = buildIR(cfg.seconds, cfg.decay); if (ir && convolver) convolver.buffer = ir;
+    if (reverbWet) reverbWet.gain.setTargetAtTime(Math.max(0.0001, cfg.wet), c.currentTime, 0.3); // wet を滑らかに
+  };
+  window.getReverbZone = () => reverbZone; // 現在の残響ゾーン（診断/UI用）
+
   // ④ サウンド設定の受け渡し口（UIは3号機。ここは値とロジックのみ）
   //   get() → {master,sfx,bgm,muted} / set(key,value) / setMuted(bool)
   const clampGain = (v) => Math.max(0, Math.min(4, Number(v))); // 個別倍率は 0..4
@@ -1098,6 +1131,7 @@
       limiterReductionDb: limiter ? +limiter.reduction.toFixed(2) : null, // ③ リミッタが今どれだけ抑制中か（0=余裕／負=ピーク抑制中）
       duck: { bgm: bgmDuck ? +bgmDuck.gain.value.toFixed(2) : null, amb: ambDuck ? +ambDuck.gain.value.toFixed(2) : null }, // P2 ダッキング係数（戦闘/ボスで<1）
       dangerLevel: dangerLevel, dangerLayer: !!dangerNodes, // P2 危険度レイヤー
+      weather: weatherKind, reverbZone: reverbZone, // ⑫⑬ 天候音/残響ゾーン
       spatial: { listenerHook: typeof window.getPlayerPose === 'function', mobHook: typeof window.getMobPositions === 'function', biomeHook: typeof window.getBiome === 'function' }, // ③ コア側の読み取り口が揃っているか
       muted: vol.muted, audioPaused: audioPaused, // P5 一時停止状態
       vol: { master: vol.master, sfx: vol.sfx, bgm: vol.bgm, amb: vol.amb },

@@ -9,6 +9,7 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 効果音 個別 | `playSFX('key', opts)` | 上表の個別キーを直叩き |
 | 環境音 切替 | `setAmbient('forest'|…)` / `setAmbient(null)` | 未呼出でも `getBiome()` 連動で自動 |
 | 天候音 | `setWeatherAudio('rain'|'thunder'|'snow'|'clear')` / `getWeatherAudio()` | 雨/雷雨/雪風の連続レイヤー。`clear`/`null`で止む |
+| 残響ゾーン | `setReverbZone('cave'|'indoor'|'open')` / `getReverbZone()` | SEの響きを空間で切替（洞窟=長/屋内=箱鳴り/野外=無響） |
 | 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音＋恩人モチーフのこだま |
 | ストーリー演出 | `onMaguroAppear()` / `onMaguroVanish()` / `onChapterClear(idx)` / `onEnding()` | 恩人まぐろの霊／光になって消える／章クリア／大団円 |
 | ゲームイベント | `onTameSuccess()` `onCollect()` `onSave()` `onLoad()` `onFeed()` `onSandbathDone()` `onUiClick()` | 軽い確定音 |
@@ -157,6 +158,15 @@ window.getAmbientBiome();      // 現在鳴っている環境音タイプ（診�
 | `'clear'`/`'none'`/`null` | 止む（ゆっくりフェードアウト） |
 - 別名: `storm`/`thunderstorm`/`rainstorm`→`thunder`、`blizzard`/`snowstorm`/`windy`→`snow`、`sunny`/`fine`/`off`→止む。未知 kind は無視（事故ゼロ）。
 - `getWeatherAudio()` で現在の天候音を取得。落雷の単発は従来の `onThunderSound()` も併用可。
+
+### ⑬ 残響ゾーン（reverb・SEの空間の響き）
+`window.setReverbZone(zone)` を空間に入った時に呼ぶだけ。`sfxBus` を `ConvolverNode`（合成IR＝減衰ノイズ）へ並列センドし、SEに残響を付加（dryはそのまま）。
+| zone | 響き |
+|---|---|
+| `'open'`（既定・別名 `outdoor`） | ほぼ無響（野外） |
+| `'indoor'`（別名 `house`/`room`） | 短い箱鳴り（屋内・家） |
+| `'cave'`（別名 `dungeon`） | 長く豊かな残響（洞窟） |
+- zone ごとに IR 長さ・減衰・wet量を切替（wetは0.3sで滑らかに）。未知 zone は無視。`getReverbZone()` で現在ゾーン取得。
 
 ---
 
