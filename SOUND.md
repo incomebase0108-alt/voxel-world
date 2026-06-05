@@ -8,6 +8,7 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 動物SE（敵/仲間/ペット） | `playAnimalSFX(species, event, {x,y,z,vol})` | **推奨**。種×イベント→SE。座標で3D定位。`critterSE` から委譲済 |
 | 効果音 個別 | `playSFX('key', opts)` | 上表の個別キーを直叩き |
 | 環境音 切替 | `setAmbient('forest'|…)` / `setAmbient(null)` | 未呼出でも `getBiome()` 連動で自動 |
+| 天候音 | `setWeatherAudio('rain'|'thunder'|'snow'|'clear')` / `getWeatherAudio()` | 雨/雷雨/雪風の連続レイヤー。`clear`/`null`で止む |
 | 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音＋恩人モチーフのこだま |
 | ストーリー演出 | `onMaguroAppear()` / `onMaguroVanish()` / `onChapterClear(idx)` / `onEnding()` | 恩人まぐろの霊／光になって消える／章クリア／大団円 |
 | ゲームイベント | `onTameSuccess()` `onCollect()` `onSave()` `onLoad()` `onFeed()` `onSandbathDone()` `onUiClick()` | 軽い確定音 |
@@ -145,6 +146,17 @@ window.getAmbientBiome();      // 現在鳴っている環境音タイプ（診�
 ```
 - `setAmbient` を呼ばなくても `getBiome()` 連動で自動切替。呼べば手動上書きが最優先（`null`/`'auto'` で連動へ戻す）。切替時は寝床のフィルタ/音量をクロスで滑らかに変化。
 - **1号機へ**: `getBiome()` は実装済みのため**追加配線は不要**。任意で `setAmbient(biome)` を使えば演出上の強制切替（例: イベントシーン）も可能です。
+
+### ⑫ 天候音レイヤー（biome環境音の上に重なる連続音・`ambBus`）
+`window.setWeatherAudio(kind)` を天候変化で1回呼ぶだけ。biome環境音の上に重なる。
+| kind | 音 |
+|---|---|
+| `'rain'` | 雨のサーッ（高めの bandpass ノイズ bed） |
+| `'thunder'`（別名 `storm`） | 雨＋遠雷のゴロゴロ（散発）＋たまに地響き |
+| `'snow'`（別名 `blizzard`） | 低くこもった雪風＋ヒューと鳴るうなり |
+| `'clear'`/`'none'`/`null` | 止む（ゆっくりフェードアウト） |
+- 別名: `storm`/`thunderstorm`/`rainstorm`→`thunder`、`blizzard`/`snowstorm`/`windy`→`snow`、`sunny`/`fine`/`off`→止む。未知 kind は無視（事故ゼロ）。
+- `getWeatherAudio()` で現在の天候音を取得。落雷の単発は従来の `onThunderSound()` も併用可。
 
 ---
 

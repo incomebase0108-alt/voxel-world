@@ -975,6 +975,52 @@
   };
   window.getAmbientBiome = () => ambType; // 現在鳴っている環境音タイプ（診断/UI用）
 
+  // === ⑫ P0 天候音レイヤー（連続音・ambバス・biome環境音の上に重なる）。防御的: 呼ぶだけ・未呼出なら無音 ===
+  //   1号機が window.setWeatherAudio('rain'|'thunder'(雷雨)|'snow'(雪風)|'clear'(止む)) を天候変化で呼ぶだけ。
+  //   bed=ループ白色ノイズ→bandpass で 雨のサーッ/雪風のこもり、tick で 雷鳴・風のうなり を散発。
+  const WEATHER = {
+    rain:    { f: 2400, q: 0.5, g: 0.060, rumble: false, wind: false }, // 雨：高めのサーッ
+    thunder: { f: 1900, q: 0.5, g: 0.070, rumble: true,  wind: false }, // 雷雨：雨＋雷鳴
+    snow:    { f: 520,  q: 0.7, g: 0.045, rumble: false, wind: true  }, // 雪風：低くこもった風＋うなり
+  };
+  const WEATHER_ALIAS = { storm: 'thunder', thunderstorm: 'thunder', rainstorm: 'thunder', blizzard: 'snow', snowstorm: 'snow', windy: 'snow', clear: null, none: null, off: null, sunny: null, fine: null };
+  let weatherKind = null, weatherBed = null, weatherFilter = null, weatherGain = null, weatherTimer = null;
+  function startWeatherBed() {
+    const c = ac(); if (!c || weatherBed) return;
+    const n = Math.floor(c.sampleRate * 2), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; // 白色＝雨/風の素
+    weatherBed = c.createBufferSource(); weatherBed.buffer = buf; weatherBed.loop = true;
+    weatherFilter = c.createBiquadFilter(); weatherFilter.type = 'bandpass'; weatherFilter.frequency.value = 2000; weatherFilter.Q.value = 0.5;
+    weatherGain = c.createGain(); weatherGain.gain.value = 0.0001;
+    weatherBed.connect(weatherFilter).connect(weatherGain).connect(ambBus);
+    weatherBed.start();
+  }
+  function weatherTick() {
+    weatherTimer = null;
+    try {
+      const c = ac(), cfg = weatherKind && WEATHER[weatherKind];
+      if (c && cfg) {
+        if (cfg.rumble && Math.random() < 0.05) { noise(0.7, 0.11, 380, 'lowpass', ambBus); if (Math.random() < 0.35) tone(58, 0.6, 'sine', 0.09, 38, ambBus, 0.1); } // 遠雷のゴロゴロ＋たまに地響き
+        if (cfg.wind  && Math.random() < 0.30) { noise(1.20, 0.040, 600, 'bandpass', ambBus); tone(280 + Math.random() * 80, 1.1, 'sine', 0.012, 200, ambBus); } // 雪風のうなり（ヒュー）
+      }
+    } catch (e) { /* 防御 */ }
+    if (weatherKind) weatherTimer = setTimeout(weatherTick, 400);
+  }
+  //   window.setWeatherAudio(kind) … kind='rain'|'thunder'|'snow'（別名 storm/blizzard等）、'clear'/null で止む（フェードアウト）。
+  window.setWeatherAudio = (kind) => {
+    let k = (kind == null) ? null : String(kind).toLowerCase();
+    if (k && (k in WEATHER_ALIAS)) k = WEATHER_ALIAS[k]; // 別名・clear系を正規化
+    if (k != null && !WEATHER[k]) return;                // 未知は無視（事故ゼロ）
+    weatherKind = k;
+    const c = ac(); if (!c) return;
+    startWeatherBed();
+    const cfg = k && WEATHER[k];
+    if (weatherFilter && cfg) { weatherFilter.frequency.setTargetAtTime(cfg.f, c.currentTime, 0.5); weatherFilter.Q.value = cfg.q; }
+    if (weatherGain) weatherGain.gain.setTargetAtTime(cfg ? cfg.g : 0.0001, c.currentTime, 0.9); // clear→ゆっくりフェードアウト
+    if (k && !weatherTimer) weatherTick();
+  };
+  window.getWeatherAudio = () => weatherKind; // 現在の天候音（診断/UI用・null=なし）
+
   // ④ サウンド設定の受け渡し口（UIは3号機。ここは値とロジックのみ）
   //   get() → {master,sfx,bgm,muted} / set(key,value) / setMuted(bool)
   const clampGain = (v) => Math.max(0, Math.min(4, Number(v))); // 個別倍率は 0..4
