@@ -3638,20 +3638,13 @@ function critterGesture(m, dt, ctx) {
   m.obj.scale.x  += (sclXZ - m.obj.scale.x)  * Math.min(1, dt * 12);
   m.obj.scale.z  += (sclXZ - m.obj.scale.z)  * Math.min(1, dt * 12);
 }
-// 種別SE（発見/攻撃/遠吠え/仲間スキル/なつかせ）。短いSEを割当。連打防止に軽いCDを噛ませる。
+// 種別SE：2号機の playAnimalSFX に委譲（種×イベント→SEキーの写像・3D定位・リッチ音は API 側が担当）。
+//   座標を渡すことで自動的に距離減衰つきの空間音になる。weasel/guineapig/bird も API 側が正しく振り分ける。
 function critterSE(m, ev) {
-  if (!window.playSFX) return;
+  if (!window.playAnimalSFX) return;
   const t = (typeof m === 'string') ? m : (m && m.def && m.def.type);
-  const MAP = {
-    wolf:     { spot:'wolf_growl', howl:'wolf_howl', attack:'wolf_growl', tame:'wolf_growl' },
-    snake:    { spot:'snake_hiss', attack:'snake_hiss', tame:'snake_hiss' },
-    bird:     { spot:'bird_chirp', dive:'bird_flap', attack:'bird_chirp', tame:'bird_chirp' },
-    rabbit:   { tame:'rabbit_thump', alert:'rabbit_thump', skill:'rabbit_thump' },
-    squirrel: { tame:'squirrel_chitter', attack:'squirrel_chitter', skill:'squirrel_chitter' },
-    hedgehog: { tame:'hedgehog_huff', curl:'hedgehog_huff', skill:'hedgehog_huff' },
-    guineapig:{ tame:'pickup', skill:'pickup' },
-  };
-  const key = MAP[t] && MAP[t][ev]; if (key) window.playSFX(key);
+  const p = m && m.obj && m.obj.position;
+  window.playAnimalSFX(t, ev, p ? { x: p.x, y: p.y, z: p.z } : undefined);
 }
 // 天敵の個性AI：鳥=上空から急降下／蛇=忍び寄り→lunge／狼=群れで強気／イタチ=ジグザグ俊敏
 function updatePredator(m, dt, dx, dz, dist, dy) {
@@ -3693,7 +3686,7 @@ function updatePredator(m, dt, dx, dz, dist, dy) {
     else if (dist < 22 && !howl) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = bold ? 3.4 : 2.4; } // 遠吠え中は足を止める
   } else {                                               // イタチ：ジグザグに素早く迫る（上下バウンドgaitは critterGesture 側）
     m.wPhase = (m.wPhase || Math.random() * 6) + dt * 7;
-    if (dist <= 1.4) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 0.7; damage(Math.max(1, C.meleeDmg - 1), 'mob'); } }
+    if (dist <= 1.4) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 0.7; damage(Math.max(1, C.meleeDmg - 1), 'mob'); critterSE(m, 'attack'); } }
     else if (dist < 20) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); const w = Math.sin(m.wPhase) * 0.5; hx = h.x - h.z * w; hz = h.z + h.x * w; moving = true; anim = 'walk'; spd = 3.6; }
   }
   if (moving) tryMoveMob(m, hx, hz, spd, dt); else followFloor(m, dt);
