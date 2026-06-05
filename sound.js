@@ -490,6 +490,10 @@
     // ⓪ 序章『脱走』＝忍び足の緊張テーマ。低密度・小音量で息をひそめ、半音(A↔A#)の不穏＋心臓の鼓動(bassline)。
     //   危険度レイヤー(P2 setDangerLevel)が乗ると緊張が増す余地を残す。1号機が脱走シーンで setMusicScene('escape')。
     escape: { tempo: 100, scale: [220.00, 233.08, 277.18, 311.13, 369.99], pad: [110.00, 146.83, 174.61], wave: 'triangle', density: 0.40, drums: false, level: 0.82, bassG: 0.06,  shimmer: false, bassline: true,  tremHz: 0.25, tremDepth: 0.10 },
+    // ① 探索BGMのバイオーム化（穏やか・長尺ループ・チンチラの故郷=岩場/森が主役）。setBiomeMusic(true) 連動か setMusicScene で。
+    //   岩場＝開けて気高く少し寂しい(Aマイナーペンタ A-C-D-E-G)、森＝あたたかく優しい(Cメジャーペンタ C-D-E-G-A)。低密度でゆったり。
+    explore_rocky:  { tempo: 80, scale: [220.00, 261.63, 293.66, 329.63, 392.00], pad: [110.00, 164.81, 220.00], wave: 'triangle', density: 0.34, drums: false, level: 0.85, bassG: 0.05,  shimmer: true,  bassline: false, tremHz: 0.10, tremDepth: 0.14 },
+    explore_forest: { tempo: 92, scale: [261.63, 293.66, 329.63, 392.00, 440.00], pad: [130.81, 196.00, 261.63], wave: 'sine',     density: 0.40, drums: false, level: 0.88, bassG: 0.045, shimmer: true,  bassline: false, tremHz: 0.12, tremDepth: 0.12 },
   };
   let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false, lastNoteTime = 0;
   let xfadeUntil = 0; // クロスフェード進行中の終了時刻（この間はscheduler の stuck回復ガードを抑止＝自動化の衝突回避）
@@ -669,6 +673,31 @@
   window.startMusic = startMusic;
   window.stopMusic = stopMusic;
   window.setMusicScene = setMusicScene;
+
+  // === ① 探索BGMの getBiome 連動 自動切替（opt-in・既定OFF＝1号機の setMusicScene 制御と衝突しない）===
+  //   有効時、平穏シーン(day/night/explore_*)に居る間だけ biome に応じた探索シーンへ滑らかに切替。
+  //   戦闘/ボス/脱走/水中(combat/boss/queen/escape/water)は最優先で触らない（1号機の制御を尊重）。
+  const BIOME_SCENE = { rocky: 'explore_rocky', forest: 'explore_forest', plains: 'day', desert: 'day', snow: 'night' };
+  const PEACEFUL_SCENES = { day: 1, night: 1, explore_rocky: 1, explore_forest: 1 };
+  let biomeMusicOn = false, biomeMusicTimer = null;
+  function biomeMusicTick() {
+    biomeMusicTimer = null;
+    try {
+      if (biomeMusicOn && bgmOn && typeof window.getBiome === 'function') {
+        const b = window.getBiome(), target = BIOME_SCENE[b];
+        if (target && PEACEFUL_SCENES[bgmScene] && target !== bgmScene) setMusicScene(target); // 平穏時のみ＝戦闘等は尊重
+      }
+    } catch (e) { /* 防御 */ }
+    if (biomeMusicOn) biomeMusicTimer = setTimeout(biomeMusicTick, 2000);
+  }
+  //   window.setBiomeMusic(true) … getBiome 連動の探索BGM自動切替を有効化（false で停止）。
+  //   有効化後は day/night/explore_* の間だけ自動で岩場/森テーマ等に切り替わる。1号機が day/night を手動制御するなら呼ばなくてよい。
+  window.setBiomeMusic = (on) => {
+    biomeMusicOn = !!on;
+    if (biomeMusicOn) { startMusic(bgmScene || 'day'); if (!biomeMusicTimer) biomeMusicTick(); }
+  };
+  window.isBiomeMusicOn = () => biomeMusicOn;
+
   // 最初のユーザー操作で自動的に 'day' を開始（コアが明示制御したら抑止）
   // capture段で拾うので、コアが bubble段で stopPropagation しても発火する
   function autoStartMusic() { maybeAutoStartMusic(); }
