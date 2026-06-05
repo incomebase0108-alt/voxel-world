@@ -190,7 +190,7 @@ def build_parts(C):
     ellipsoid(0.0, 0.506, 0.292, 0.030, 0.024, 0.024, NOSE, seg=12, ring=9, fur=0.0)
     # 目（左右・つぶら・ツヤ）＋ハイライト
     for sx in (-1, 1):
-        ellipsoid(sx*0.101, 0.595, 0.205, 0.058, 0.062, 0.050, EYE, seg=18, ring=13,
+        ellipsoid(sx*0.101, 0.595, 0.205, 0.045, 0.048, 0.040, EYE, seg=18, ring=13,
                   rough=0.12, emis=EYE_EMIS, fur=0.0)
         ellipsoid(sx*0.085, 0.618, 0.246, 0.018, 0.018, 0.013, (1.0,1.0,1.0), seg=9, ring=7,
                   rough=0.05, emis=(0.9, 0.9, 0.9), fur=0.0, ao=False)
