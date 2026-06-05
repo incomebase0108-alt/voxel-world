@@ -140,29 +140,34 @@ NPCが仲間になる新機能向け。口は防御的（未呼出なら無音�
 - `opts.x/y/z` を渡せば**3D定位＋距離減衰**（③のPannerNode経由・座標が無ければ通常再生）。`opts.vol` で個体ごとの強弱（既定1）。
 
 ### 動物SE一覧
+**配線状況**の凡例: 「critterSE 済」= 1号機の `critterSE()`（index.html）が既に該当キーを発火＝**配線完了で実機で鳴る**。「依頼中」= sound.js 側は実装済みだが index.html 側の呼び出しは未配線（呼べば鳴る）。
 
-| key | 用途 | 種(species) | 主な event | 1号機の呼び出し例 | 配線状況 |
-|---|---|---|---|---|---|
-| `wolf_howl` | 遠吠え（立ち上がり→長い下降） | `wolf` | spot / die / skill | `playAnimalSFX('wolf', 'spot', {x,y,z})` | 1号機へ依頼中 |
-| `wolf_growl` | うなり（低い鋸波のビート） | `wolf` | attack / hurt | `playAnimalSFX('wolf', 'attack', {x,y,z})` | 1号機へ依頼中 |
-| `snake_hiss` | シューッ（高域ノイズ持続） | `snake` | spot / attack | `playAnimalSFX('snake', 'spot', {x,y,z})` | 1号機へ依頼中 |
-| `weasel_screech` | 甲高い威嚇（鋭い金切り） | `weasel` | spot / attack | `playAnimalSFX('weasel', 'attack', {x,y,z})` | 1号機へ依頼中 |
-| `bird_screech` | 猛禽の鳴き（高域から下降を2発） | `bird` | spot / hurt / die | `playAnimalSFX('bird', 'spot', {x,y,z})` | 1号機へ依頼中 |
-| `bird_wingflap` | 羽ばたき（低い風切りを3拍） | `bird` | attack / skill | `playAnimalSFX('bird', 'attack', {x,y,z})` | 1号機へ依頼中 |
-| `squirrel_chitter` | チチッ（高い連打） | `squirrel` | spot / tamed | `playAnimalSFX('squirrel', 'spot', {x,y,z})` | 1号機へ依頼中 |
-| `rabbit_thump` | 後足スタンピング（低い打撃2発） | `rabbit` | spot / skill | `playAnimalSFX('rabbit', 'skill', {x,y,z})` | 1号機へ依頼中 |
-| `guineapig_wheek` | ウィーク鳴き（上昇→下降） | `guineapig` | spot / tamed | `playAnimalSFX('guineapig', 'spot', {x,y,z})` | 1号機へ依頼中 |
-| `hedgehog_huff` | 丸まりフスフス（鼻息を3拍） | `hedgehog` | spot / skill / hurt | `playAnimalSFX('hedgehog', 'skill', {x,y,z})` | 1号機へ依頼中 |
-| `pet_squeak` | さくらの鳴き（かわいい高い短音） | `pet`（=`sakura`） | spot / hurt | `playAnimalSFX('sakura', 'spot')` | 1号機へ依頼中 |
-| `pet_bite` | さくらの噛みつき（鋭いスナップ） | `pet` | attack | `playAnimalSFX('sakura', 'attack')` | 1号機へ依頼中 |
-| `pet_happy` | さくらのごきげん（きらきらチャープ） | `pet` | happy / tamed | `playAnimalSFX('sakura', 'happy')` | 1号機へ依頼中 |
-| `pet_pee` | さくらの威嚇オシッコ（噴射＋キュッ） | `pet` | skill | `playAnimalSFX('sakura', 'skill')` | 1号機へ依頼中 |
+| key | 用途 | 種(species) | 鳴る event | 配線状況 |
+|---|---|---|---|---|
+| `wolf_howl` | 遠吠え（立ち上がり→長い下降） | `wolf` | howl / die / skill | critterSE 済（howl） |
+| `wolf_growl` | うなり（低い鋸波のビート） | `wolf` | spot / attack / hurt / tame | critterSE 済 |
+| `snake_hiss` | シューッ（高域ノイズ持続） | `snake` | spot / attack / tame | critterSE 済 |
+| `bird_screech` | 猛禽の鳴き（高域から下降を2発） | `bird` | spot / hurt / die / screech | critterSE 済（`bird_chirp` 経由） |
+| `bird_wingflap` | 羽ばたき（低い風切りを3拍） | `bird` | attack / dive / skill | critterSE 済（`bird_flap` 経由） |
+| `bird_chirp`→`bird_screech` | 互換シム（forward） | `bird` | （1号機 critterSE spot/attack/tame） | critterSE 済（互換） |
+| `bird_flap`→`bird_wingflap` | 互換シム（forward） | `bird` | （1号機 critterSE dive） | critterSE 済（互換） |
+| `weasel_screech` | 甲高い威嚇（鋭い金切り） | `weasel` | spot / attack | **依頼中**（critterSE に weasel 行なし） |
+| `squirrel_chitter` | チチッ（高い連打） | `squirrel` | spot / attack / skill / tame | critterSE 済 |
+| `rabbit_thump` | 後足スタンピング（低い打撃2発） | `rabbit` | alert / skill / tame | critterSE 済 |
+| `guineapig_wheek` | ウィーク鳴き（上昇→下降） | `guineapig` | spot / skill / tame | **依頼中**（現状 critterSE は `pickup` で代用中） |
+| `hedgehog_huff` | 丸まりフスフス（鼻息を3拍） | `hedgehog` | curl / skill / tame | critterSE 済 |
+| `pet_squeak` | さくらの鳴き（かわいい高い短音） | `pet`（=`sakura`） | spot / hurt | 依頼中 |
+| `pet_bite` | さくらの噛みつき（鋭いスナップ） | `pet` | attack | 依頼中 |
+| `pet_happy` | さくらのごきげん（きらきらチャープ） | `pet` | happy / tamed | 依頼中 |
+| `pet_pee` | さくらの威嚇オシッコ（噴射＋キュッ） | `pet` | skill | 依頼中 |
 
 - **species**: `wolf / snake / weasel / bird / squirrel / rabbit / guineapig / hedgehog / pet`。別名: `sakura`・`さくら`→`pet`、`raptor/hawk/eagle/owl`→`bird`、`cavy`→`guineapig`。
-- **event**: `spot`（発見）/ `attack` / `hurt`（被ダメ）/ `die` / `skill` / `tamed`（テイム成功）/ `happy`。**未知の event は各種の代表音（default）に自動フォールバック**するので、配線側は気軽に呼べます。未知の species は黙って無音（事故ゼロ）。
+- **event**: `spot`（発見）/ `attack` / `hurt` / `die` / `skill` / `tamed` / `happy`、および 1号機 `critterSE` 語彙 `howl` / `dive` / `curl` / `alert` / `tame`（=`tamed`）。**未知の event は各種の代表音（default）に自動フォールバック**。未知の species は黙って無音（事故ゼロ）。
 - 旧来の `on*` スタイルを好む場合の別名 `window.onAnimalSound(species, event, opts)` も用意（任意）。
 
-> **1号機へ依頼**: sound.js 側は受け口を実装済み・**呼ぶだけで動作**します（index.html は未変更）。動物の発見/攻撃/被ダメ/撃破/スキル/テイム時に `playAnimalSFX(species, event, {x,y,z})` を1回呼んでください。座標を渡せば自動で3D定位します。ペット（さくら）は近接なので座標省略でもOK。event名・種名の希望があれば #opゲーム で調整します。
+> **1号機との整合（2号機メモ）**: 1号機が先行投入した動物SEスタブ8キー（`e96451b`）は、3D定位対応の**リッチ版に一本化**しました（後勝ちで既に有効だったため挙動は不変）。`critterSE` が直接呼ぶ `bird_chirp` / `bird_flap` は**実キーとして残置**（削除すると bird SE が無音化するため／音は1号機の元実装と同等）。`bird_screech` / `bird_wingflap` は猛禽らしい別音として併設し、`playAnimalSFX` から利用可能です。
+>
+> **1号機へ依頼**: ① `weasel`（critterSE に行が無い）→ `critterSE` の MAP に weasel 行を足すか `playAnimalSFX('weasel', ev, {x,y,z})` を呼べば `weasel_screech` が鳴ります。② `guineapig` は現状 `pickup` で代用中 → `guineapig_wheek` に差し替え可能。③ ペット（さくら）の `pet_squeak` / `pet_bite` / `pet_happy` / `pet_pee` は未配線 → 鳴き/噛みつき/ごきげん/威嚇オシッコの瞬間に `playSFX('pet_xxx')` か `playAnimalSFX('sakura', ev)` を呼んでください（近接なので座標省略可）。`playAnimalSFX` に座標 `{x,y,z}` を渡せば自動で3D定位します。
 
 ---
 

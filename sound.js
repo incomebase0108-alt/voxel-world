@@ -19,7 +19,7 @@
     whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1,
     companion_join: 1, companion_reply: 1, companion_hit: 1, companion_leave: 1, // 仲間システム
     // チンチラ世界の動物SE（敵/仲間/ペット）。個別倍率で「狼うるさい」等に即対応。
-    wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, // 敵
+    wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, bird_chirp: 1, bird_flap: 1, // 敵
     squirrel_chitter: 1, rabbit_thump: 1, guineapig_wheek: 1, hedgehog_huff: 1,                       // 仲間
     pet_squeak: 1, pet_bite: 1, pet_happy: 1, pet_pee: 1,                                              // ペット(さくら)
   };
@@ -139,15 +139,9 @@
     charge_start(){ tone(160, 0.25, 'sawtooth', 0.07, 320); },                                       // 溜め開始（上昇）
     charge_full() { tone(880, 0.10, 'sine', 0.10, 1320); tone(1320, 0.08, 'sine', 0.07, 1760); },    // 溜め完了（チャイム）
     pet_dust()    { noise(0.12, 0.05, 1100, 'bandpass'); tone(420, 0.06, 'sine', 0.03, 240); },        // ペット砂浴び（やわらかい砂の「ふっ」）
-    // ── 動物8種の種別SE（短い合成音。発見/攻撃/仲間スキル/なつかせ で発火）──
-    wolf_howl()      { tone(300, 0.6, 'sawtooth', 0.10, 520); tone(520, 0.5, 'sawtooth', 0.07, 360, null, 0.25); }, // 遠吠え（上がって下がる）
-    wolf_growl()     { tone(90, 0.35, 'sawtooth', 0.12, 60); noise(0.18, 0.05, 300, 'lowpass'); },                  // 低いうなり
-    snake_hiss()     { noise(0.32, 0.07, 5000, 'highpass'); noise(0.22, 0.04, 3500, 'bandpass'); },                 // シューッ
-    squirrel_chitter(){ for (let i = 0; i < 4; i++) tone(1700 + i*120, 0.04, 'square', 0.05, 2000, null, i*0.05); },// チチッ（高い連続音）
-    rabbit_thump()   { tone(70, 0.12, 'sine', 0.16, 45); noise(0.06, 0.06, 400, 'lowpass'); },                      // 後ろ足スタンピング（ドン）
-    bird_flap()      { noise(0.07, 0.05, 700, 'lowpass'); noise(0.07, 0.04, 600, 'lowpass', null); },               // 羽ばたき（バサッ）
-    bird_chirp()     { tone(2400, 0.05, 'sine', 0.06, 2900); tone(2900, 0.05, 'sine', 0.05, 2600, null, 0.06); },   // 鳴き（ピチュ）
-    hedgehog_huff()  { for (let i = 0; i < 3; i++) noise(0.05, 0.045, 1400, 'bandpass'); },                         // 丸まりフスフス
+    // ※ 動物8種の種別SE（wolf_howl/wolf_growl/snake_hiss/squirrel_chitter/rabbit_thump/hedgehog_huff/
+    //   bird_chirp/bird_flap）は下の「チンチラ世界の動物SE」ブロックに集約（3D定位対応の本実装）。
+    //   1号機 critterSE(index.html) が呼ぶキーはすべてそちらに揃えてある（後方互換）。
     // レベルアップ（1号機の playSFX('levelup') 連携）：上昇アルペジオ＋締めのきらめき
     levelup() {
       const seq = [523.25, 659.25, 783.99, 1046.50]; // C5-E5-G5-C6
@@ -256,6 +250,10 @@
                         noise(0.10, 0.02 * v, 4000, 'highpass', d); },
     bird_wingflap(o)  { const d = aDest(o), v = (o && o.vol) || 1;                 // 羽ばたき：低い風切りノイズを3拍
                         for (let i = 0; i < 3; i++) { noise(0.10, 0.07 * v, 700, 'lowpass', d, i * 0.16); tone(120, 0.08, 'sine', 0.03 * v, 80, d, i * 0.16); } },
+    // 1号機 critterSE(index.html) が直接呼ぶ旧キー → 正準音へ forward で一本化（実装は1か所＝上の2関数）。
+    //   1号機が playAnimalSFX へ移行すれば不要になる互換シム。bird_chirp→猛禽の鳴き / bird_flap→羽ばたき。
+    bird_chirp(o)     { SFX.bird_screech(o); },
+    bird_flap(o)      { SFX.bird_wingflap(o); },
     // ── 仲間 ──
     squirrel_chitter(o){ const d = aDest(o), v = (o && o.vol) || 1;                // チチッ：高い square を素早く連打
                         for (let i = 0; i < 4; i++) tone(2000 + Math.random() * 400, 0.04, 'square', 0.05 * v, 2600, d, i * 0.06); },
@@ -336,21 +334,22 @@
 
   // === チンチラ世界の動物SE 公開口（防御的: 1号機が呼ぶだけ・未配線でも無音で安全）=====
   //   window.playAnimalSFX(species, event, opts) … species×event を SEキーへ写像して鳴らす（推奨API）。
-  //     ・event: 'spot'|'attack'|'hurt'|'die'|'skill'|'tamed'|'happy' 等。未知eventは各種の default 音。
+  //     ・event: 'spot'|'attack'|'hurt'|'die'|'skill'|'tamed'|'happy'、および 1号機 critterSE 語彙 'howl'|'dive'|'curl'|'alert'|'tame'(=tamed)。未知eventは各種の default 音。
   //     ・opts.x/y/z があれば 3D 定位（距離減衰つき）。opts.vol で強弱（省略=1）。
   //     ・未知 species は黙って無音（事故ゼロ）。個別に鳴らしたい時は従来どおり playSFX('wolf_howl') でも可。
   const ANIMAL_ALIAS = { sakura: 'pet', 'さくら': 'pet', raptor: 'bird', hawk: 'bird', eagle: 'bird', owl: 'bird', cavy: 'guineapig' };
   const ANIMAL_SFX = {
+    //   ※ 1号機 critterSE(index.html) の event 語彙（howl/dive/curl/alert/spot/attack/tame…）も網羅。'tame' は下で 'tamed' へ正規化。
     // 敵
-    wolf:      { spot: 'wolf_howl',      attack: 'wolf_growl',    hurt: 'wolf_growl',     die: 'wolf_howl',      skill: 'wolf_howl',      default: 'wolf_growl' },
-    snake:     { spot: 'snake_hiss',     attack: 'snake_hiss',    hurt: 'snake_hiss',     skill: 'snake_hiss',                            default: 'snake_hiss' },
-    weasel:    { spot: 'weasel_screech', attack: 'weasel_screech',hurt: 'weasel_screech', skill: 'weasel_screech',                        default: 'weasel_screech' },
-    bird:      { spot: 'bird_screech',   attack: 'bird_wingflap', hurt: 'bird_screech',   die: 'bird_screech',   skill: 'bird_wingflap',  default: 'bird_screech' },
+    wolf:      { spot: 'wolf_growl',     howl: 'wolf_howl',       attack: 'wolf_growl',    hurt: 'wolf_growl',     die: 'wolf_howl',      skill: 'wolf_howl',     default: 'wolf_growl' },
+    snake:     { spot: 'snake_hiss',     attack: 'snake_hiss',    hurt: 'snake_hiss',      skill: 'snake_hiss',                            default: 'snake_hiss' },
+    weasel:    { spot: 'weasel_screech', attack: 'weasel_screech',hurt: 'weasel_screech',  skill: 'weasel_screech',                        default: 'weasel_screech' },
+    bird:      { spot: 'bird_screech',   dive: 'bird_wingflap',   attack: 'bird_wingflap', hurt: 'bird_screech',   die: 'bird_screech',   skill: 'bird_wingflap', screech: 'bird_screech', default: 'bird_screech' },
     // 仲間
-    squirrel:  { spot: 'squirrel_chitter', tamed: 'squirrel_chitter', happy: 'squirrel_chitter',                 default: 'squirrel_chitter' },
-    rabbit:    { spot: 'rabbit_thump',     skill: 'rabbit_thump',     tamed: 'rabbit_thump',                     default: 'rabbit_thump' },
-    guineapig: { spot: 'guineapig_wheek',  tamed: 'guineapig_wheek',  happy: 'guineapig_wheek',                  default: 'guineapig_wheek' },
-    hedgehog:  { spot: 'hedgehog_huff',    skill: 'hedgehog_huff',    hurt: 'hedgehog_huff',                     default: 'hedgehog_huff' },
+    squirrel:  { spot: 'squirrel_chitter', attack: 'squirrel_chitter', tamed: 'squirrel_chitter', skill: 'squirrel_chitter', happy: 'squirrel_chitter', default: 'squirrel_chitter' },
+    rabbit:    { spot: 'rabbit_thump',     alert: 'rabbit_thump',     skill: 'rabbit_thump',     tamed: 'rabbit_thump',                     default: 'rabbit_thump' },
+    guineapig: { spot: 'guineapig_wheek',  tamed: 'guineapig_wheek',  skill: 'guineapig_wheek',  happy: 'guineapig_wheek',                  default: 'guineapig_wheek' },
+    hedgehog:  { spot: 'hedgehog_huff',    curl: 'hedgehog_huff',     skill: 'hedgehog_huff',    hurt: 'hedgehog_huff',                     default: 'hedgehog_huff' },
     // ペット（さくら）
     pet:       { spot: 'pet_squeak', attack: 'pet_bite', skill: 'pet_pee', happy: 'pet_happy', tamed: 'pet_happy', hurt: 'pet_squeak', die: 'pet_squeak', default: 'pet_squeak' },
   };
@@ -361,11 +360,13 @@
     window.playSFX(key, Object.assign({}, o, { dest: p }));
     if (p) setTimeout(() => { try { p.disconnect(); } catch (e) {} }, 2000); // 余韻ぶん残して片付け
   }
+  const EVENT_ALIAS = { tame: 'tamed' }; // 1号機 critterSE は 'tame'、こちらの正準は 'tamed'
   window.playAnimalSFX = (species, event, opts) => {
     try {
       const sp = ANIMAL_ALIAS[species] || species;
+      const ev = EVENT_ALIAS[event] || event;
       const tbl = ANIMAL_SFX[sp]; if (!tbl) return;             // 未知種は黙って無音
-      const key = tbl[event] || tbl.default; if (!key) return;
+      const key = tbl[ev] || tbl.default; if (!key) return;
       playAnimalKey(key, opts);
     } catch (e) { /* 防御 */ }
   };
