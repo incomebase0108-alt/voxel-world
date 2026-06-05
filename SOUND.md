@@ -11,12 +11,13 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 天候音 | `setWeatherAudio('rain'|'thunder'|'snow'|'clear')` / `getWeatherAudio()` | 雨/雷雨/雪風の連続レイヤー。`clear`/`null`で止む |
 | 残響ゾーン | `setReverbZone('cave'|'indoor'|'open')` / `getReverbZone()` | SEの響きを空間で切替（洞窟=長/屋内=箱鳴り/野外=無響） |
 | 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音＋恩人モチーフのこだま |
-| ストーリー演出 | `onMaguroAppear()` / `onMaguroVanish()` / `onChapterClear(idx)` / `onEnding()` | 恩人まぐろの霊／光になって消える／章クリア／大団円 |
+| ストーリー演出 | `onMaguroAppear()` / `onMaguroVanish()` / `onChapterClear(idx)` / `onEnding()` | 恩人まぐろの霊／光になって消える／章クリア／大団円（一発） |
+| タイトル/ED曲 | `onTitleScreen()` / `onEndingTheme()` | 恩人モチーフ回収のループBGM（title/ending シーン） |
 | ゲームイベント | `onTameSuccess()` `onCollect()` `onSave()` `onLoad()` `onFeed()` `onSandbathDone()` | 軽い確定音 |
 | UI音セット | `onUiClick/Button/Hover/Open/Close/Error()` `onDexRegister()` | 3号機の設定/図鑑用 |
 | 敵 aggro | `onEnemyAggro()` | 交戦突入の緊張スティンガー |
 | 既存ボス | `onBossAppear(type)` / `onBossDefeat(type)` | `type`=golem/dragon/skeleton_king/queen |
-| BGMシーン | `setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest')` | 1.8sクロスフェード |
+| BGMシーン | `setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest'|'title'|'ending')` | 1.8sクロスフェード |
 | 序章『脱走』 | `setMusicScene('escape')` ＋ `onEscapeSuccess()` | 忍び/緊張テーマ＋脱走成功ジングル |
 | 探索BGM自動切替 | `setBiomeMusic(true)` / `isBiomeMusicOn()` | `getBiome()`連動で岩場/森/平原テーマへ。戦闘/ボス/脱走/水中は尊重（opt-in・既定OFF） |
 | 危険度レイヤー | `setDangerLevel(0..1)` / `getDangerLevel()` | 敵接近で緊張ドローンがfade in／離れると引く。毎フレーム/定期で呼ぶだけ |
@@ -86,7 +87,7 @@ ambBus → ambDuck ──────┘
 ---
 
 ## BGM（②）
-`window.setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest')` でシーン切替（1.8sクロスフェード）。初回ユーザー操作で `day` を自動開始。`window.startMusic()` / `window.stopMusic()` で明示制御も可。
+`window.setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest'|'title'|'ending')` でシーン切替（1.8sクロスフェード）。初回ユーザー操作で `day` を自動開始。`window.startMusic()` / `window.stopMusic()` で明示制御も可。
 
 > **情感の流れ（音楽②の設計意図）**: 序章『脱走』(`escape`／緊張)→ 探索(`explore_rocky`/`explore_forest`／穏やか・故郷)→ 敵接近で `setDangerLevel` の緊張レイヤーがせり上がる → 交戦(`combat`)→ ボス(`boss`)→ 女王(`queen`) と**情感豊かに切替**わり、要所で**ダッキング**がSEを立たせる。物語面では `onMaguroAppear/Vanish`・`onChapterClear`・`onEnding` の演出音と**恩人モチーフ**の再帰で締める。すべて防御的口＝1号機/3号機が呼ぶだけ・未配線でも無音で安全。
 
@@ -101,6 +102,8 @@ ambBus → ambDuck ──────┘
 | `escape` | ⓪ 序章『脱走』・**忍び/緊張**（低密度・小音量・半音A↔A#の不穏＋心臓の鼓動） | 100 | `setMusicScene('escape')`。`setDangerLevel(0..1)`で緊張増 |
 | `explore_rocky` | ① 探索・岩場（チンチラの故郷／開けて気高く少し寂しい Aマイナーペンタ） | 80 | 穏やか長尺。`setBiomeMusic(true)`で自動 or `setMusicScene` |
 | `explore_forest` | ① 探索・森（あたたかく優しい Cメジャーペンタ） | 92 | 穏やか長尺。同上 |
+| `title` | ⑯ タイトルテーマ（恩人モチーフを約8秒ごとに提示・希望的） | 84 | `onTitleScreen()` or `setMusicScene('title')` |
+| `ending` | ⑯ エンディング本編曲（恩人モチーフ＋1oct上ハモリで締める） | 92 | `onEndingTheme()`。一発の締め音は `onEnding()` |
 
 各シーンは `level`（音量バランス）を持ち、water は静かめ。陸地に出れば day/night のはっきりしたBGMに切り替わります。`boss` は combat より低い音域・重いサブベース・三全音(G#3 vs 根音D)の不協和で威圧感を出しています。
 

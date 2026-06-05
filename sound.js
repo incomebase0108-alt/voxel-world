@@ -499,7 +499,14 @@
   window.onMaguroAppear = () => window.playSFX('maguro_appear');
   window.onMaguroVanish = () => window.playSFX('maguro_vanish');
   window.onChapterClear = (idx) => window.playSFX('chapter_clear', { idx: idx });
-  window.onEnding       = () => window.playSFX('ending');
+  window.onEnding       = () => window.playSFX('ending'); // 締めの一発フラッシュ（短いジングル）
+
+  // === ⑯ タイトルテーマ／エンディング本編曲（恩人モチーフ回収・BGMシーン）=====
+  //   window.onTitleScreen() … タイトル画面のテーマ開始（setMusicScene('title')）。恩人モチーフが約8秒ごとに提示される。
+  //   window.onEndingTheme() … エンディング本編曲を開始（setMusicScene('ending')）。モチーフ＋1oct上ハモリで物語を締める。
+  //   ※ 演出の一発音は onEnding()（短いジングル）。本編の流れる曲は onEndingTheme()（ループBGM）。
+  window.onTitleScreen = () => { try { window.setMusicScene('title'); } catch (e) {} };
+  window.onEndingTheme = () => { try { window.setMusicScene('ending'); } catch (e) {} };
 
   // === ⑩ ゲームイベントSE口（防御的: 1号機/3号機が呼ぶだけ・未呼出なら無音）=====
   //   軽い確定音。なつかせ/コレクション/セーブ/ロード/餌やり/砂浴び完了 等の進行フィードバック。
@@ -598,6 +605,10 @@
     //   岩場＝開けて気高く少し寂しい(Aマイナーペンタ A-C-D-E-G)、森＝あたたかく優しい(Cメジャーペンタ C-D-E-G-A)。低密度でゆったり。
     explore_rocky:  { tempo: 80, scale: [220.00, 261.63, 293.66, 329.63, 392.00], pad: [110.00, 164.81, 220.00], wave: 'triangle', density: 0.34, drums: false, level: 0.85, bassG: 0.05,  shimmer: true,  bassline: false, tremHz: 0.10, tremDepth: 0.14 },
     explore_forest: { tempo: 92, scale: [261.63, 293.66, 329.63, 392.00, 440.00], pad: [130.81, 196.00, 261.63], wave: 'sine',     density: 0.40, drums: false, level: 0.88, bassG: 0.045, shimmer: true,  bassline: false, tremHz: 0.12, tremDepth: 0.12 },
+    // ⑯ P4 タイトルテーマ＆エンディング本編曲。scale を恩人モチーフ音(A-C-E-D-G)に寄せ、別途モチーフ旋律を重ねて物語を締める。
+    //   1号機/3号機が title 画面で setMusicScene('title')、ED で setMusicScene('ending')。恩人モチーフが約8秒ごとに回収される。
+    title:  { tempo: 84, scale: [440.00, 523.25, 659.25, 587.33, 783.99], pad: [220.00, 329.63, 440.00], wave: 'triangle', density: 0.40, drums: false, level: 0.95, bassG: 0.05, shimmer: true, bassline: false, tremHz: 0.10, tremDepth: 0.13 },
+    ending: { tempo: 92, scale: [523.25, 659.25, 783.99, 880.00, 1046.50], pad: [261.63, 392.00, 523.25], wave: 'sine',     density: 0.50, drums: false, level: 1.00, bassG: 0.05, shimmer: true, bassline: true,  tremHz: 0.12, tremDepth: 0.12 },
   };
   let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false, lastNoteTime = 0;
   let xfadeUntil = 0; // クロスフェード進行中の終了時刻（この間はscheduler の stuck回復ガードを抑止＝自動化の衝突回避）
@@ -751,6 +762,7 @@
       bgmOn = true; nextNoteT = c.currentTime + 0.1; beat = 0;
       bgmScene = s; startPad(s); fadeSceneGain(s, SCENES[s].level || 1, 'in');
       applyDuck(s); // P2: シーンに応じた music/ambient ダッキング
+      ensureThemeMotif(s); // ⑯ title/ending なら恩人モチーフ回収を起動
       scheduler(); startAmbience();
       try { console.info('[sound] BGM開始 scene=' + s + ' / rich=' + BGM_RICH + ' / bgmBus=' + (bgmBus ? bgmBus.gain.value.toFixed(2) : '?') + ' / ctx=' + (ctx ? ctx.state : '?')); } catch (e) {}
     } else {
@@ -768,8 +780,23 @@
     startPad(name); fadeSceneGain(name, SCENES[name].level || 1, 'in'); // 等パワーで入れる
     if (prev && sceneNodes[prev]) fadeSceneGain(prev, 0, 'out'); // 等パワーで抜く。oscillatorは止めずgainのみ（競合回避）
     applyDuck(name); // P2: 戦闘/ボスへ入る/出る時に music/ambient を滑らかにダック/復帰
+    ensureThemeMotif(name); // ⑯ title/ending で恩人モチーフ回収を起動（他シーンでは自然停止）
     ensureScheduler(); // シーン切替時にループが死んでいたら必ず復活
   }
+  // ⑯ 恩人モチーフ回収：title/ending シーンの間だけ、約8秒ごとにモチーフ旋律を bgmBus に重ねる（物語のテーマ提示）。
+  let themeMotifTimer = null;
+  function themeMotifTick() {
+    themeMotifTimer = null;
+    try {
+      if (bgmOn && (bgmScene === 'title' || bgmScene === 'ending')) {
+        const ending = bgmScene === 'ending';
+        playMotif({ wave: ending ? 'sine' : 'triangle', gain: ending ? 0.06 : 0.05, dur: 0.55, step: 0.36, dest: bgmBus, at: 0.0 });
+        if (ending) playMotif({ wave: 'triangle', gain: 0.028, dur: 0.55, step: 0.36, dest: bgmBus, mul: 2, at: 0.0 }); // EDは1oct上ハモリも
+      }
+    } catch (e) { /* 防御 */ }
+    if (bgmOn && (bgmScene === 'title' || bgmScene === 'ending')) themeMotifTimer = setTimeout(themeMotifTick, 8000);
+  }
+  function ensureThemeMotif(scene) { if ((scene === 'title' || scene === 'ending') && !themeMotifTimer) themeMotifTick(); }
   function stopMusic() {
     userMusicCtl = true; bgmOn = false;
     if (bgmTimer) { clearTimeout(bgmTimer); bgmTimer = null; }
