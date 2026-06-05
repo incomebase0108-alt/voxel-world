@@ -1259,6 +1259,7 @@ const KF = [
 ].map(k => ({ t:k.t, sky:new THREE.Color(k.sky), sun:new THREE.Color(k.sun), si:k.si, amb:k.amb }));
 
 const WHITE = new THREE.Color(0xffffff);
+const PETAL_SKY = new THREE.Color(0xffd9e6); // 🌸 桜吹雪の春の桃色空
 const _sky = new THREE.Color(), _sun = new THREE.Color();
 function updateSky(dt) {
   dayTime = (dayTime + dt / Math.max(1, CFG.time.dayLength)) % 1; // dayLength=0等での Infinity/NaN を防ぐ
@@ -1274,6 +1275,7 @@ function updateSky(dt) {
   if (weather === 'rain')         { _sky.multiplyScalar(0.7); si *= 0.55; amb *= 0.85; }
   else if (weather === 'snow')    { _sky.lerp(WHITE, 0.18);   amb *= 0.95; }
   else if (weather === 'thunder') { _sky.multiplyScalar(0.5); si *= 0.40; amb *= 0.80; }
+  else if (weather === 'petal' && si > 0.2) { _sky.lerp(PETAL_SKY, 0.16); amb *= 1.05; } // 🌸 桜吹雪＝昼間はやわらかな春の桃色空（夜は控えめ）
   // 雷の閃光：thunder時に一定間隔で発生し、空とライトを一瞬ブースト（音は後付けトリガーだけ用意）
   if (weather === 'thunder') {
     nextStrike -= dt;
@@ -5279,7 +5281,7 @@ function loop(now) {
   // 時刻表示（dayTime 0.5 を正午=12:00 として24時間換算）
   const hh = Math.floor(((dayTime + 0.5) % 1) * 24);
   const mm = Math.floor((((dayTime + 0.5) % 1) * 24 % 1) * 60);
-  const WNAME = { clear:'晴れ', rain:'雨', snow:'雪', thunder:'雷' };
+  const WNAME = { clear:'晴れ', rain:'雨', snow:'雪', thunder:'雷', petal:'桜吹雪' };
   const wpn = WEAPONS[currentWeapon];
   const draw = (wpn.ranged && mouseDown) ? `　弓溜め:${Math.round(Math.min(1, drawTime/CHARGE_FULL)*100)}%` : '';
   const def = defenseFactor() > 0 ? `　防御:${(defenseFactor()*100).toFixed(0)}%` : '';
