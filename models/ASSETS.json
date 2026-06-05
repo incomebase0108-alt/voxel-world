@@ -16,8 +16,8 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 23689756,
-    "size_mb": 22.592
+    "size_bytes": 23945096,
+    "size_mb": 22.836
   },
   "assets": [
     {
@@ -1309,12 +1309,12 @@
       "file": "enemy_bird.glb",
       "name": "enemy_bird",
       "category": "その他",
-      "size_bytes": 113068,
-      "size_mb": 0.1078,
+      "size_bytes": 250056,
+      "size_mb": 0.2385,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 22,
+      "materials": 53,
       "error": null
     },
     {
@@ -1345,12 +1345,12 @@
       "file": "enemy_wolf.glb",
       "name": "enemy_wolf",
       "category": "その他",
-      "size_bytes": 227904,
-      "size_mb": 0.2173,
+      "size_bytes": 346256,
+      "size_mb": 0.3302,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 32,
+      "materials": 45,
       "error": null
     },
     {
