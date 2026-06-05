@@ -16,8 +16,8 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 25052836,
-    "size_mb": 23.892
+    "size_bytes": 25070740,
+    "size_mb": 23.909
   },
   "assets": [
     {
@@ -109,13 +109,11 @@
       "file": "mob_chicken.glb",
       "name": "mob_chicken",
       "category": "モブ",
-      "size_bytes": 113160,
-      "size_mb": 0.1079,
+      "size_bytes": 117400,
+      "size_mb": 0.112,
       "clips": [
-        "walk",
         "idle",
-        "die",
-        "hit"
+        "walk"
       ],
       "meshes": 7,
       "nodes": 7,
@@ -175,8 +173,8 @@
       "file": "mob_fish.glb",
       "name": "mob_fish",
       "category": "モブ",
-      "size_bytes": 131640,
-      "size_mb": 0.1255,
+      "size_bytes": 135244,
+      "size_mb": 0.129,
       "clips": [
         "idle",
         "swim"
@@ -190,8 +188,8 @@
       "file": "mob_fish_koi.glb",
       "name": "mob_fish_koi",
       "category": "モブ",
-      "size_bytes": 131948,
-      "size_mb": 0.1258,
+      "size_bytes": 135420,
+      "size_mb": 0.1291,
       "clips": [
         "idle",
         "swim"
@@ -205,8 +203,8 @@
       "file": "mob_fish_puffer.glb",
       "name": "mob_fish_puffer",
       "category": "モブ",
-      "size_bytes": 138952,
-      "size_mb": 0.1325,
+      "size_bytes": 141876,
+      "size_mb": 0.1353,
       "clips": [
         "idle",
         "swim"
@@ -220,8 +218,8 @@
       "file": "mob_fish_tropical.glb",
       "name": "mob_fish_tropical",
       "category": "モブ",
-      "size_bytes": 135264,
-      "size_mb": 0.129,
+      "size_bytes": 138928,
+      "size_mb": 0.1325,
       "clips": [
         "idle",
         "swim"
