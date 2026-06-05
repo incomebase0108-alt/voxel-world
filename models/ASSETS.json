@@ -16,8 +16,8 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 24115236,
-    "size_mb": 22.998
+    "size_bytes": 24237584,
+    "size_mb": 23.115
   },
   "assets": [
     {
@@ -1261,48 +1261,48 @@
       "file": "ally_guineapig.glb",
       "name": "ally_guineapig",
       "category": "その他",
-      "size_bytes": 77004,
-      "size_mb": 0.0734,
+      "size_bytes": 91932,
+      "size_mb": 0.0877,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 14,
+      "materials": 16,
       "error": null
     },
     {
       "file": "ally_hedgehog.glb",
       "name": "ally_hedgehog",
       "category": "その他",
-      "size_bytes": 182872,
-      "size_mb": 0.1744,
+      "size_bytes": 242428,
+      "size_mb": 0.2312,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 56,
+      "materials": 94,
       "error": null
     },
     {
       "file": "ally_rabbit.glb",
       "name": "ally_rabbit",
       "category": "その他",
-      "size_bytes": 96744,
-      "size_mb": 0.0923,
+      "size_bytes": 126480,
+      "size_mb": 0.1206,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 15,
+      "materials": 18,
       "error": null
     },
     {
       "file": "ally_squirrel.glb",
       "name": "ally_squirrel",
       "category": "その他",
-      "size_bytes": 104420,
-      "size_mb": 0.0996,
+      "size_bytes": 122548,
+      "size_mb": 0.1169,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 16,
+      "materials": 20,
       "error": null
     },
     {
