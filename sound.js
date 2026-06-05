@@ -23,6 +23,7 @@
     animal_hurt: 1, animal_die: 1,                                                                     // 被ダメ/死亡（共通・種別ピッチ）
     squirrel_chitter: 1, rabbit_thump: 1, guineapig_wheek: 1, hedgehog_huff: 1,                       // 仲間
     pet_squeak: 1, pet_bite: 1, pet_happy: 1, pet_pee: 1, pet_purr: 1, pet_sandbath: 1, pet_dust: 1,    // ペット(さくら)
+    critter_step: 1,                                                                                   // 小動物の足音（控えめ）
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
   let limiter = null; // ③ master 直前のセーフティ・リミッタ（多数のSE＋BGM重畳時のクリップ防止）
@@ -322,6 +323,9 @@
                         tone(1500, 0.22, 'sawtooth', 0.09 * v, 900, d, 0.16); },
     hedgehog_huff(o)  { const d = aDest(o), v = (o && o.vol) || 1;                 // 丸まりフスフス：短い鼻息ノイズを3拍
                         for (let i = 0; i < 3; i++) noise(0.07, 0.05 * v, 1800, 'bandpass', d, i * 0.12); },
+    // ⑨ 小動物の軽い足音（パタッ）。頻発するので極小音量＝控えめ（やりすぎ防止）。連続移動は1号機が間引いて呼ぶ想定。
+    critter_step(o)   { const d = aDest(o), v = (o && o.vol) || 1;                 // やわらかい一歩：高域の小さなタップ＋ごく低い接地
+                        noise(0.025, 0.018 * v, 2600, 'bandpass', d); tone(180, 0.03, 'sine', 0.012 * v, 120, d); },
     // ── ペット（さくら）──
     pet_squeak(o)     { const d = aDest(o), v = (o && o.vol) || 1;                 // 鳴き：かわいい高い短音
                         tone(900, 0.10, 'sine', 0.10 * v, 1500, d);
@@ -441,6 +445,7 @@
     try {
       const sp = ANIMAL_ALIAS[species] || species;
       const ev = EVENT_ALIAS[event] || event;
+      if (ev === 'step' || ev === 'move') { playAnimalKey('critter_step', Object.assign({}, opts, { species: sp })); return; } // ⑨ 足音は種に依らず常に極小タップ（誤って鳴き声を鳴らさない）
       const tbl = ANIMAL_SFX[sp]; if (!tbl) return;             // 未知種は黙って無音
       const key = tbl[ev] || tbl.default; if (!key) return;
       playAnimalKey(key, Object.assign({}, opts, { species: sp })); // species を注入＝共通 hurt/die が種別ピッチで鳴る

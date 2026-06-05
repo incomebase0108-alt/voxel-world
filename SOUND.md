@@ -2,11 +2,25 @@
 
 WebAudio による合成音。本体コードと疎結合で、コアは `window.playSFX(name, opts)` や `window.on*` の口を呼ぶだけ。`sound.js` 未読込でも本体は壊れません。素材は仮の合成音で、後から音声ファイル再生に差し替え可能です。
 
+## 1号機向け 公開API早見表（呼ぶだけ・未呼出でも無音で安全）
+| 用途 | 口 | 備考 |
+|---|---|---|
+| 動物SE（敵/仲間/ペット） | `playAnimalSFX(species, event, {x,y,z,vol})` | **推奨**。種×イベント→SE。座標で3D定位。`critterSE` から委譲済 |
+| 効果音 個別 | `playSFX('key', opts)` | 上表の個別キーを直叩き |
+| 環境音 切替 | `setAmbient('forest'|…)` / `setAmbient(null)` | 未呼出でも `getBiome()` 連動で自動 |
+| 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音 |
+| 敵 aggro | `onEnemyAggro()` | 交戦突入の緊張スティンガー |
+| 既存ボス | `onBossAppear(type)` / `onBossDefeat(type)` | `type`=golem/dragon/skeleton_king/queen |
+| BGMシーン | `setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen')` | 1.8sクロスフェード |
+| 仲間 | `onCompanionJoin/Reply/Hit/Leave(type)` | — |
+| 攻撃 | `onAttackHit(weapon,isCrit)` / `onAttackWhiff()` / `onAttackCharge('start'|'full')` | — |
+| 音量/診断 | `setMasterVolume/SfxVolume/BgmVolume/AmbVolume`・`setSfxGain(key,x)`・`getSoundDiag()` | ④設定・実機診断 |
+
 ## バス構成
-`各音源 → (sfxBus | bgmBus) → master → 出力`
+`各音源 → (sfxBus | bgmBus | ambBus) → master → limiter → 出力`
 - `master` … 全体音量（ミュート時は0）
-- `sfxBus` … 効果音
-- `bgmBus` … BGM
+- `sfxBus` … 効果音 ／ `bgmBus` … BGM ／ `ambBus` … 環境音
+- `limiter` … master直前のセーフティ・リミッタ（クリップ防止）
 - さらに **個別SE倍率**（`gains`）が各効果音に乗る（後述）
 
 ---
@@ -177,7 +191,9 @@ NPCが仲間になる新機能向け。口は防御的（未呼出なら無音�
 
 ※ `animal_hurt` / `animal_die` は**全種共通のジェネリック音**。`playAnimalSFX` が `opts.species` を注入し、種ごとに基準ピッチ・音色（`VOICE` 表）を変えるので**種が聞き分け可能**。蛇だけは噴気的（hiss）に分岐。
 
-**個別キー一覧（`playSFX('key')` 直叩きも可）**: `wolf_howl` / `wolf_growl` / `snake_hiss` / `snake_strike` / `weasel_screech` / `bird_screech` / `bird_wingflap` / `attack_bite`（捕食者の噛みつき共通） / `animal_hurt` / `animal_die`（種別ピッチ） / `squirrel_chitter` / `rabbit_thump` / `guineapig_wheek` / `hedgehog_huff` / `pet_squeak` / `pet_bite` / `pet_happy` / `pet_pee`。
+**個別キー一覧（`playSFX('key')` 直叩きも可）**: `wolf_howl` / `wolf_growl` / `snake_hiss` / `snake_strike` / `weasel_screech` / `bird_screech` / `bird_wingflap` / `attack_bite`（捕食者の噛みつき共通） / `animal_hurt` / `animal_die`（種別ピッチ） / `squirrel_chitter` / `rabbit_thump` / `guineapig_wheek` / `hedgehog_huff` / `critter_step`（小動物の足音・極小） / `pet_squeak` / `pet_bite` / `pet_happy` / `pet_pee` / `pet_purr` / `pet_sandbath`。
+
+**⑨ 足音（任意・控えめ）**: `playAnimalSFX(species, 'step'|'move', {x,y,z})` は**種に依らず**極小音量の `critter_step`（パタッ）を鳴らす（誤って鳴き声を出さない設計）。頻発するので 1号機側で**間引いて**呼ぶ想定。
 
 - **species**: `wolf / snake / weasel / bird / squirrel / rabbit / guineapig / hedgehog / pet`。別名: `sakura`・`さくら`→`pet`、`raptor/hawk/eagle/owl`→`bird`、`cavy`→`guineapig`。
 - **event**: `spot` / `attack` / `hurt` / `die` / `skill` / `tamed` / `happy`、および 1号機語彙 `howl` / `dive` / `curl` / `alert` / `tame`（=`tamed`）。未定義 event は `default` フォールバック。未知 species は無音（事故ゼロ）。
