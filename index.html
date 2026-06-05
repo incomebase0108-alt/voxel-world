@@ -1623,7 +1623,7 @@ function updatePlayer(dt) {
   } else {
     // 水面上・陸上：通常重力＋接地時のみジャンプ
     player.vel.y -= 26 * dt;
-    if (keys['Space'] && player.onGround) { player.vel.y = 8.6; player.onGround = false; window.playSFX && window.playSFX('jump'); }
+    if (keys['Space'] && player.onGround) { player.vel.y = 8.6; player.onGround = false; doubleJumpReady = true; window.playSFX && window.playSFX('jump'); }
   }
 
   player.onGround = false;
@@ -1780,6 +1780,7 @@ let fallPeakY = 0;           // 落下開始の最高到達点
 let prevOnGround = true;
 let heat = 0;                // 体温（チンチラは暑さに弱い。0..100。日中/砂漠で上昇、水/夜/日陰/砂浴びで低下）
 let heatHurtAccum = 0, heatWarnT = 0, dustCd = 0;
+let doubleJumpReady = false;  // チンチラの二段ジャンプ（空中でもう一度Spaceで跳ねる。接地で回復）
 
 function eatFood() {
   if (hunger >= P.maxHunger) return;
@@ -1791,6 +1792,19 @@ function eatFood() {
   scheduleSave();
 }
 
+// 穴掘り：足元の下のブロックを掘って潜る（チンチラの巣作り）。鉱石は素材化。岩盤(最下層)は掘れない
+function burrowDown() {
+  const bx = Math.floor(player.pos.x), bz = Math.floor(player.pos.z);
+  const fy = Math.floor(player.pos.y - 0.1) - 1;
+  if (fy < 1) { if (typeof toast === 'function') toast('これ以上は掘れない（岩盤）'); return; }
+  const b = getBlock(bx, fy, bz);
+  if (b === B.air || b === B.water) { if (typeof toast === 'function') toast('掘れる地面がない（足元で K）'); return; }
+  if (b === B.chest || b === B.spawner) { if (typeof toast === 'function') toast('それは掘れない'); return; }
+  setBlock(bx, fy, bz, B.air);
+  const mat = ORE_MAT[b]; if (mat) { itemCounts[mat] = (itemCounts[mat] || 0) + 1; window.playSFX && window.playSFX('pickup'); }
+  window.playSFX && window.playSFX('break');
+  spawnFx('fx_collapse', bx + 0.5, player.pos.y - 0.6, bz + 0.5, 0.6, 0.8); // 掘った土煙
+}
 // 砂浴び：砂地/岩場で体温を一気に下げる（チンチラの十八番）。近くのペットの機嫌も上がる
 function dustBath() {
   if (dustCd > 0) return;
@@ -1854,6 +1868,7 @@ function updateHealth(dt) {
     if (Math.abs(dHp) < 10)    hpRatePerMin     = hpRatePerMin * 0.5 + (dHp * 60) * 0.5;
     prevHungerSample = hunger; prevHpSample = hp;
   }
+  if (player.onGround) doubleJumpReady = true; // 接地で二段ジャンプ回復
   // --- 落下ダメージ（水中は無効＝水に落ちても痛くない）---
   const feetWater = waterAtPlayer(0.5); // ★統一基準（足元・落下判定用）
   if (player.onGround && !prevOnGround && !feetWater) {
@@ -2090,6 +2105,12 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') fireSkillKey(3);
   if (e.code === 'KeyC') { const eq = effectiveEquipped(); if (eq[2] && !invOpen) useSkill(eq[2]); else cycleWeapon(); }
   if (e.code === 'KeyB') cycleWeapon(); // 武器切替の予備（C が必殺技で埋まっても切替可能に）
+  // チンチラの二段ジャンプ：空中で Space をもう一度（押した瞬間のみ・長押し連発は無効）
+  if (e.code === 'Space' && !e.repeat && !player.onGround && doubleJumpReady && !ridingBoat && !ridingMob && isPlaying() && !invOpen) {
+    player.vel.y = 8.0; doubleJumpReady = false; window.playSFX && window.playSFX('jump');
+    spawnFx('fx_collapse', player.pos.x, player.pos.y, player.pos.z, 0.6, 0.6); // 空中の砂煙
+  }
+  if (e.code === 'KeyK') burrowDown();    // 🕳 穴掘り（足元を掘って潜る＝チンチラの巣作り）
   if (e.code === 'KeyN') dustBath();      // 🛁 砂浴び（砂地/岩場で体温ダウン）
   if (e.code === 'KeyP') petInteract();  // 🐾 ペットをなでる/餌、または近くの動物をなつかせる
   if (e.code === 'KeyT') talkToNPC();   // 近くの住人に話しかける/取引
