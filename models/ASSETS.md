@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 149 ファイル / 22.02 MB
+**合計**: 149 ファイル / 22.31 MB
 
 
 ## プレイヤー
@@ -156,14 +156,14 @@
 
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
-| `ally_guineapig.glb` | 0.0553 | —（静物） | 1/1 |
-| `ally_hedgehog.glb` | 0.1326 | —（静物） | 1/1 |
-| `ally_rabbit.glb` | 0.0693 | —（静物） | 1/1 |
-| `ally_squirrel.glb` | 0.0748 | —（静物） | 1/1 |
-| `enemy_bird.glb` | 0.0813 | —（静物） | 1/1 |
-| `enemy_snake.glb` | 0.0899 | —（静物） | 1/1 |
-| `enemy_weasel.glb` | 0.0839 | —（静物） | 1/1 |
-| `enemy_wolf.glb` | 0.0904 | —（静物） | 1/1 |
+| `ally_guineapig.glb` | 0.0735 | —（静物） | 1/1 |
+| `ally_hedgehog.glb` | 0.1744 | —（静物） | 1/1 |
+| `ally_rabbit.glb` | 0.0922 | —（静物） | 1/1 |
+| `ally_squirrel.glb` | 0.0996 | —（静物） | 1/1 |
+| `enemy_bird.glb` | 0.1078 | —（静物） | 1/1 |
+| `enemy_snake.glb` | 0.1193 | —（静物） | 1/1 |
+| `enemy_weasel.glb` | 0.1117 | —（静物） | 1/1 |
+| `enemy_wolf.glb` | 0.1913 | —（静物） | 1/1 |
 | `pet_chinchilla.glb` | 0.3321 | —（静物） | 1/1 |
 | `pet_chinchilla_beige.glb` | 0.3321 | —（静物） | 1/1 |
 | `pet_chinchilla_brown.glb` | 0.3321 | —（静物） | 1/1 |
