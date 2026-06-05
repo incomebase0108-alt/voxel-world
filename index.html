@@ -962,7 +962,7 @@ function serializeWorld() {
     equip: { weapon: currentWeapon, owned: [...ownedWeapons], armor: { ...equip.armor }, shield: equip.shield, ownedShield }, // 装備
     time: { dayTime, weather, autoWeather, weatherTimer },            // 時刻・天候
     // モブ（騎乗中の馬も含む。位置/向き/HP/状態を保存し、ロード時に再スポーン）
-    mobs: mobs.filter(m => !m.dying).map(m => ({ // 死亡演出中(HP0)のmobはセーブしない＝死んだ仲間/敵を残さない
+    mobs: mobs.filter(m => !m.dying && !m.noSave).map(m => ({ // 死亡演出中(HP0)/house NPC(毎回再生成)はセーブしない
       t: m.def.type,
       x: +m.obj.position.x.toFixed(2), y: +m.obj.position.y.toFixed(2), z: +m.obj.position.z.toFixed(2),
       ry: +m.obj.rotation.y.toFixed(3), hp: m.hp, st: m.state,
@@ -3255,17 +3255,22 @@ function maybeBuildHouse() {
   houseChecked = true;
   const s = findSpawn();
   HOUSE.ox = Math.floor(s.x) - 14; HOUSE.oz = Math.floor(s.z) - 10; HOUSE.oy = heightAt(Math.floor(s.x), Math.floor(s.z));
-  if (getBlock(HOUSE.ox, HOUSE.oy + 1, HOUSE.oz) === B.planks) return; // 既に建っている＝再建築しない
-  buildMansion();
-  // 序章：2階・子供部屋のケージからスタート
-  player.pos.set(HOUSE.start.x, HOUSE.start.y, HOUSE.start.z); player.vel.set(0, 0, 0); player.yaw = HOUSE.start.yaw;
-  spawnPoint = { x: HOUSE.exit.x, y: HOUSE.oy + 2, z: HOUSE.exit.z };
-  houseIntroActive = true;
-  if (typeof toast === 'function') {
-    toast('🏠 ここはあなたの家。2階・子供部屋のケージから——さくらの脱走が始まる');
-    setTimeout(() => toast('🪜 ホールの階段で1階へ（Space＝ジャンプ／空中でもう一度＝二段ジャンプ）'), 4000);
-    setTimeout(() => toast('🚪 1階の玄関から外へ！＝脱走'), 8000);
+  HOUSE.exit  = { x: HOUSE.ox + 14.5, z: HOUSE.oz + HOUSE.D1 + 1.5 };
+  HOUSE.start = { x: HOUSE.ox + 3.5, y: HOUSE.oy + 5, z: HOUSE.oz + 4.5, yaw: -Math.PI/2 };
+  const built = getBlock(HOUSE.ox, HOUSE.oy + 1, HOUSE.oz) === B.planks;
+  if (!built) {
+    buildMansion();
+    // 序章：2階・子供部屋のケージからスタート
+    player.pos.set(HOUSE.start.x, HOUSE.start.y, HOUSE.start.z); player.vel.set(0, 0, 0); player.yaw = HOUSE.start.yaw;
+    spawnPoint = { x: HOUSE.exit.x, y: HOUSE.oy + 2, z: HOUSE.exit.z };
+    houseIntroActive = true;
+    if (typeof toast === 'function') {
+      toast('🏠 ここはあなたの家。2階・子供部屋のケージから——さくらの脱走が始まる');
+      setTimeout(() => toast('🪜 ホールの階段で1階へ（Space＝ジャンプ／空中でもう一度＝二段ジャンプ）'), 4000);
+      setTimeout(() => toast('🚪 1階の玄関から外へ！＝脱走（※内縁の妻に捕まると逆らえずケージへ戻る）'), 8000);
+    }
   }
+  spawnHouseNpcs(); // 飼い主(わたし)＆内縁の妻を配置（建て直さない既存の家でも毎回1回だけ）
 }
 function checkHouseEscape() {
   if (!houseIntroActive) return;
@@ -3274,6 +3279,76 @@ function checkHouseEscape() {
     houseIntroActive = false;
     if (typeof toast === 'function') toast('🐭✨ 脱走成功！もう飼われない——自由だ！（チンチラ革命のはじまり）');
     gainExp(10);
+  }
+}
+// ===================================================================
+// 👫 人間NPC：わたし（飼い主）と 内縁の妻
+//   ・内縁の妻はさくらが大好き（近づいて見守り、ハートを出す）
+//   ・さくらは内縁の妻には逆らわない＝脱走中に妻に捕まると、抱き上げられてケージへ戻される
+//   ・わたし（飼い主）は1階でのんびり。さくらは飼い主には“逆らえる”（すり抜けて脱走できる）
+// ===================================================================
+let houseNpcsSpawned = false;
+function roundRectPath(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function makeTextSprite(text, color) {
+  const fs = 44, pad = 10;
+  const cv = document.createElement('canvas'); const ctx = cv.getContext('2d');
+  ctx.font = `bold ${fs}px sans-serif`;
+  cv.width = Math.ceil(ctx.measureText(text).width) + pad*2; cv.height = fs + pad*2;
+  ctx.font = `bold ${fs}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; roundRectPath(ctx, 0, 0, cv.width, cv.height, 14); ctx.fill();
+  ctx.fillStyle = color || '#fff'; ctx.fillText(text, cv.width/2, cv.height/2 + 2);
+  const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+  sp.scale.set((cv.width/cv.height) * 0.5, 0.5, 1); // 高さ0.5m
+  return sp;
+}
+function spawnHouseNpcs() {
+  if (houseNpcsSpawned) return;
+  if (!mobTemplates['woman'] || !mobTemplates['merchant']) return; // モデル未読込なら次フレーム再挑戦
+  houseNpcsSpawned = true;
+  const O = HOUSE;
+  const wx = O.ox + 10, wz = O.oz + 5;                    // 2Fホール（子供部屋の前）＝さくらを見守る位置
+  const wife = spawnMob('woman', wx, wz, { y: O.oy + 5 });
+  if (wife) initHouseNpc(wife, 'wife', '内縁の妻 🫶さくら大好き', '#ff9ed2', wx, wz, O.oy + 5);
+  const mx = O.ox + 5, mz = O.oz + 6;                     // 1FのLDK
+  const me = spawnMob('merchant', mx, mz, { y: O.oy + 1 });
+  if (me) initHouseNpc(me, 'owner', 'わたし（飼い主）', '#9ec8ff', mx, mz, O.oy + 1);
+}
+function initHouseNpc(m, kind, name, color, ax, az, ay) {
+  m.houseNpc = kind; m.noSave = true; m.hostile = false; m.home = null;
+  m.anchor = { x: ax, z: az, y: ay };
+  m.emoteCd = 3 + Math.random()*4;
+  attachNameTag(m, name, color);
+}
+function attachNameTag(m, text, color) {
+  if (!m.obj) return;
+  const sp = makeTextSprite(text, color); sp.position.set(0, 2.15, 0); sp.renderOrder = 999;
+  m.obj.add(sp); m.nameTag = sp;
+}
+function updateHouseNpc(m, dt, dx, dz, dist) {
+  const sameFloor = Math.abs(m.obj.position.y - player.pos.y) < 2.0;
+  // 脱走中：内縁の妻がさくらに触れたら「逆らえない」＝抱き上げられてケージへ戻る
+  if (m.houseNpc === 'wife' && houseIntroActive && sameFloor && dist < 1.6) {
+    player.pos.set(HOUSE.start.x, HOUSE.start.y, HOUSE.start.z); player.vel.set(0, 0, 0);
+    spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.4, m.obj.position.z, 1.2, 0.6);
+    if (typeof toast === 'function') toast('🫶 内縁の妻にそっと抱き上げられた…さくらは逆らえない。ケージへ戻された');
+    m.emoteCd = 3;
+    followFloor(m, dt);
+    return;
+  }
+  // 目標：妻は同じ階のさくらへ寄る（見守り）／それ以外は自分の定位置へ戻る
+  let tx = m.anchor.x, tz = m.anchor.z, chasing = false;
+  if (m.houseNpc === 'wife' && sameFloor && dist < 12) { tx = player.pos.x; tz = player.pos.z; chasing = true; }
+  const ddx = tx - m.obj.position.x, ddz = tz - m.obj.position.z, dd = Math.hypot(ddx, ddz) || 1e-4;
+  const stop = chasing ? 1.8 : 0.5;
+  let moving = false;
+  if (dd > stop) moving = tryMoveMob(m, ddx/dd, ddz/dd, chasing ? 1.6 : 1.0, dt);
+  else { followFloor(m, dt); if (chasing) m.obj.rotation.y = Math.atan2(-(player.pos.x - m.obj.position.x), -(player.pos.z - m.obj.position.z)); }
+  setMobAnim(m, moving ? 'walk' : (chasing ? 'talk' : 'idle'));
+  // 妻の「大好き」ハート（さくらが近いとき）
+  if (m.houseNpc === 'wife') {
+    m.emoteCd -= dt;
+    if (m.emoteCd <= 0 && chasing && dist < 4.5) { m.emoteCd = 4 + Math.random()*4; spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.55, m.obj.position.z, 1.1, 0.5); }
   }
 }
 // 海ボス クラーケンAI：海面に半身を出して定位置に留まり、船(プレイヤー)が近いと触手で攻撃。陸へ上がらない。
@@ -3617,6 +3692,7 @@ function updateMobs(dt) {
     return;
   }
   maybeBuildHouse();   // 🏠 序章：さくらの家を建てて2階子供部屋からスタート（初回のみ）
+  if (houseChecked && !houseNpcsSpawned) spawnHouseNpcs(); // 👫 人間モデル読込が遅れても確実に配置
   checkHouseEscape();  // 🚪 玄関から外へ出たら「脱走成功」
   maybeIntroducePet(); // 🐾 起動後に一度だけペット「さくら」を連れてくる（復元優先・早期return多めで軽量）
   spawnLogic(dt);     // ④ 昼夜・地下を考慮した湧き
@@ -3648,6 +3724,7 @@ function updateMobs(dt) {
     const dy = Math.abs(m.obj.position.y - player.pos.y); // 垂直距離。地下/上空に詰まった敵の「見えない攻撃」を遮断する
     if (m.pet) { updatePet(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 🐾 ペットは despawn しない・専用AI（機嫌/癖）
     if (m.companion) { updateCompanion(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 仲間は despawn しない・専用AI
+    if (m.houseNpc) { updateHouseNpc(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 👫 飼い主/内縁の妻は despawn しない・専用AI
     if (dist > M.despawn) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
     if (m.def.sea) { updateKraken(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 海ボス専用AI（昼消滅・陸チェイスしない）
     // ④ 朝＝地上の敵性は陽光で消滅（地下の敵は生存＝洞窟は常時湧き）。プレイヤーから離れた個体のみ
