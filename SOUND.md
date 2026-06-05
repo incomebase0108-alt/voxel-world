@@ -76,7 +76,9 @@ ambBus → ambDuck ──────┘
 ---
 
 ## BGM（②）
-`window.setMusicScene('day'|'night'|'combat'|'water'|'boss')` でシーン切替（1.8sクロスフェード）。初回ユーザー操作で `day` を自動開始。`window.startMusic()` / `window.stopMusic()` で明示制御も可。
+`window.setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest')` でシーン切替（1.8sクロスフェード）。初回ユーザー操作で `day` を自動開始。`window.startMusic()` / `window.stopMusic()` で明示制御も可。
+
+> **情感の流れ（音楽②の設計意図）**: 序章『脱走』(`escape`／緊張)→ 探索(`explore_rocky`/`explore_forest`／穏やか・故郷)→ 敵接近で `setDangerLevel` の緊張レイヤーがせり上がる → 交戦(`combat`)→ ボス(`boss`)→ 女王(`queen`) と**情感豊かに切替**わり、要所で**ダッキング**がSEを立たせる。物語面では `onMaguroAppear/Vanish`・`onChapterClear`・`onEnding` の演出音と**恩人モチーフ**の再帰で締める。すべて防御的口＝1号機/3号機が呼ぶだけ・未配線でも無音で安全。
 
 | シーン | 雰囲気 | テンポ | 備考 |
 |---|---|---|---|
