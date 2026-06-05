@@ -1371,10 +1371,46 @@ function updateField(f, dt, baseSpeed, sway) {
   f.points.geometry.attributes.position.needsUpdate = true;
   f.points.position.set(player.pos.x, player.pos.y - 2, player.pos.z); // 箱をプレイヤー追従
 }
+// 🌸 桜吹雪のクローズアップ＝4号機の花びらメッシュ(fx_petal_sakura)を少数プールで舞わせる
+let _petalPool = null;
+function ensurePetalPool() {
+  if (_petalPool || !fxTemplates['fx_petal_sakura']) return;
+  _petalPool = [];
+  for (let i = 0; i < 14; i++) {
+    const o = fxTemplates['fx_petal_sakura'].scene.clone(true);
+    o.visible = false; o.scale.setScalar(0.5 + Math.random() * 0.5); scene.add(o);
+    _petalPool.push({ obj: o, vx: 0, vy: 0, spin: Math.random() * 6 });
+  }
+}
+function updatePetalMeshes(dt) {
+  if (weather !== 'petal') { if (_petalPool) for (const p of _petalPool) if (p.obj.visible) p.obj.visible = false; return; }
+  ensurePetalPool(); if (!_petalPool) return;
+  for (const p of _petalPool) {
+    if (!p.obj.visible) { // 上空から再投入
+      p.obj.visible = true;
+      p.obj.position.set(player.pos.x + (Math.random() * 16 - 8), player.pos.y + 6 + Math.random() * 4, player.pos.z + (Math.random() * 16 - 8));
+      p.vx = (Math.random() * 2 - 1) * 0.6; p.vy = -(0.8 + Math.random() * 0.6);
+    }
+    p.spin += dt * 2;
+    p.obj.position.x += p.vx * dt + Math.sin(p.spin) * 0.3 * dt;
+    p.obj.position.y += p.vy * dt;
+    p.obj.position.z += Math.cos(p.spin * 0.8) * 0.3 * dt;
+    p.obj.rotation.set(p.spin, p.spin * 0.7, p.spin * 0.5); // ひらひら回転
+    if (p.obj.position.y < player.pos.y - 3) p.obj.visible = false;
+  }
+}
+// 🌸 花びらバースト（繁殖/仲良し演出）：指定地点で数枚ぱっと舞い上がって散る
+function spawnPetalBurst(x, y, z, n) {
+  for (let i = 0; i < (n || 5); i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * 0.6;
+    spawnFx('fx_petal_sakura', x + Math.cos(a) * r, y + 0.3 + Math.random() * 0.5, z + Math.sin(a) * r, 1.4, 0.6 + Math.random() * 0.4);
+  }
+}
 function updateParticles(dt) {
   updateField(rainField, dt, 28, 0);     // 雨：速く落下
   updateField(snowField, dt, 3, 0.012);  // 雪：ゆっくり舞う
-  updateField(petalField, dt, 2.2, 0.03); // 🌸 桜吹雪：ふわっと横に流れて舞い落ちる
+  updateField(petalField, dt, 2.2, 0.03); // 🌸 桜吹雪：ふわっと横に流れて舞い落ちる（広域・軽量）
+  updatePetalMeshes(dt);                   // 🌸 近接の花びらメッシュ（4号機素材）
 }
 
 // ===== 雲（時間帯・天候の上に乗せる上層レイヤー）=====
@@ -3372,6 +3408,7 @@ function updatePet(m, dt, dx, dz, dist) {
         m.breedCd = o.breedCd = 90 + Math.random() * 30;                    // 親はしばらく繁殖休み
         if (!progress.bred) { progress.bred = true; scheduleSave(); }        // 📖 初繁殖の達成フラグ
         petEmote(m); petEmote(o); petEmote(baby);
+        spawnPetalBurst(baby.obj.position.x, baby.obj.position.y + 0.4, baby.obj.position.z, 6); // 🌸 誕生＝花びらが舞う仲良し演出
         if (window.playAnimalSFX) try { window.playAnimalSFX('pet', 'happy', { x: baby.obj.position.x, y: baby.obj.position.y, z: baby.obj.position.z }); } catch (e) {}
         if (typeof toast === 'function') toast(`🌸💕 あかちゃんチンチラが生まれた！（毛色：${CHIN_DISPLAY[childColor].name}）`);
       } else m.breedCd = 20;                                                // 生成失敗時は短い再試行
@@ -4592,7 +4629,7 @@ STRUCT_DEFS.forEach(k => gltfLoader.load(`models/struct_${k}.glb`,
     undefined, () => {}));
 // ⑥ ボス出現演出 fx（4号機・loopクリップ自走）：魔法陣/瘴気/崩壊。一時生成して数秒で消す。
 const fxTemplates = {}; // kind -> { scene, animations }
-['fx_magic_circle','fx_miasma','fx_collapse','fx_ally_star','fx_ally_heart','fx_ally_halo'].forEach(k => gltfLoader.load(`models/${k}.glb`,
+['fx_magic_circle','fx_miasma','fx_collapse','fx_ally_star','fx_ally_heart','fx_ally_halo','fx_petal_sakura'].forEach(k => gltfLoader.load(`models/${k}.glb`,
   g => { fxTemplates[k] = { scene: g.scene, animations: g.animations || [] }; }, undefined, () => {}));
 const fxList = []; // { obj, mixer, life }
 function spawnFx(kind, x, y, z, life, scale) {
