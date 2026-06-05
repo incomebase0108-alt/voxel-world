@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 153,
-    "size_bytes": 25885908,
-    "size_mb": 24.687
+    "count": 162,
+    "size_bytes": 28864848,
+    "size_mb": 27.528
   },
   "assets": [
     {
@@ -52,6 +52,114 @@
       "meshes": 5,
       "nodes": 5,
       "materials": 11,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla.glb",
+      "name": "player_chinchilla",
+      "category": "プレイヤー",
+      "size_bytes": 331044,
+      "size_mb": 0.3157,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_beige.glb",
+      "name": "player_chinchilla_beige",
+      "category": "プレイヤー",
+      "size_bytes": 331044,
+      "size_mb": 0.3157,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_brown.glb",
+      "name": "player_chinchilla_brown",
+      "category": "プレイヤー",
+      "size_bytes": 331020,
+      "size_mb": 0.3157,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_ebony.glb",
+      "name": "player_chinchilla_ebony",
+      "category": "プレイヤー",
+      "size_bytes": 330948,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_grey.glb",
+      "name": "player_chinchilla_grey",
+      "category": "プレイヤー",
+      "size_bytes": 330960,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_pink.glb",
+      "name": "player_chinchilla_pink",
+      "category": "プレイヤー",
+      "size_bytes": 331036,
+      "size_mb": 0.3157,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_sapphire.glb",
+      "name": "player_chinchilla_sapphire",
+      "category": "プレイヤー",
+      "size_bytes": 330964,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_violet.glb",
+      "name": "player_chinchilla_violet",
+      "category": "プレイヤー",
+      "size_bytes": 330948,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
+      "error": null
+    },
+    {
+      "file": "player_chinchilla_white.glb",
+      "name": "player_chinchilla_white",
+      "category": "プレイヤー",
+      "size_bytes": 330976,
+      "size_mb": 0.3156,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 40,
       "error": null
     },
     {

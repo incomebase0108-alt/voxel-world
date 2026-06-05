@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 153 ファイル / 24.69 MB
+**合計**: 162 ファイル / 27.53 MB
 
 
 ## プレイヤー
@@ -16,6 +16,15 @@
 |---|---|---|---|
 | `player.glb` | 1.0230 | `idle`, `walk`, `attack`, `swim` | 5/5 |
 | `player_azure.glb` | 1.0224 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_chinchilla.glb` | 0.3157 | —（静物） | 1/1 |
+| `player_chinchilla_beige.glb` | 0.3157 | —（静物） | 1/1 |
+| `player_chinchilla_brown.glb` | 0.3157 | —（静物） | 1/1 |
+| `player_chinchilla_ebony.glb` | 0.3156 | —（静物） | 1/1 |
+| `player_chinchilla_grey.glb` | 0.3156 | —（静物） | 1/1 |
+| `player_chinchilla_pink.glb` | 0.3157 | —（静物） | 1/1 |
+| `player_chinchilla_sapphire.glb` | 0.3156 | —（静物） | 1/1 |
+| `player_chinchilla_violet.glb` | 0.3156 | —（静物） | 1/1 |
+| `player_chinchilla_white.glb` | 0.3156 | —（静物） | 1/1 |
 | `player_crimson.glb` | 1.0224 | `idle`, `walk`, `attack`, `swim` | 5/5 |
 | `player_emerald.glb` | 1.0226 | `idle`, `walk`, `attack`, `swim` | 5/5 |
 | `player_gold.glb` | 1.0224 | `idle`, `walk`, `attack`, `swim` | 5/5 |
