@@ -3170,15 +3170,88 @@ function updatePet(m, dt, dx, dz, dist) {
 // 起動時に一度だけ「さくら」を連れてくる（セーブに居れば復元が優先）
 let petIntroDone = false;
 function maybeIntroducePet() {
-  if (petIntroDone || !mobsRestored || !mobTemplates['chinchilla']) return;
+  // ★物語版：さくら＝主人公。よって「ペットのさくら」は自動召喚しない（二人になるため）。
+  //   仲間チンチラの「なつかせ(P＋餌)」システムはそのまま使える（野生チンチラ→仲間）。
+  if (petIntroDone || !mobsRestored) return;
   petIntroDone = true;
-  if (pets.length > 0) return;                       // セーブから復元済みなら出さない
-  const a = player.yaw + Math.PI, sx = player.pos.x + Math.sin(a) * 2.2, sz = player.pos.z + Math.cos(a) * 2.2;
-  const m = spawnMob('chinchilla', sx, sz, { hp: 30 });
-  if (m) {
-    initPet(m, { petName: 'さくら', traits: ['playful', 'wary'], mood: 72, petHunger: 10 });
-    if ((itemCounts.himawari || 0) < 12) itemCounts.himawari = 12; // 大好物のひまわりを少し持たせて始める
-    if (typeof toast === 'function') toast('🐾 チンチラ「さくら」がついてきた！ 🌻ひまわりを持ってP＝寄ってきて手で食べる（やんちゃ/警戒心）');
+  if ((itemCounts.himawari || 0) < 12) itemCounts.himawari = 12; // 大好物のひまわりを少し持たせて始める
+}
+// ===================================================================
+// 🏠 「さくらの家」ステージ（提供間取り＝蒲郡邸宅の近似トレース・2階建て）
+//   2階の子供部屋のケージからスタート → ホールの階段で1階 → 玄関から脱走（序章）
+//   ※1ブロック≒1m。スポーン地点を中心に建築（既に建っていれば再建築しない）。
+// ===================================================================
+const HOUSE = { ox:0, oy:0, oz:0, W:28, D1:20, D2:15, exit:null, start:null };
+let houseChecked = false, houseIntroActive = false;
+function hSet(x, y, z, b) { setBlock(HOUSE.ox + x, HOUSE.oy + y, HOUSE.oz + z, b); }
+function hFloor(x0, z0, x1, z1, y, b) { for (let x=x0;x<=x1;x++) for (let z=z0;z<=z1;z++) hSet(x,y,z,b); }
+function hClear(x0, z0, x1, z1, y0, y1) { for (let y=y0;y<=y1;y++) for (let x=x0;x<=x1;x++) for (let z=z0;z<=z1;z++) hSet(x,y,z,B.air); }
+function hRing(x0, z0, x1, z1, yb, yt, b) { for (let y=yb;y<=yt;y++){ for (let x=x0;x<=x1;x++){ hSet(x,y,z0,b); hSet(x,y,z1,b);} for (let z=z0;z<=z1;z++){ hSet(x0,y,z,b); hSet(x1,y,z,b);} } }
+function hWallV(x, z0, z1, yb, yt, b) { for (let y=yb;y<=yt;y++) for (let z=z0;z<=z1;z++) hSet(x,y,z,b); }
+function hWallH(z, x0, x1, yb, yt, b) { for (let y=yb;y<=yt;y++) for (let x=x0;x<=x1;x++) hSet(x,y,z,b); }
+function hDoor(x, z, yb, yt) { for (let y=yb;y<=yt;y++) hSet(x,y,z,B.air); }
+function buildMansion() {
+  const W=HOUSE.W, D1=HOUSE.D1, D2=HOUSE.D2, P=B.planks, G=B.stonebrick, Gl=B.glass, L=B.log;
+  // 1F：床・内部クリア・外壁・天井(=2F床/平屋部の屋根)
+  hFloor(0,0,W,D1, 0, P);
+  hClear(1,1,W-1,D1-1, 1, 3);
+  hRing(0,0,W,D1, 1, 3, P);
+  hFloor(0,0,W,D2, 4, P);                  // 2F床/1F天井（2Fは浅いD2まで）
+  hFloor(0,D2+1,W,D1, 4, P);               // ガレージ等の平屋部＝天井(屋根)
+  // 2F：内部クリア・外壁・屋根
+  hClear(1,1,W-1,D2-1, 5, 7);
+  hRing(0,0,W,D2, 5, 7, P);
+  hFloor(0,0,W,D2, 8, P);                   // 屋根
+  // 1F 間仕切り（ドア＝gap）
+  hWallV(18, 1, D1-1, 1, 3, P); hDoor(18,3,1,3); hDoor(18,4,1,3);  // ガレージ仕切り＋出入口
+  hFloor(19,1,W-1,D1-1, 0, G);                                     // ガレージ床=石レンガ
+  hWallV(11, 1, 11, 1, 3, P); hDoor(11,6,1,3);                     // LDK ↔ ホール
+  hWallH(10, 1, 10, 1, 3, P); hDoor(5,10,1,3);                     // LDK上 ↔ キッチン下
+  hDoor(14,D1,1,3); hDoor(15,D1,1,3);                              // 玄関＝脱走出口（南壁）
+  HOUSE.exit = { x:HOUSE.ox+14.5, z:HOUSE.oz+D1+1.5 };
+  hSet(0,2,4,Gl); hSet(0,2,7,Gl); hSet(4,2,0,Gl); hSet(8,2,0,Gl);  // 1F窓
+  // 2F 間仕切り
+  hWallV(7, 1, D2-1, 5, 7, P); hDoor(7,3,5,7); hDoor(7,11,5,7);    // 子供部屋A/B ↔ ホール
+  hWallH(7, 1, 6, 5, 7, P);                                        // 子供A/B 仕切り
+  hWallV(17, 1, D2-1, 5, 7, P); hDoor(17,5,5,7);                   // ホール ↔ 主寝室
+  hSet(3,6,0,Gl); hSet(12,6,0,Gl); hSet(21,6,0,Gl);               // 2F窓
+  // 階段（1Fホール→2Fホール。x=13・z=14→11 で上る）
+  const sx=13;
+  for (let i=0;i<4;i++){ const z=14-i; for (let y=1;y<=1+i;y++) hSet(sx,y,z,P); hClear(sx,z,sx,z, 2+i, 7); hSet(sx,4,z,B.air); }
+  hSet(sx,4,10,P);                                                 // 上り口の2F床（踏み場）
+  // さくらのケージ（2F 子供部屋A）＝スタート
+  hSet(3,5,3, B.chest);
+  for (const c of [[2,2],[4,2],[2,4],[4,4]]) { hSet(c[0],5,c[1],L); hSet(c[0],6,c[1],L); }
+  // 家具（最低限）
+  hSet(20,5,3,B.leaves); hSet(21,5,3,B.leaves);                    // 主寝室ベッド
+  hSet(8,1,9,G); hSet(9,1,9,G);                                    // 1Fキッチン台
+  hSet(23,1,5,G); hSet(24,1,5,G);                                  // ガレージの車(箱)
+  HOUSE.start = { x:HOUSE.ox+3.5, y:HOUSE.oy+5, z:HOUSE.oz+4.5, yaw:-Math.PI/2 };
+}
+function maybeBuildHouse() {
+  if (houseChecked || !mobsRestored) return;
+  houseChecked = true;
+  const s = findSpawn();
+  HOUSE.ox = Math.floor(s.x) - 14; HOUSE.oz = Math.floor(s.z) - 10; HOUSE.oy = heightAt(Math.floor(s.x), Math.floor(s.z));
+  if (getBlock(HOUSE.ox, HOUSE.oy + 1, HOUSE.oz) === B.planks) return; // 既に建っている＝再建築しない
+  buildMansion();
+  // 序章：2階・子供部屋のケージからスタート
+  player.pos.set(HOUSE.start.x, HOUSE.start.y, HOUSE.start.z); player.vel.set(0, 0, 0); player.yaw = HOUSE.start.yaw;
+  spawnPoint = { x: HOUSE.exit.x, y: HOUSE.oy + 2, z: HOUSE.exit.z };
+  houseIntroActive = true;
+  if (typeof toast === 'function') {
+    toast('🏠 ここはあなたの家。2階・子供部屋のケージから——さくらの脱走が始まる');
+    setTimeout(() => toast('🪜 ホールの階段で1階へ（Space＝ジャンプ／空中でもう一度＝二段ジャンプ）'), 4000);
+    setTimeout(() => toast('🚪 1階の玄関から外へ！＝脱走'), 8000);
+  }
+}
+function checkHouseEscape() {
+  if (!houseIntroActive) return;
+  const px = player.pos.x, pz = player.pos.z;
+  if ((px < HOUSE.ox - 1 || px > HOUSE.ox + HOUSE.W + 1 || pz < HOUSE.oz - 1 || pz > HOUSE.oz + HOUSE.D1 + 1) && player.onGround) {
+    houseIntroActive = false;
+    if (typeof toast === 'function') toast('🐭✨ 脱走成功！もう飼われない——自由だ！（チンチラ革命のはじまり）');
+    gainExp(10);
   }
 }
 // 海ボス クラーケンAI：海面に半身を出して定位置に留まり、船(プレイヤー)が近いと触手で攻撃。陸へ上がらない。
@@ -3521,6 +3594,8 @@ function updateMobs(dt) {
     if (Object.keys(mobTemplates).length) restorePendingMobs();
     return;
   }
+  maybeBuildHouse();   // 🏠 序章：さくらの家を建てて2階子供部屋からスタート（初回のみ）
+  checkHouseEscape();  // 🚪 玄関から外へ出たら「脱走成功」
   maybeIntroducePet(); // 🐾 起動後に一度だけペット「さくら」を連れてくる（復元優先・早期return多めで軽量）
   spawnLogic(dt);     // ④ 昼夜・地下を考慮した湧き
   updateSpawners(dt); // ② ダンジョンのスポナー稼働
