@@ -136,6 +136,10 @@ const counts = {};          // ブロック種別ごとの所持数（破壊で�
 HOTBAR.forEach(b => counts[b] = 0);
 const itemCounts = { meat:0, egg:0, coin:0, apple:0, coal:0, iron:0, gold:0, himawari:0 }; // ドロップ品・採掘素材の所持数（himawari=ペットの大好物。早期宣言＝ロード時に参照）
 const bossKills = {}; // ⑥ ボス種別ごとの討伐数（達成感の記録。セーブ・H診断に反映）
+// 📖 物語の進行状態（章/フラグ）。セーブに含めて復元。3号機へは getQuestState() で渡す。
+//   chapter: prologue(序章・脱走前) → escape(脱走演出中) → world(自由探索) → boss(女王さくら出現中) → cleared(撃破)
+function defaultProgress() { return { version: 1, chapter: 'prologue', escaped: false, queenSeen: false, queenDefeated: false }; }
+let progress = defaultProgress();
 
 // ===================================================================
 // ⑤ (D)バランスの数値基盤：ゲームの体感を決める数値を1か所に集約
@@ -960,6 +964,7 @@ function serializeWorld() {
     equippedSkills: [...equippedSkills],                              // 装備中の必殺技（②）
     counts, itemCounts,                                               // インベントリ
     bossKills: { ...bossKills }, sakuraCape: hasSakuraCape,           // ⑥ ボス討伐数／さくらの毛皮マント所持
+    progress: { ...progress },                                        // 📖 物語の進行（章/脱走/ボス撃破フラグ）
     playerModel: currentPlayerFile,                                   // 選択アバター
     equip: { weapon: currentWeapon, owned: [...ownedWeapons], armor: { ...equip.armor }, shield: equip.shield, ownedShield }, // 装備
     time: { dayTime, weather, autoWeather, weatherTimer },            // 時刻・天候
@@ -1038,6 +1043,12 @@ function loadWorld(slot = currentSlot) {
     if (obj.itemCounts) for (const k in obj.itemCounts) if (itemCounts[k] !== undefined && Number.isFinite(obj.itemCounts[k])) itemCounts[k] = Math.max(0, obj.itemCounts[k]|0);
     if (obj.bossKills && typeof obj.bossKills === 'object') for (const k in obj.bossKills) if (Number.isFinite(obj.bossKills[k])) bossKills[k] = Math.max(0, obj.bossKills[k]|0); // ⑥ 討伐数復元
     if (obj.sakuraCape) hasSakuraCape = true; // さくらの毛皮マント復元
+    if (obj.progress && typeof obj.progress === 'object') { // 📖 進行フラグ復元（壊れ値は既定で補完）
+      const p = defaultProgress();
+      if (typeof obj.progress.chapter === 'string') p.chapter = obj.progress.chapter;
+      p.escaped = !!obj.progress.escaped; p.queenSeen = !!obj.progress.queenSeen; p.queenDefeated = !!obj.progress.queenDefeated;
+      progress = p;
+    }
     if (typeof obj.playerModel === 'string') currentPlayerFile = obj.playerModel;
     if (obj.equip && typeof obj.equip === 'object') { // 装備の復元（防御的に）
       if (Array.isArray(obj.equip.owned)) for (const w of obj.equip.owned) if (WEAPONS[w]) ownedWeapons.add(w);
