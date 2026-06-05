@@ -132,6 +132,40 @@ NPCが仲間になる新機能向け。口は防御的（未呼出なら無音�
 
 ---
 
+## チンチラ世界の動物SE（敵8種＋仲間＋ペット）
+チンチラ世界の生き物向けプロシージャル合成音。口は防御的（**呼ぶだけ・未配線でも無音で安全**）。1号機は次のどちらでも鳴らせます。
+
+- **推奨**: `window.playAnimalSFX(species, event, opts?)` … 種×イベントを自動でSEへ写像。
+- **個別**: `window.playSFX('wolf_howl', opts?)` … 下表の `key` を直接指定。
+- `opts.x/y/z` を渡せば**3D定位＋距離減衰**（③のPannerNode経由・座標が無ければ通常再生）。`opts.vol` で個体ごとの強弱（既定1）。
+
+### 動物SE一覧
+
+| key | 用途 | 種(species) | 主な event | 1号機の呼び出し例 | 配線状況 |
+|---|---|---|---|---|---|
+| `wolf_howl` | 遠吠え（立ち上がり→長い下降） | `wolf` | spot / die / skill | `playAnimalSFX('wolf', 'spot', {x,y,z})` | 1号機へ依頼中 |
+| `wolf_growl` | うなり（低い鋸波のビート） | `wolf` | attack / hurt | `playAnimalSFX('wolf', 'attack', {x,y,z})` | 1号機へ依頼中 |
+| `snake_hiss` | シューッ（高域ノイズ持続） | `snake` | spot / attack | `playAnimalSFX('snake', 'spot', {x,y,z})` | 1号機へ依頼中 |
+| `weasel_screech` | 甲高い威嚇（鋭い金切り） | `weasel` | spot / attack | `playAnimalSFX('weasel', 'attack', {x,y,z})` | 1号機へ依頼中 |
+| `bird_screech` | 猛禽の鳴き（高域から下降を2発） | `bird` | spot / hurt / die | `playAnimalSFX('bird', 'spot', {x,y,z})` | 1号機へ依頼中 |
+| `bird_wingflap` | 羽ばたき（低い風切りを3拍） | `bird` | attack / skill | `playAnimalSFX('bird', 'attack', {x,y,z})` | 1号機へ依頼中 |
+| `squirrel_chitter` | チチッ（高い連打） | `squirrel` | spot / tamed | `playAnimalSFX('squirrel', 'spot', {x,y,z})` | 1号機へ依頼中 |
+| `rabbit_thump` | 後足スタンピング（低い打撃2発） | `rabbit` | spot / skill | `playAnimalSFX('rabbit', 'skill', {x,y,z})` | 1号機へ依頼中 |
+| `guineapig_wheek` | ウィーク鳴き（上昇→下降） | `guineapig` | spot / tamed | `playAnimalSFX('guineapig', 'spot', {x,y,z})` | 1号機へ依頼中 |
+| `hedgehog_huff` | 丸まりフスフス（鼻息を3拍） | `hedgehog` | spot / skill / hurt | `playAnimalSFX('hedgehog', 'skill', {x,y,z})` | 1号機へ依頼中 |
+| `pet_squeak` | さくらの鳴き（かわいい高い短音） | `pet`（=`sakura`） | spot / hurt | `playAnimalSFX('sakura', 'spot')` | 1号機へ依頼中 |
+| `pet_bite` | さくらの噛みつき（鋭いスナップ） | `pet` | attack | `playAnimalSFX('sakura', 'attack')` | 1号機へ依頼中 |
+| `pet_happy` | さくらのごきげん（きらきらチャープ） | `pet` | happy / tamed | `playAnimalSFX('sakura', 'happy')` | 1号機へ依頼中 |
+| `pet_pee` | さくらの威嚇オシッコ（噴射＋キュッ） | `pet` | skill | `playAnimalSFX('sakura', 'skill')` | 1号機へ依頼中 |
+
+- **species**: `wolf / snake / weasel / bird / squirrel / rabbit / guineapig / hedgehog / pet`。別名: `sakura`・`さくら`→`pet`、`raptor/hawk/eagle/owl`→`bird`、`cavy`→`guineapig`。
+- **event**: `spot`（発見）/ `attack` / `hurt`（被ダメ）/ `die` / `skill` / `tamed`（テイム成功）/ `happy`。**未知の event は各種の代表音（default）に自動フォールバック**するので、配線側は気軽に呼べます。未知の species は黙って無音（事故ゼロ）。
+- 旧来の `on*` スタイルを好む場合の別名 `window.onAnimalSound(species, event, opts)` も用意（任意）。
+
+> **1号機へ依頼**: sound.js 側は受け口を実装済み・**呼ぶだけで動作**します（index.html は未変更）。動物の発見/攻撃/被ダメ/撃破/スキル/テイム時に `playAnimalSFX(species, event, {x,y,z})` を1回呼んでください。座標を渡せば自動で3D定位します。ペット（さくら）は近接なので座標省略でもOK。event名・種名の希望があれば #opゲーム で調整します。
+
+---
+
 ## 音量・バランス調整（④）
 全体音量・個別SE倍率はいつでも変更でき、`localStorage`（`vw_sound_v1`）に永続化されます。変更時に `window` へ `soundsettingschange` イベントを発火。
 
@@ -153,7 +187,7 @@ window.setSfxGain('thunder', 1.5);    // 雷を強調
 window.getSfxGain('footstep');        // 現在の倍率
 window.SoundSettings.getGains();       // 全倍率の一覧
 ```
-対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat / companion_join / companion_reply / companion_hit / companion_leave`）。
+対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat / companion_join / companion_reply / companion_hit / companion_leave`、動物SE `wolf_howl / wolf_growl / snake_hiss / weasel_screech / bird_screech / bird_wingflap / squirrel_chitter / rabbit_thump / guineapig_wheek / hedgehog_huff / pet_squeak / pet_bite / pet_happy / pet_pee`）。
 
 > 体感後に「この音だけ大きい/小さい」が出たら、上記 `setSfxGain` で1行調整 → そのまま保存されます。
 

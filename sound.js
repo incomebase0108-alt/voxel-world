@@ -18,6 +18,10 @@
     splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
     whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1,
     companion_join: 1, companion_reply: 1, companion_hit: 1, companion_leave: 1, // 仲間システム
+    // チンチラ世界の動物SE（敵/仲間/ペット）。個別倍率で「狼うるさい」等に即対応。
+    wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, // 敵
+    squirrel_chitter: 1, rabbit_thump: 1, guineapig_wheek: 1, hedgehog_huff: 1,                       // 仲間
+    pet_squeak: 1, pet_bite: 1, pet_happy: 1, pet_pee: 1,                                              // ペット(さくら)
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
 
@@ -59,10 +63,10 @@
     o.connect(g).connect(dest || sfxBus);
     o.start(t); o.stop(t + dur + 0.02);
   }
-  // ノイズ（破裂音・雷・打撃・足音用）
-  function noise(dur, gain, filterFreq, type, dest) {
+  // ノイズ（破裂音・雷・打撃・足音用）。at=発音オフセット秒（連打/羽ばたき等のリズム用・省略時0）
+  function noise(dur, gain, filterFreq, type, dest, at) {
     const c = ac(); if (!c) return;
-    const t = c.currentTime, n = Math.floor(c.sampleRate * dur);
+    const t = c.currentTime + (at || 0), n = Math.floor(c.sampleRate * dur);
     const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
     for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
     const src = c.createBufferSource(); src.buffer = buf;
@@ -71,6 +75,8 @@
     src.connect(f).connect(g).connect(dest || sfxBus);
     src.start(t); src.stop(t + dur);
   }
+  // 動物SEの 3D 定位先（opts.dest にパンナーが入っていれば 3D 経由・無ければ sfxBus）。distance減衰は makePanner 側の inverse モデル。
+  const aDest = (o) => (o && o.dest) || null;
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
   // ── 素材別パラメータ（足音・破壊・設置で材質感を出す）─────────────
@@ -223,6 +229,55 @@
       tone(196.00, 0.50, 'sine', 0.07, 130.81, null, 0.24);                       // 低音が沈む(G3→C3)
       noise(0.18, 0.06, 300, 'lowpass');                                          // 崩れ落ちる土の音
     },
+
+    // === チンチラ世界の動物SE（敵8種＋仲間＋ペット）===========================
+    //   各音は opts.dest にパンナーがあれば 3D 定位（playAnimalSFX が座標から自動付与）。
+    //   opts.vol で個体ごとの強弱（省略=1）。1号機は playAnimalSFX(種, イベント) か playSFX(キー) で鳴らすだけ。
+    // ── 敵 ──
+    wolf_howl(o)      { const d = aDest(o), v = (o && o.vol) || 1;                 // 遠吠え：低く立ち上がり→山から長く下降（A3→A#4→G4）
+                        tone(247, 0.55, 'sawtooth', 0.09 * v, 466, d);
+                        tone(466, 0.95, 'sawtooth', 0.10 * v, 392, d, 0.5);
+                        tone(470, 0.95, 'sine',     0.05 * v, 396, d, 0.5);        // デチューンで厚み（うなり感）
+                        noise(0.40, 0.02 * v, 1200, 'bandpass', d, 0.1); },        // 息のざらつき
+    wolf_growl(o)     { const d = aDest(o), v = (o && o.vol) || 1;                 // うなり：低い鋸波のビート＋胴のゴロゴロ
+                        tone(90, 0.50, 'sawtooth', 0.12 * v, 70, d);
+                        tone(95, 0.50, 'sawtooth', 0.10 * v, 74, d);               // 微妙にずらしてうなりのビート
+                        noise(0.45, 0.05 * v, 320, 'lowpass', d); },
+    snake_hiss(o)     { const d = aDest(o), v = (o && o.vol) || 1;                 // シューッ：高域ノイズの持続
+                        noise(0.55, 0.10 * v, 6500, 'highpass', d);
+                        noise(0.50, 0.05 * v, 4000, 'bandpass', d, 0.05); },
+    weasel_screech(o) { const d = aDest(o), v = (o && o.vol) || 1;                 // 甲高い威嚇：鋭い金切り＋ざらつき
+                        tone(1400, 0.18, 'square',   0.07 * v, 2100, d);
+                        tone(1900, 0.14, 'sawtooth', 0.05 * v, 1200, d, 0.08);
+                        noise(0.12, 0.04 * v, 3000, 'highpass', d); },
+    bird_screech(o)   { const d = aDest(o), v = (o && o.vol) || 1;                 // 猛禽の鳴き：高域から下降する叫びを2発
+                        tone(2200, 0.16, 'sawtooth', 0.06 * v, 1500, d);
+                        tone(2000, 0.20, 'sawtooth', 0.06 * v, 1300, d, 0.18);
+                        noise(0.10, 0.02 * v, 4000, 'highpass', d); },
+    bird_wingflap(o)  { const d = aDest(o), v = (o && o.vol) || 1;                 // 羽ばたき：低い風切りノイズを3拍
+                        for (let i = 0; i < 3; i++) { noise(0.10, 0.07 * v, 700, 'lowpass', d, i * 0.16); tone(120, 0.08, 'sine', 0.03 * v, 80, d, i * 0.16); } },
+    // ── 仲間 ──
+    squirrel_chitter(o){ const d = aDest(o), v = (o && o.vol) || 1;                // チチッ：高い square を素早く連打
+                        for (let i = 0; i < 4; i++) tone(2000 + Math.random() * 400, 0.04, 'square', 0.05 * v, 2600, d, i * 0.06); },
+    rabbit_thump(o)   { const d = aDest(o), v = (o && o.vol) || 1;                 // 後足スタンピング：低い打撃を2発
+                        for (let i = 0; i < 2; i++) { tone(90, 0.10, 'sine', 0.16 * v, 55, d, i * 0.18); noise(0.06, 0.06 * v, 200, 'lowpass', d, i * 0.18); } },
+    guineapig_wheek(o){ const d = aDest(o), v = (o && o.vol) || 1;                 // ウィーク鳴き：上昇→下降の口笛様
+                        tone(700, 0.18, 'sawtooth', 0.08 * v, 1500, d);
+                        tone(1500, 0.22, 'sawtooth', 0.09 * v, 900, d, 0.16); },
+    hedgehog_huff(o)  { const d = aDest(o), v = (o && o.vol) || 1;                 // 丸まりフスフス：短い鼻息ノイズを3拍
+                        for (let i = 0; i < 3; i++) noise(0.07, 0.05 * v, 1800, 'bandpass', d, i * 0.12); },
+    // ── ペット（さくら）──
+    pet_squeak(o)     { const d = aDest(o), v = (o && o.vol) || 1;                 // 鳴き：かわいい高い短音
+                        tone(900, 0.10, 'sine', 0.10 * v, 1500, d);
+                        tone(1500, 0.08, 'sine', 0.07 * v, 1100, d, 0.08); },
+    pet_bite(o)       { const d = aDest(o), v = (o && o.vol) || 1;                 // 噛みつき：鋭いスナップ＋低いカチッ
+                        noise(0.04, 0.10 * v, 2500, 'highpass', d);
+                        tone(180, 0.05, 'square', 0.08 * v, 90, d); },
+    pet_happy(o)      { const d = aDest(o), v = (o && o.vol) || 1;                 // ごきげん：上昇するきらきらチャープ3音
+                        [880, 1100, 1320].forEach((f, i) => tone(f, 0.10, 'sine', 0.08 * v, f * 1.2, d, i * 0.08)); },
+    pet_pee(o)        { const d = aDest(o), v = (o && o.vol) || 1;                 // 威嚇オシッコ：噴射のシャーッ＋威嚇のキュッ
+                        noise(0.35, 0.05 * v, 3500, 'highpass', d);
+                        tone(1300, 0.10, 'square', 0.05 * v, 1900, d); },
   };
 
   // 公開API：playSFX(name, opts) ── opts は省略可（後方互換）
@@ -278,6 +333,44 @@
   window.onCompanionReply = (type) => window.playSFX('companion_reply', { type });
   window.onCompanionHit   = (type) => window.playSFX('companion_hit',   { type });
   window.onCompanionLeave = (type) => window.playSFX('companion_leave', { type });
+
+  // === チンチラ世界の動物SE 公開口（防御的: 1号機が呼ぶだけ・未配線でも無音で安全）=====
+  //   window.playAnimalSFX(species, event, opts) … species×event を SEキーへ写像して鳴らす（推奨API）。
+  //     ・event: 'spot'|'attack'|'hurt'|'die'|'skill'|'tamed'|'happy' 等。未知eventは各種の default 音。
+  //     ・opts.x/y/z があれば 3D 定位（距離減衰つき）。opts.vol で強弱（省略=1）。
+  //     ・未知 species は黙って無音（事故ゼロ）。個別に鳴らしたい時は従来どおり playSFX('wolf_howl') でも可。
+  const ANIMAL_ALIAS = { sakura: 'pet', 'さくら': 'pet', raptor: 'bird', hawk: 'bird', eagle: 'bird', owl: 'bird', cavy: 'guineapig' };
+  const ANIMAL_SFX = {
+    // 敵
+    wolf:      { spot: 'wolf_howl',      attack: 'wolf_growl',    hurt: 'wolf_growl',     die: 'wolf_howl',      skill: 'wolf_howl',      default: 'wolf_growl' },
+    snake:     { spot: 'snake_hiss',     attack: 'snake_hiss',    hurt: 'snake_hiss',     skill: 'snake_hiss',                            default: 'snake_hiss' },
+    weasel:    { spot: 'weasel_screech', attack: 'weasel_screech',hurt: 'weasel_screech', skill: 'weasel_screech',                        default: 'weasel_screech' },
+    bird:      { spot: 'bird_screech',   attack: 'bird_wingflap', hurt: 'bird_screech',   die: 'bird_screech',   skill: 'bird_wingflap',  default: 'bird_screech' },
+    // 仲間
+    squirrel:  { spot: 'squirrel_chitter', tamed: 'squirrel_chitter', happy: 'squirrel_chitter',                 default: 'squirrel_chitter' },
+    rabbit:    { spot: 'rabbit_thump',     skill: 'rabbit_thump',     tamed: 'rabbit_thump',                     default: 'rabbit_thump' },
+    guineapig: { spot: 'guineapig_wheek',  tamed: 'guineapig_wheek',  happy: 'guineapig_wheek',                  default: 'guineapig_wheek' },
+    hedgehog:  { spot: 'hedgehog_huff',    skill: 'hedgehog_huff',    hurt: 'hedgehog_huff',                     default: 'hedgehog_huff' },
+    // ペット（さくら）
+    pet:       { spot: 'pet_squeak', attack: 'pet_bite', skill: 'pet_pee', happy: 'pet_happy', tamed: 'pet_happy', hurt: 'pet_squeak', die: 'pet_squeak', default: 'pet_squeak' },
+  };
+  // SEキーを 3D 定位つきで再生（座標があればパンナー経由・無ければ sfxBus）。makePanner は ③ 空間音響で定義（hoist 済）。
+  function playAnimalKey(key, o) {
+    let p = null;
+    if (o && o.x != null && typeof makePanner === 'function') p = makePanner(o.x, o.y, o.z); // 失敗時 null → 非空間で鳴る
+    window.playSFX(key, Object.assign({}, o, { dest: p }));
+    if (p) setTimeout(() => { try { p.disconnect(); } catch (e) {} }, 2000); // 余韻ぶん残して片付け
+  }
+  window.playAnimalSFX = (species, event, opts) => {
+    try {
+      const sp = ANIMAL_ALIAS[species] || species;
+      const tbl = ANIMAL_SFX[sp]; if (!tbl) return;             // 未知種は黙って無音
+      const key = tbl[event] || tbl.default; if (!key) return;
+      playAnimalKey(key, opts);
+    } catch (e) { /* 防御 */ }
+  };
+  // 旧来の onXxx スタイルを好む配線向けの別名（任意・未使用でも安全）
+  window.onAnimalSound = (species, event, opts) => window.playAnimalSFX(species, event, opts);
 
   // === ② BGMシステム（合成音・bgmBus経由・状況でレイヤー切替＋クロスフェード）===
   //   ・コアは window.setMusicScene('day'|'night'|'combat'|'water') を呼ぶだけ
