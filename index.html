@@ -2798,6 +2798,7 @@ function initPet(m, opts = {}) {
   m.petMarkH = m.def.type === 'horse' ? 2.3 : m.def.type === 'chinchilla' ? 0.95 : 1.35;
   m.patCd = 0; m.emoteCd = 1.5 + Math.random() * 2; m.habitCd = 3 + Math.random() * 4;
   m.hopT = Math.random() * 6; m.sitT = 0; m.zoomT = 0; m.sulkT = 0; m.gy = null; m.zoomDir = 1;
+  m.biteT = 0; m.fumeT = 0; m.standT = 0; m.angerCd = 3 + Math.random() * 3; // 怒り行動（噛みつき/立ちオシッコ/プンプン）
   if (pets.indexOf(m) < 0) pets.push(m);
   attachPetMarker(m);
 }
@@ -2844,12 +2845,38 @@ function feedPet(m, food) {
   petBandToast(m); scheduleSave();
 }
 function patPet(m) {
+  if (m.mood < 18) { // 機嫌が最悪だと、なでようとしても噛みつく（つんでれ）
+    const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z, dist = Math.hypot(dx, dz) || 1;
+    petBite(m, dx, dz, dist); m.mood = clampPet(m.mood - 2, 0, 100); scheduleSave(); return;
+  }
   const base = petHas(m, 'clingy') ? 10 : petHas(m, 'aloof') ? 4 : 7;
   m.mood = clampPet(m.mood + (m.patCd > 0 ? Math.ceil(base * 0.3) : base), 0, 100);
   m.patCd = 0.6;
   petEmote(m); window.playSFX && window.playSFX('pickup');
   toast(`🐾「${m.petName}」をなでた（${petMoodLabel(m)}・空腹${Math.round(m.petHunger)}%）`);
   petBandToast(m); scheduleSave();
+}
+// 怒り行動（機嫌が悪いチンチラの十八番）。タイマーを立てて updatePet 側で見た目を動かす
+function petBite(m, dx, dz, dist) {           // 噛みつく：前へ素早く突進
+  m.biteT = 0.5;
+  m.obj.rotation.y = Math.atan2(-dx, -dz);
+  camShake = Math.max(camShake, 0.16);
+  window.playSFX && window.playSFX('hit');
+  if (typeof toast === 'function') toast(`💢「${m.petName}」が噛みついた！`);
+}
+function petPee(m, dx, dz, dist) {            // 立っておしっこを飛ばす（ボスの女王さくらと同じ威嚇）
+  m.standT = 1.1;                              // 立ち上がる演出
+  m.obj.rotation.y = Math.atan2(-dx, -dz);     // 相手の方を向く
+  const fx = m.obj.position.x + dx / dist * 0.6, fz = m.obj.position.z + dz / dist * 0.6;
+  if (typeof spawnSplash === 'function') spawnSplash(fx, m.obj.position.y + 0.6, fz, 14);
+  if (dist < 2.6) playerSlow = Math.max(playerSlow, 1.2); // 近いとオシッコ被弾でちょいスリップ（コミカル）
+  window.playSFX && window.playSFX('hit');
+  if (typeof toast === 'function') toast(`💦「${m.petName}」が立っておしっこを飛ばした！（おこ）`);
+}
+function petFume(m) {                          // プンプン：その場で小刻みに震えて怒る
+  m.fumeT = 1.1;
+  window.playSFX && window.playSFX('pickup');
+  if (typeof toast === 'function') toast(`💢「${m.petName}」はプンプン怒っている…`);
 }
 // ペットAI：機嫌(mood)と癖(traits)で 追従距離・速さ・仕草・弾み が変わる
 function updatePet(m, dt, dx, dz, dist) {
@@ -2888,11 +2915,33 @@ function updatePet(m, dt, dx, dz, dist) {
     else if (band === 'grumpy' && Math.random() < 0.5) m.sulkT = 1.0 + Math.random() * 1.4;
     else if (petHas(m, 'aloof') && Math.random() < 0.5) m.sitT = 1.4 + Math.random() * 1.6;
   }
+  // --- 怒り：噛みつく / 立ってオシッコ / プンプン ---
+  //   ① 近くの敵に対して威嚇（機嫌に関係なく・びびりは除く＝防衛本能）
+  //   ② ごきげんななめが続くと、その場で八つ当たり（プレイヤーへ）
+  m.angerCd -= dt;
+  const idle = m.zoomT <= 0 && m.sitT <= 0 && m.biteT <= 0 && m.fumeT <= 0 && m.standT <= 0;
+  if (m.angerCd <= 0 && idle) {
+    const foe = petHas(m, 'timid') ? null : nearestHostileTo(m.obj.position.x, m.obj.position.z, 7);
+    if (foe) {
+      m.angerCd = 3 + Math.random() * 3;
+      const fdx = foe.obj.position.x - m.obj.position.x, fdz = foe.obj.position.z - m.obj.position.z, fd = Math.hypot(fdx, fdz) || 1;
+      if (fd < 2.2 && Math.random() < 0.5) { petBite(m, fdx, fdz, fd); if (!foe.dying) companionAttack(m, foe, 4); } // 敵を噛む（少しダメージ＝助太刀）
+      else petPee(m, fdx, fdz, fd);                                                                              // 敵におしっこ威嚇
+    } else if (band === 'grumpy') {
+      m.angerCd = 5 + Math.random() * 5;
+      const r = Math.random();
+      if (dist < 3.2 && r < 0.4) petBite(m, dx, dz, dist);
+      else if (r < 0.72) petPee(m, dx, dz, dist);
+      else petFume(m);
+    }
+  }
   // --- 移動の決定 ---
   let moving = false, anim = 'idle', hx = 0, hz = 0;
   const faceP = () => { m.obj.rotation.y = Math.atan2(-dx, -dz); };
   const faceAway = () => { m.obj.rotation.y = Math.atan2(dx, dz); };
-  if (m.sitT > 0) { m.sitT -= dt; anim = 'idle'; faceP(); }
+  if (m.biteT > 0) { m.biteT -= dt; faceP(); hx = dx / dist; hz = dz / dist; moving = dist > 1.1; anim = 'walk'; spd = 12; } // 噛みつき突進
+  else if (m.fumeT > 0) { m.fumeT -= dt; faceP(); anim = 'idle'; m.obj.rotation.y += (Math.random() - 0.5) * 0.14; } // 怒って震える
+  else if (m.sitT > 0) { m.sitT -= dt; anim = 'idle'; faceP(); }
   else if (m.zoomT > 0) {                                   // やんちゃ：プレイヤー周りをくるくるダッシュ
     m.zoomT -= dt;
     const ang = Math.atan2(dz, dx) + m.zoomDir * Math.PI / 2;
@@ -2912,6 +2961,12 @@ function updatePet(m, dt, dx, dz, dist) {
   if (band === 'happy') bob = Math.max(0, Math.sin(m.hopT)) * 0.10 * (petHas(m, 'playful') ? 1.7 : 1);
   m.obj.position.y = m.gy + bob;
   if (band === 'happy' && !moving) m.obj.rotation.y += Math.sin(m.hopT * 1.3) * 0.05;
+  // 立ち上がり（おしっこ威嚇）：縦に伸びて細くなる→戻る
+  if (m.standT > 0) m.standT -= dt;
+  const tSY = m.standT > 0 ? 1.5 : 1.0, tSXZ = m.standT > 0 ? 0.86 : 1.0;
+  m.obj.scale.y += (tSY - m.obj.scale.y) * Math.min(1, dt * 12);
+  m.obj.scale.x += (tSXZ - m.obj.scale.x) * Math.min(1, dt * 12);
+  m.obj.scale.z += (tSXZ - m.obj.scale.z) * Math.min(1, dt * 12);
   // --- 機嫌の絵文字（ハート）---
   m.emoteCd -= dt;
   if (m.emoteCd <= 0) { m.emoteCd = band === 'happy' ? 2.0 + Math.random() * 1.4 : 7 + Math.random() * 4; if (band === 'happy') petEmote(m); }
