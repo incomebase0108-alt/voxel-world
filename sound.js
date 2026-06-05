@@ -686,18 +686,21 @@
   // === ① 環境音アンビエンス（ambバス・BGMの下・防御的: biome口優先/無ければsceneで代替）===
   //   ・連続音の「寝床(bed)」=ループノイズ→bandpass で 風/波/吹雪/こもり を表現
   //   ・単発音(bird/cricket/drip/murmur)を散発スケジュール。biome で切替
+  //   biome名は1号機 getBiome() に合わせる：plains/forest/rocky/desert/snow/ocean（＋castle/shrine、水中=water）。
   const AMB = {
-    plains:  { f: 520,  q: 0.7, g: 0.05, chirp: { type: 'bird',    rate: 0.5 } },
-    desert:  { f: 950,  q: 0.4, g: 0.06, chirp: null },
-    snow:    { f: 1500, q: 0.3, g: 0.07, chirp: null },
-    ocean:   { f: 320,  q: 0.9, g: 0.07, chirp: null },
-    water:   { f: 220,  q: 1.4, g: 0.08, chirp: null },                          // 水中こもり
-    cave:    { f: 130,  q: 1.6, g: 0.05, chirp: { type: 'drip',    rate: 0.3 } },
-    night:   { f: 620,  q: 0.6, g: 0.035, chirp: { type: 'cricket', rate: 0.7 } },
-    village: { f: 500,  q: 0.5, g: 0.045, chirp: { type: 'murmur',  rate: 0.45 } },
+    plains:  { f: 520,  q: 0.7,  g: 0.05,  chirp: { type: 'bird',     rate: 0.5 } },  // 草原: 小鳥
+    forest:  { f: 600,  q: 0.6,  g: 0.06,  chirp: { type: 'forest',   rate: 0.6 } },  // 森: 小鳥＋葉擦れ
+    rocky:   { f: 430,  q: 0.35, g: 0.06,  chirp: { type: 'gust',     rate: 0.35 } }, // 岩場(チンチラの故郷): 吹き抜ける風
+    desert:  { f: 900,  q: 0.35, g: 0.055, chirp: { type: 'gust',     rate: 0.3 } },  // 砂漠: 乾いた熱風
+    snow:    { f: 300,  q: 0.8,  g: 0.03,  chirp: { type: 'windhowl', rate: 0.18 } }, // 雪原: こもった静寂＋遠い風鳴り
+    ocean:   { f: 320,  q: 0.9,  g: 0.07,  chirp: { type: 'wave',     rate: 0.5 } },  // 海: 寄せては返す波
+    water:   { f: 220,  q: 1.4,  g: 0.08,  chirp: null },                             // 水中こもり
+    cave:    { f: 130,  q: 1.6,  g: 0.05,  chirp: { type: 'drip',     rate: 0.3 } },  // 洞窟: 水滴の反響
+    night:   { f: 620,  q: 0.6,  g: 0.035, chirp: { type: 'cricket',  rate: 0.7 } },
+    village: { f: 500,  q: 0.5,  g: 0.045, chirp: { type: 'murmur',   rate: 0.45 } },
     // ③ 特別な場所の荘厳な環境音。1号機が window.getBiome() で 'castle'/'shrine' を返せば連動（無くても他biomeは不変）。
-    castle:  { f: 180,  q: 1.2, g: 0.05,  chirp: { type: 'choir',   rate: 0.16 } }, // 王国城: 低い大広間のうなり＋荘厳な聖歌/オルガンの swell
-    shrine:  { f: 760,  q: 0.8, g: 0.035, chirp: { type: 'chime',   rate: 0.22 } }, // 祠: 静謐な空気＋ときおりの清らかな鈴
+    castle:  { f: 180,  q: 1.2,  g: 0.05,  chirp: { type: 'choir',    rate: 0.16 } }, // 王国城: 低い大広間のうなり＋荘厳な聖歌/オルガンの swell
+    shrine:  { f: 760,  q: 0.8,  g: 0.035, chirp: { type: 'chime',    rate: 0.22 } }, // 祠: 静謐な空気＋ときおりの清らかな鈴
   };
   let ambBed = null, ambFilter = null, ambBedGain = null, ambType = null, ambTimer = null;
   function startAmbienceBed() {
@@ -710,8 +713,10 @@
     ambBed.connect(ambFilter).connect(ambBedGain).connect(ambBus);
     ambBed.start();
   }
+  let ambOverride = null; // setAmbient() による手動上書き（null=getBiome連動）
   function currentAmbience() {
-    try { if (typeof window.getBiome === 'function') { const b = window.getBiome(); if (b && AMB[b]) return b; } } catch (e) {}
+    if (ambOverride && AMB[ambOverride]) return ambOverride;                                    // ⑥ 手動上書きが最優先
+    try { if (typeof window.getBiome === 'function') { const b = window.getBiome(); if (b && AMB[b]) return b; } } catch (e) {} // getBiome連動
     if (bgmScene === 'water') return 'ocean';   // 代替: シーンから推定
     if (bgmScene === 'night') return 'night';
     return 'plains';
@@ -722,6 +727,16 @@
       case 'cricket': for (let i = 0; i < 3; i++) tone(4000, 0.02, 'square', 0.02, 4000, ambBus, i * 0.03); break;
       case 'drip':    tone(900, 0.05, 'sine', 0.05, 300, ambBus); break;
       case 'murmur':  tone(170 + Math.random() * 60, 0.18, 'sawtooth', 0.03, 150, ambBus); break;
+      // ⑤ バイオーム別の散発音
+      case 'leaf':    noise(0.22, 0.030, 3200, 'bandpass', ambBus); break;                 // 葉擦れ（高域のサラサラ）
+      case 'forest':  if (Math.random() < 0.55) { tone(2200 + Math.random() * 900, 0.08, 'sine', 0.045, 2600, ambBus); } // 森: 小鳥
+                      else { noise(0.24, 0.030, 3000 + Math.random() * 800, 'bandpass', ambBus); } break;                // または葉擦れ
+      case 'gust':    noise(1.10, 0.045, 520 + Math.random() * 220, 'bandpass', ambBus);    // 風/熱風: ゆるい一吹き
+                      noise(0.70, 0.020, 1400, 'highpass', ambBus, 0.15); break;            // 上にうっすら砂塵/木枯らし
+      case 'windhowl':tone(280 + Math.random() * 80, 1.6, 'sine', 0.018, 520, ambBus);      // 雪原: 遠い風鳴り（細く長く）
+                      noise(1.40, 0.018, 600, 'lowpass', ambBus); break;                    // こもった土台
+      case 'wave':    noise(1.30, 0.060, 480, 'lowpass', ambBus);                           // 海: 寄せる波（ザザー）
+                      noise(0.80, 0.028, 1600, 'highpass', ambBus, 0.55); break;            // 引く波の泡立ち
       // ③ 荘厳系: ゆっくり立ち上がる聖歌/オルガンの和音 swell（王国城）と、清らかな鈴（祠）
       case 'choir': { // G major のロング三和音をやわらかく重ねる（オルガン/聖歌の swell）
         [196.00, 293.66, 392.00].forEach((f, i) => tone(f, 2.2, 'triangle', 0.030, f, ambBus, i * 0.05));
@@ -754,6 +769,16 @@
     ambTimer = setTimeout(ambScheduler, 250);
   }
   function startAmbience() { startAmbienceBed(); if (!ambTimer) ambScheduler(); }
+  // ⑥ 環境音の公開口（防御的: 呼ぶだけ・未呼出でも getBiome 連動で自動）。
+  //   setAmbient('forest'|'rocky'|'desert'|'snow'|'ocean'|'cave'|… ) で明示切替、setAmbient(null|'auto') で getBiome 連動へ復帰。
+  //   未知の biome 名は無視（現状維持）。1号機が getBiome を実装済みなら呼ばなくても自動で切り替わる。
+  window.setAmbient = (biome) => {
+    if (biome == null || biome === 'auto') ambOverride = null;     // 連動へ復帰
+    else if (AMB[biome]) ambOverride = biome;                      // 既知 biome のみ採用
+    else return;                                                   // 未知は無視（事故ゼロ）
+    startAmbience();                                               // 鳴っていなければ起動を担保
+  };
+  window.getAmbientBiome = () => ambType; // 現在鳴っている環境音タイプ（診断/UI用）
 
   // ④ サウンド設定の受け渡し口（UIは3号機。ここは値とロジックのみ）
   //   get() → {master,sfx,bgm,muted} / set(key,value) / setMuted(bool)

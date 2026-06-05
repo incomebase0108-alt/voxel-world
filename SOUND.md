@@ -82,23 +82,32 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 
 ---
 
-## 環境音アンビエンス（①／ambバス・BGMの下）
-連続音の「寝床」（bandpassノイズ）＋散発の単発音を biome で切替。コアが `window.getBiome()` を実装すれば連動、無ければ `bgmScene` から代替推定（防御的・事故ゼロ）。音量は `setAmbVolume()`／`amb` バス。
+## 環境音アンビエンス（①⑤⑥／ambバス・BGMの下）
+連続音の「寝床」（bandpassノイズ＝風/波/こもり）＋散発の単発音を biome で切替。**1号機が `window.getBiome()` 実装済み**（`plains/forest/rocky/desert/snow/ocean`＋`castle/shrine`）なので**自動で連動**。未実装環境でも `bgmScene` から代替推定（防御的・事故ゼロ）。音量は `setAmbVolume()`／`amb` バス。
 
-| biome | 雰囲気 | 散発音 |
+| biome | 雰囲気（寝床） | 散発音 |
 |---|---|---|
-| `plains` | 草原 | bird |
-| `desert` | 砂漠 | — |
-| `snow` | 雪原 | — |
-| `ocean` | 海 | — |
+| `plains` | 草原 | bird（小鳥） |
+| `forest` | 森 | forest（小鳥＋葉擦れ） |
+| `rocky` | 岩場（チンチラの故郷）＝吹き抜ける風 | gust（風の一吹き） |
+| `desert` | 砂漠＝乾いた熱風 | gust（熱風） |
+| `snow` | 雪原＝こもった静寂 | windhowl（遠い風鳴り・控えめ） |
+| `ocean` | 海＝寄せる波 | wave（ザザーと寄せ返す波） |
 | `water` | 水中こもり | — |
-| `cave` | 洞窟 | drip |
+| `cave` | 洞窟＝反響 | drip（水滴） |
 | `night` | 夜 | cricket |
 | `village` | 村 | murmur |
 | `castle` | ③ 王国城・**荘厳**（低い大広間のうなり） | choir（聖歌/オルガンのswell） |
 | `shrine` | ③ 祠・**静謐** | chime（清らかな鈴） |
 
-> **1号機へ依頼（③）**: `window.getBiome()` が王国城内で `'castle'`、祠で `'shrine'` を返せば、その場の荘厳な環境音に自動で切り替わります（口が無くても他biomeは不変）。
+**公開口（⑥）**:
+```js
+window.setAmbient('forest');   // 明示切替（既知 biome のみ採用・未知は無視）
+window.setAmbient(null);       // または 'auto' で getBiome 連動へ復帰
+window.getAmbientBiome();      // 現在鳴っている環境音タイプ（診断/UI）
+```
+- `setAmbient` を呼ばなくても `getBiome()` 連動で自動切替。呼べば手動上書きが最優先（`null`/`'auto'` で連動へ戻す）。切替時は寝床のフィルタ/音量をクロスで滑らかに変化。
+- **1号機へ**: `getBiome()` は実装済みのため**追加配線は不要**。任意で `setAmbient(biome)` を使えば演出上の強制切替（例: イベントシーン）も可能です。
 
 ---
 
