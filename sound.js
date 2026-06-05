@@ -27,17 +27,22 @@
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
   let limiter = null; // ③ master 直前のセーフティ・リミッタ（多数のSE＋BGM重畳時のクリップ防止）
+  let bgmDuck = null, ambDuck = null; // P2 ダッキング段：戦闘/ボス時に music/ambient を軽く下げ SE を立たせる（SE は通さない）
 
   function ac() {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       ctx = new AC();
-      // バス構成： source → (sfxBus|bgmBus|ambBus) → master → limiter → destination
+      // バス構成： sfxBus ─────────────┐
+      //           bgmBus → bgmDuck ──┤→ master → limiter → destination
+      //           ambBus → ambDuck ──┘   （duck段は戦闘/ボスで music/ambient だけ下げる。SEは下げない）
       master = ctx.createGain();
       sfxBus = ctx.createGain();
       bgmBus = ctx.createGain();
       ambBus = ctx.createGain(); // ① 環境音アンビエンス（BGMの下）
+      bgmDuck = ctx.createGain(); bgmDuck.gain.value = 1.0; // P2 ダッキング係数（1=素通し）
+      ambDuck = ctx.createGain(); ambDuck.gain.value = 1.0;
       // セーフティ・リミッタ：ピークだけを抑える透明な設定（threshold高め＋速いattack＝音色は変えずクリップのみ防止）。
       limiter = ctx.createDynamicsCompressor();
       try {
@@ -47,12 +52,22 @@
         limiter.attack.value = 0.003;
         limiter.release.value = 0.25;
       } catch (e) {}
-      sfxBus.connect(master); bgmBus.connect(master); ambBus.connect(master);
+      sfxBus.connect(master);                       // SE はダックしない（最前面に立たせる）
+      bgmBus.connect(bgmDuck).connect(master);      // 音楽はダック段経由
+      ambBus.connect(ambDuck).connect(master);      // 環境音もダック段経由
       master.connect(limiter); limiter.connect(ctx.destination); // master → limiter → 出力
       applyVolumes();
     }
     if (ctx.state === 'suspended') ctx.resume(); // ユーザー操作起点で再開
     return ctx;
+  }
+  // P2 ダッキング：シーンに応じて music/ambient の duck 係数を滑らかに変える。戦闘=やや下げ、ボス/女王=しっかり下げ。
+  const DUCK = { combat: { bgm: 0.82, amb: 0.5 }, boss: { bgm: 0.78, amb: 0.4 }, queen: { bgm: 0.78, amb: 0.4 }, escape: { bgm: 0.92, amb: 0.7 } };
+  function applyDuck(scene) {
+    const c = ac(); if (!c || !bgmDuck) return;
+    const d = DUCK[scene] || { bgm: 1.0, amb: 1.0 };
+    bgmDuck.gain.setTargetAtTime(d.bgm, c.currentTime, 0.4); // 0.4s 時定数で自然に
+    ambDuck.gain.setTargetAtTime(d.amb, c.currentTime, 0.4);
   }
   function applyVolumes() {
     if (!master) return;
@@ -646,6 +661,7 @@
     if (!bgmOn) {
       bgmOn = true; nextNoteT = c.currentTime + 0.1; beat = 0;
       bgmScene = s; startPad(s); fadeSceneGain(s, SCENES[s].level || 1, 'in');
+      applyDuck(s); // P2: シーンに応じた music/ambient ダッキング
       scheduler(); startAmbience();
       try { console.info('[sound] BGM開始 scene=' + s + ' / rich=' + BGM_RICH + ' / bgmBus=' + (bgmBus ? bgmBus.gain.value.toFixed(2) : '?') + ' / ctx=' + (ctx ? ctx.state : '?')); } catch (e) {}
     } else {
@@ -662,6 +678,7 @@
     const prev = bgmScene; bgmScene = name;
     startPad(name); fadeSceneGain(name, SCENES[name].level || 1, 'in'); // 等パワーで入れる
     if (prev && sceneNodes[prev]) fadeSceneGain(prev, 0, 'out'); // 等パワーで抜く。oscillatorは止めずgainのみ（競合回避）
+    applyDuck(name); // P2: 戦闘/ボスへ入る/出る時に music/ambient を滑らかにダック/復帰
     ensureScheduler(); // シーン切替時にループが死んでいたら必ず復活
   }
   function stopMusic() {
@@ -697,6 +714,27 @@
     if (biomeMusicOn) { startMusic(bgmScene || 'day'); if (!biomeMusicTimer) biomeMusicTick(); }
   };
   window.isBiomeMusicOn = () => biomeMusicOn;
+
+  // === ② アダプティブ＝危険度レイヤー（敵接近で緊張がfade in／離れると引く）===========
+  //   bgmBus 上に常駐する不穏ドローン（低い半音うなり＋ゆらぎ）。gain を危険度(0..1)で駆動。
+  //   1号機が最寄り敵との距離などから window.setDangerLevel(0..1) を毎フレーム/定期で呼ぶだけ（未呼出=無音で安全）。
+  let dangerLevel = 0, dangerNodes = null, dangerOuter = null;
+  function startDangerLayer() {
+    const c = ac(); if (!c || dangerNodes) return;
+    dangerOuter = c.createGain(); dangerOuter.gain.value = 0.0001; dangerOuter.connect(bgmBus); // 外側＝危険度で駆動
+    const inner = c.createGain(); inner.gain.value = 1.0; inner.connect(dangerOuter);           // 内側＝LFOゆらぎ（AudioParam衝突回避）
+    dangerNodes = [];
+    [55.00, 58.27].forEach((f) => { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; const g = c.createGain(); g.gain.value = 0.5; o.connect(g).connect(inner); o.start(); dangerNodes.push(o); }); // 低い半音うなり（不穏）
+    const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.7; const ld = c.createGain(); ld.gain.value = 0.22; lfo.connect(ld).connect(inner.gain); lfo.start(); dangerNodes.push(lfo); // 心拍的なゆらぎ
+  }
+  //   window.setDangerLevel(0..1) … 0=平穏（無音）/ 1=直近に危険。0.4s 時定数で滑らかに増減。
+  window.setDangerLevel = (v) => {
+    dangerLevel = clamp01(Number(v) || 0);
+    const c = ac(); if (!c) return;
+    startDangerLayer();
+    if (dangerOuter) dangerOuter.gain.setTargetAtTime(Math.max(0.0001, dangerLevel * 0.13), c.currentTime, 0.4); // 接近でfade in/離れると引く
+  };
+  window.getDangerLevel = () => dangerLevel;
 
   // 最初のユーザー操作で自動的に 'day' を開始（コアが明示制御したら抑止）
   // capture段で拾うので、コアが bubble段で stopPropagation しても発火する
@@ -927,6 +965,8 @@
       sfxBusGain: sfxBus ? +sfxBus.gain.value.toFixed(3) : null,
       masterGain: master ? +master.gain.value.toFixed(3) : null,
       limiterReductionDb: limiter ? +limiter.reduction.toFixed(2) : null, // ③ リミッタが今どれだけ抑制中か（0=余裕／負=ピーク抑制中）
+      duck: { bgm: bgmDuck ? +bgmDuck.gain.value.toFixed(2) : null, amb: ambDuck ? +ambDuck.gain.value.toFixed(2) : null }, // P2 ダッキング係数（戦闘/ボスで<1）
+      dangerLevel: dangerLevel, dangerLayer: !!dangerNodes, // P2 危険度レイヤー
       spatial: { listenerHook: typeof window.getPlayerPose === 'function', mobHook: typeof window.getMobPositions === 'function', biomeHook: typeof window.getBiome === 'function' }, // ③ コア側の読み取り口が揃っているか
       muted: vol.muted,
       vol: { master: vol.master, sfx: vol.sfx, bgm: vol.bgm },
