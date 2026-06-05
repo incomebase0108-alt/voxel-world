@@ -3013,8 +3013,15 @@ function initPet(m, opts = {}) {
   attachPetMarker(m);
   attachPetShadow(m);                                                        // ふさふさ感：足元のソフトシャドウ
 }
+// 機嫌バンドのヒステリシス版：境界(33/66)での往復フリッカを防ぐ（±5の余白で切り替え）
+function petBandHyst(m) {
+  const cur = m.moodBand, v = m.mood;
+  if (cur === 'happy')  return v >= 61 ? 'happy'  : (v < 33 ? 'grumpy' : 'normal');
+  if (cur === 'grumpy') return v < 38  ? 'grumpy' : (v >= 66 ? 'happy' : 'normal');
+  return v >= 66 ? 'happy' : (v < 33 ? 'grumpy' : 'normal'); // normal/未設定から
+}
 function petBandToast(m) {
-  const nb = petMoodBand(m.mood);
+  const nb = petBandHyst(m);
   if (nb !== m.moodBand) {
     if (nb === 'happy') toast(`🐾「${m.petName}」はごきげん！`);
     else if (nb === 'grumpy') toast(`🐾「${m.petName}」はごきげんななめ…なでたり餌をあげよう`);
@@ -3031,7 +3038,18 @@ function petInteract() {
     const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
     if (d < bd) { bd = d; best = m; }
   }
-  if (!best) { if (typeof toast === 'function') toast('近くにペット/なつかせられる動物がいない（牛羊豚鶏馬に 餌(肉/りんご/卵)を持って P）'); return; }
+  if (!best) {
+    // 近くにいなければ「呼ぶ」＝最寄りのペットを呼び寄せる（少し離れていても駆けてくる）
+    let callee = null, cbd = 40;
+    for (const p of pets) { if (p.dying) continue; const d = Math.hypot(p.obj.position.x - player.pos.x, p.obj.position.z - player.pos.z); if (d < cbd) { cbd = d; callee = p; } }
+    if (callee) {
+      callee.callT = 4.0; callee.mood = clampPet(callee.mood + 3, 0, 100); petEmote(callee);
+      if (window.playAnimalSFX) window.playAnimalSFX('pet', 'happy', { x: callee.obj.position.x, y: callee.obj.position.y, z: callee.obj.position.z });
+      if (typeof toast === 'function') toast(`🐾「${callee.petName}」を呼んだ — こっちへ来る！`);
+      return;
+    }
+    if (typeof toast === 'function') toast('近くにペット/なつかせられる動物がいない（牛羊豚鶏馬に 餌(肉/りんご/卵)を持って P）'); return;
+  }
   if (best.pet) {
     const food = PET_FOODS.find(f => (itemCounts[f] || 0) > 0);
     if (best.petHunger > 40 && food) feedPet(best, food); else patPet(best);
@@ -3163,7 +3181,7 @@ function updatePet(m, dt, dx, dz, dist) {
   if (petHas(m, 'wary') && dm > 0) dm *= 0.82;                                                       // 警戒心＝心を開くのがゆっくり
   m.mood = clampPet(m.mood + dm, 0, 100);
   petBandToast(m);
-  const band = petMoodBand(m.mood);
+  const band = m.moodBand || petMoodBand(m.mood); // ヒステリシス反映後のバンドを使う
   // --- 最終ボス「女王さくら」を察知＝同名の主に身構える（毛を逆立てる）---
   let queen = null;
   for (const o of mobs) {
@@ -3193,6 +3211,7 @@ function updatePet(m, dt, dx, dz, dist) {
   // 警戒心：敵が視界(12m)にいると間合いを広く取り慎重になる
   if (petHas(m, 'wary') && nearestHostileTo(m.obj.position.x, m.obj.position.z, 12)) want += 2.0;
   if (queen) want = Math.max(want, 3.5); // 女王さくらには近づきすぎない（同名でも懐かない）
+  if ((m.callT || 0) > 0) { m.callT -= dt; want = Math.min(want, 1.6); spd = Math.max(spd, 10); } // 「呼ぶと来る」＝Pで呼ばれたら一直線に駆け寄る
   // --- 癖の発動（一定間隔でミニ仕草）---
   m.habitCd -= dt;
   if (m.habitCd <= 0) {
@@ -3235,6 +3254,15 @@ function updatePet(m, dt, dx, dz, dist) {
       else petFume(m);
     }
   }
+  // --- 野生チンチラへの反応：近くの色違い野生チンチラに気づいて挨拶（向く＋ハート）---
+  m.socialCd = (m.socialCd || 0) - dt;
+  if (m.socialCd <= 0) {
+    m.socialCd = 3 + Math.random() * 3;
+    let wild = null, wd = 6;
+    for (const o of mobs) { if (o.def.chin && !o.pet && !o.dying) { const d = Math.hypot(o.obj.position.x - m.obj.position.x, o.obj.position.z - m.obj.position.z); if (d < wd) { wd = d; wild = o; } } }
+    if (wild && band !== 'grumpy') { m.wildLook = wild; m.wildLookT = 1.4; if (Math.random() < 0.5) petEmote(m); }
+  }
+  if ((m.wildLookT || 0) > 0) m.wildLookT -= dt;
   // --- 移動の決定 ---
   let moving = false, anim = 'idle', hx = 0, hz = 0;
   const faceP = () => { m.obj.rotation.y = Math.atan2(-dx, -dz); };
@@ -3259,7 +3287,21 @@ function updatePet(m, dt, dx, dz, dist) {
   }
   else if (band === 'grumpy' && m.sulkT > 0) { m.sulkT -= dt; hx = -dx / dist; hz = -dz / dist; moving = true; anim = 'walk'; spd *= 0.8; } // 拗ねて離れる
   else if (dist > want) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; if (dist > 14) spd *= 1.7; }
-  else { anim = 'idle'; if (m.alertT > 0) { m.alertT -= dt; m.obj.rotation.y += dt * 1.4; } else if (band === 'grumpy') faceAway(); else faceP(); } // 警戒スキャン＝辺りを見回す
+  else { // アイドル：たまにプレイヤー周りをうろつく徘徊／野生チンチラへ挨拶／警戒スキャン
+    if (band !== 'grumpy' && m.eatT <= 0 && (m.roamT || 0) <= 0) {
+      m.roamCd = (m.roamCd || 0) - dt;
+      if (m.roamCd <= 0) { m.roamCd = 3 + Math.random() * 4; if (Math.random() < 0.5) { m.roamT = 1.0 + Math.random() * 1.3; const ra = Math.random() * Math.PI * 2, rr = 1.0 + Math.random() * 1.4; m.roamX = player.pos.x + Math.cos(ra) * rr; m.roamZ = player.pos.z + Math.sin(ra) * rr; } }
+    }
+    if ((m.roamT || 0) > 0) { // ふらっと近場を歩く
+      m.roamT -= dt; const rx = m.roamX - m.obj.position.x, rz = m.roamZ - m.obj.position.z, rd = Math.hypot(rx, rz) || 1;
+      if (rd > 0.3) { hx = rx / rd; hz = rz / rd; moving = true; anim = 'walk'; spd = Math.min(spd, 3.2); } else m.roamT = 0;
+    } else {
+      anim = 'idle';
+      if (m.alertT > 0) { m.alertT -= dt; m.obj.rotation.y += dt * 1.4; }
+      else if ((m.wildLookT || 0) > 0 && m.wildLook && !m.wildLook.dying) { const wx = m.wildLook.obj.position.x - m.obj.position.x, wz = m.wildLook.obj.position.z - m.obj.position.z; m.obj.rotation.y = Math.atan2(-wx, -wz); } // 野生チンチラの方を向く
+      else if (band === 'grumpy') faceAway(); else faceP();
+    }
+  }
   if (moving) tryMoveMob(m, hx, hz, spd, dt);
   // --- 接地＋弾み（ごきげんだとぴょこぴょこ＋しっぽワグ）---
   const fy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
