@@ -3241,9 +3241,13 @@ function buildMansion() {
   const sx=13;
   for (let i=0;i<4;i++){ const z=14-i; for (let y=1;y<=1+i;y++) hSet(sx,y,z,P); hClear(sx,z,sx,z, 2+i, 7); hSet(sx,4,z,B.air); }
   hSet(sx,4,10,P);                                                 // 上り口の2F床（踏み場）
-  // さくらのケージ（2F 子供部屋A）＝スタート
-  hSet(3,5,3, B.chest);
-  for (const c of [[2,2],[4,2],[2,4],[4,4]]) { hSet(c[0],5,c[1],L); hSet(c[0],6,c[1],L); }
+  // さくらのケージ（2F子供部屋A）＝スタート。天井まで密閉し、まぐろが扉を開けるまで出られない
+  for (let yy=5; yy<=7; yy++) {
+    for (let xx=2; xx<=5; xx++) { hSet(xx,yy,2,L); hSet(xx,yy,5,L); } // 北/南の柵
+    for (let zz=2; zz<=5; zz++) { hSet(2,yy,zz,L); hSet(5,yy,zz,L); } // 西/東の柵
+  }
+  hSet(4,5,4, B.chest);                              // 巣箱
+  HOUSE.cageDoor = { x: HOUSE.ox + 5, z: HOUSE.oz + 3 }; // 扉（東柵 x=5,z=3）。最初は閉。まぐろが開ける
   // 家具（最低限）
   hSet(20,5,3,B.leaves); hSet(21,5,3,B.leaves);                    // 主寝室ベッド
   hSet(8,1,9,G); hSet(9,1,9,G);                                    // 1Fキッチン台
@@ -3256,18 +3260,18 @@ function maybeBuildHouse() {
   const s = findSpawn();
   HOUSE.ox = Math.floor(s.x) - 14; HOUSE.oz = Math.floor(s.z) - 10; HOUSE.oy = heightAt(Math.floor(s.x), Math.floor(s.z));
   HOUSE.exit  = { x: HOUSE.ox + 14.5, z: HOUSE.oz + HOUSE.D1 + 1.5 };
-  HOUSE.start = { x: HOUSE.ox + 3.5, y: HOUSE.oy + 5, z: HOUSE.oz + 4.5, yaw: -Math.PI/2 };
+  HOUSE.start = { x: HOUSE.ox + 3.5, y: HOUSE.oy + 5, z: HOUSE.oz + 3.5, yaw: Math.PI/2 }; // ケージ内（東＝扉の方を向く）
   const built = getBlock(HOUSE.ox, HOUSE.oy + 1, HOUSE.oz) === B.planks;
   if (!built) {
     buildMansion();
-    // 序章：2階・子供部屋のケージからスタート
+    // 序章：2階・子供部屋のケージの中で目覚める（扉はまだ閉じている＝まぐろが開けるまで出られない）
     player.pos.set(HOUSE.start.x, HOUSE.start.y, HOUSE.start.z); player.vel.set(0, 0, 0); player.yaw = HOUSE.start.yaw;
     spawnPoint = { x: HOUSE.exit.x, y: HOUSE.oy + 2, z: HOUSE.exit.z };
-    houseIntroActive = true;
+    maguroPending = true; maguroPhase = 0; maguroWait = 0; // 💜 まぐろ登場の発端
     if (typeof toast === 'function') {
-      toast('🏠 ここはあなたの家。2階・子供部屋のケージから——さくらの脱走が始まる');
-      setTimeout(() => toast('🪜 ホールの階段で1階へ（Space＝ジャンプ／空中でもう一度＝二段ジャンプ）'), 4000);
-      setTimeout(() => toast('🚪 1階の玄関から外へ！＝脱走（※内縁の妻に捕まると逆らえずケージへ戻る）'), 8000);
+      toast('🏠 ここはあなたの家。2階・子供部屋のケージの中で、さくらは目を覚ました…');
+      setTimeout(() => toast('🪜 扉が開いたら——ホールの階段で1階へ（Space＝ジャンプ／空中でもう一度＝二段）'), 5000);
+      setTimeout(() => toast('🚪 1階の玄関から外へ！ ※内縁の妻に捕まると逆らえずケージへ戻る'), 9000);
     }
   }
   spawnHouseNpcs(); // 飼い主(わたし)＆内縁の妻を配置（建て直さない既存の家でも毎回1回だけ）
@@ -3349,6 +3353,76 @@ function updateHouseNpc(m, dt, dx, dz, dist) {
   if (m.houseNpc === 'wife') {
     m.emoteCd -= dt;
     if (m.emoteCd <= 0 && chasing && dist < 4.5) { m.emoteCd = 4 + Math.random()*4; spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.55, m.obj.position.z, 1.1, 0.5); }
+  }
+}
+// ===================================================================
+// 💜 まぐろ：死んでしまったバイオレットのチンチラ（さくらの恩人の霊）
+//   序章の発端＝ケージの扉をそっと開けて、さくらを逃がす。役目を終えると光になって消える。
+// ===================================================================
+let maguro = null, maguroPhase = 0, maguroT = 0, maguroPending = false, maguroWait = 0;
+function ghostify(obj, hex) {
+  const col = new THREE.Color(hex);
+  obj.traverse(o => {
+    if (!o.isMesh || !o.material) return;
+    const src = Array.isArray(o.material) ? o.material : [o.material];
+    const out = src.map(mm => { const c = mm.clone(); c.transparent = true; c.opacity = 0.55; c.depthWrite = false; if ('emissive' in c) { c.emissive = col; c.emissiveIntensity = 0.5; } return c; });
+    o.material = Array.isArray(o.material) ? out : out[0];
+  });
+}
+function setGhostOpacity(obj, a) {
+  obj.traverse(o => { if (o.isMesh && o.material) { const src = Array.isArray(o.material) ? o.material : [o.material]; src.forEach(c => { c.opacity = a; }); } });
+}
+function openCageDoor() { // 扉（柵）を上3段とも消して通れるようにする
+  if (HOUSE.cageDoor) for (let y = HOUSE.oy + 5; y <= HOUSE.oy + 7; y++) setBlock(HOUSE.cageDoor.x, y, HOUSE.cageDoor.z, B.air);
+  houseIntroActive = true; maguroPending = false;
+}
+function startMaguroIntro() {
+  if (!maguroPending) return;
+  maguroWait++;
+  const violet = mobTemplates['chinchilla_violet'];
+  const tpl = violet || mobTemplates['chinchilla'];
+  if (!tpl) { if (maguroWait > 180) { openCageDoor(); } return; } // 3秒待っても未読込なら扉だけ開ける（詰み防止）
+  maguroPending = false;
+  const O = HOUSE;
+  maguro = spawnMob(violet ? 'chinchilla_violet' : 'chinchilla', O.ox + 6.3, O.oz + 3.5, { y: O.oy + 5 });
+  if (!maguro) { openCageDoor(); return; }
+  maguro.maguro = true; maguro.noSave = true; maguro.hostile = false; maguro.home = null;
+  ghostify(maguro.obj, '#b07be0');
+  attachNameTag(maguro, '💜まぐろ（バイオレット）', '#d8b3ff');
+  maguroPhase = 1; maguroT = 0;
+  if (typeof toast === 'function') toast('💜 天国から、死んでしまったバイオレットのチンチラ「まぐろ」が会いに来た…');
+}
+function maguroMoveTo(tx, ty, tz, dt, sp) {
+  const p = maguro.obj.position, ddx = tx - p.x, ddy = ty - p.y, ddz = tz - p.z;
+  const d = Math.hypot(ddx, ddy, ddz) || 1e-4, step = Math.min(d, sp * dt);
+  p.x += ddx/d * step; p.y += ddy/d * step; p.z += ddz/d * step;
+  if (Math.hypot(ddx, ddz) > 0.05) maguro.obj.rotation.y = Math.atan2(-ddx, -ddz);
+  return d;
+}
+function updateMaguroIntro(dt) {
+  if (maguroPending) { startMaguroIntro(); return; }
+  if (!maguro || maguroPhase === 0) return;
+  maguroT += dt;
+  const O = HOUSE, fy = O.oy + 5;
+  if (maguroPhase === 1) {                 // 扉へそっと近づく
+    maguro.obj.position.y = fy + 0.12 + Math.sin(maguroT * 3) * 0.06;
+    const d = maguroMoveTo(O.ox + 5.6, fy + 0.12, O.oz + 3.5, dt, 1.4);
+    if (d < 0.35 || maguroT > 4) {
+      openCageDoor();
+      spawnFx('fx_ally_heart', O.ox + 5.5, fy + 0.6, O.oz + 3.5, 1.4, 0.7);
+      if (typeof toast === 'function') toast('💜 まぐろがケージの扉をそっと開けた——「さくら、お逃げ。自由になって」');
+      maguroPhase = 3; maguroT = 0;
+    }
+  } else if (maguroPhase === 3) {           // 出口の方へ導いて、ゆっくり消える
+    maguro.obj.position.y = fy + 0.3 + Math.sin(maguroT * 3) * 0.08;
+    maguroMoveTo(O.ox + 8.5, fy + 0.5, O.oz + 3.5, dt, 1.0);
+    if (maguroT > 1.5) setGhostOpacity(maguro.obj, Math.max(0, 0.55 * (1 - (maguroT - 1.5) / 2.5)));
+    if (maguroT > 4) {
+      scene.remove(maguro.obj);
+      const idx = mobs.indexOf(maguro); if (idx >= 0) mobs.splice(idx, 1);
+      maguro = null; maguroPhase = 4;
+      if (typeof toast === 'function') toast('🐭 まぐろは光になって消えた。さくら、いまこそ脱走のとき——');
+    }
   }
 }
 // 海ボス クラーケンAI：海面に半身を出して定位置に留まり、船(プレイヤー)が近いと触手で攻撃。陸へ上がらない。
@@ -3693,6 +3767,7 @@ function updateMobs(dt) {
   }
   maybeBuildHouse();   // 🏠 序章：さくらの家を建てて2階子供部屋からスタート（初回のみ）
   if (houseChecked && !houseNpcsSpawned) spawnHouseNpcs(); // 👫 人間モデル読込が遅れても確実に配置
+  updateMaguroIntro(dt); // 💜 まぐろがケージの扉を開ける発端の演出
   checkHouseEscape();  // 🚪 玄関から外へ出たら「脱走成功」
   maybeIntroducePet(); // 🐾 起動後に一度だけペット「さくら」を連れてくる（復元優先・早期return多めで軽量）
   spawnLogic(dt);     // ④ 昼夜・地下を考慮した湧き
@@ -3725,6 +3800,7 @@ function updateMobs(dt) {
     if (m.pet) { updatePet(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 🐾 ペットは despawn しない・専用AI（機嫌/癖）
     if (m.companion) { updateCompanion(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 仲間は despawn しない・専用AI
     if (m.houseNpc) { updateHouseNpc(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 👫 飼い主/内縁の妻は despawn しない・専用AI
+    if (m.maguro) { if (m.mixer) m.mixer.update(dt); continue; } // 💜 まぐろ(霊)は専用カットシーンで動かす・despawnしない
     if (dist > M.despawn) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
     if (m.def.sea) { updateKraken(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 海ボス専用AI（昼消滅・陸チェイスしない）
     // ④ 朝＝地上の敵性は陽光で消滅（地下の敵は生存＝洞窟は常時湧き）。プレイヤーから離れた個体のみ
