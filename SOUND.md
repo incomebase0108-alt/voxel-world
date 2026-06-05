@@ -54,6 +54,7 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | `combat` | 疾走 | 148 | キックドラムあり |
 | `water` | 浮遊（水中だと分かる程度に） | 72 | |
 | `boss` | ① ボス戦・**重厚**（低音域+三全音テンション+重いサブベース） | 132 | キックドラム＋鋸波pad。combatより低く・重い |
+| `queen` | ⑧ 女王さくら（最終ボス）・**気高くも威圧的**（Fマイナー寄りクラスタ+shimmerの艶） | 138 | bossより速く張りつめ。`setMusicScene('queen')` |
 
 各シーンは `level`（音量バランス）を持ち、water は静かめ。陸地に出れば day/night のはっきりしたBGMに切り替わります。`boss` は combat より低い音域・重いサブベース・三全音(G#3 vs 根音D)の不協和で威圧感を出しています。
 
@@ -129,6 +130,14 @@ window.getAmbientBiome();      // 現在鳴っている環境音タイプ（診�
 
 > **1号機へ依頼**: コアの `updateCombatMusic()`（index.html）は現在 `water>combat>night>day` のみ送出。近接敵にボス（role:`boss`）が含まれる場合に `'combat'` の代わりに `'boss'` を送れば、自動でボスBGMへ。出現/aggro時に `onBossAppear(m.def.type)`、撃破確定時に `onBossDefeat(m.def.type)` も1回呼んでください。**sound.js側は受け口を実装済み・呼ぶだけで動作**します。
 
+### ⑧ 女王さくら（最終ボス）＆ 敵 aggro スティンガー
+- **女王さくら出現**: `window.onQueenAppear()` を1回 → 咆哮スティンガー `boss_roar('queen')`（巨大チンチラ女王の気高い金切り＋荘厳な低和音＋鐘）＋専用威圧テーマ `setMusicScene('queen')` を同時発火。`boss_roar` の `type` に `'queen'` を渡しても同じ咆哮。
+- **女王撃破**: `window.onQueenDefeat()` → 既存の勝利ファンファーレ。撃破後コアが `setMusicScene('day'|…)` で平常へ戻す。
+- **敵 aggro スティンガー**: `window.onEnemyAggro()`（= `playSFX('aggro_stinger')`）→ 敵が交戦状態に入った瞬間の短い緊張の刺し（低い衝撃＋上昇2音）。頻発OK・軽量。
+- `boss_roar` の `type`: `golem` / `dragon` / `skeleton_king` / **`queen`**（省略でも汎用咆哮）。
+
+> **1号機へ依頼（⑧）**: 女王さくらの出現確定で `onQueenAppear()`、撃破で `onQueenDefeat()` を1回ずつ。任意の敵が aggro 状態へ遷移した瞬間に `onEnemyAggro()` を呼べば緊張スティンガーが鳴ります（**sound.js側は受け口実装済み・呼ぶだけ**）。
+
 ---
 
 ## 仲間システムの音（新機能・NPCが仲間になる連携）
@@ -164,7 +173,7 @@ NPCが仲間になる新機能向け。口は防御的（未呼出なら無音�
 | `rabbit` | `rabbit_thump` 後足ドン | — | `animal_hurt`※ | `animal_die`※ | `alert`/`skill`/`tamed`→`rabbit_thump` |
 | `guineapig` | `guineapig_wheek` ウィーク | — | `animal_hurt`※ | `animal_die`※ | `skill`/`tamed`/`happy`→`guineapig_wheek` |
 | `hedgehog` | `hedgehog_huff` フスフス | — | `animal_hurt`※ | `animal_die`※ | `curl`/`skill`/`tamed`→`hedgehog_huff` |
-| `pet`（さくら） | `pet_squeak` 鳴き | `pet_bite` 噛みつき | `pet_squeak` | `pet_squeak` | `skill`→`pet_pee` / `happy`・`tamed`→`pet_happy` |
+| `pet`（さくら） | `pet_squeak` 鳴き | `pet_bite` 噛みつき | `pet_squeak` | `pet_squeak` | `skill`→`pet_pee` / `happy`・`tamed`→`pet_happy` / `purr`・`petted`→`pet_purr` なでられ満足 / `sandbath`・`dust`→`pet_sandbath` 砂浴び |
 
 ※ `animal_hurt` / `animal_die` は**全種共通のジェネリック音**。`playAnimalSFX` が `opts.species` を注入し、種ごとに基準ピッチ・音色（`VOICE` 表）を変えるので**種が聞き分け可能**。蛇だけは噴気的（hiss）に分岐。
 
@@ -199,7 +208,7 @@ window.setSfxGain('thunder', 1.5);    // 雷を強調
 window.getSfxGain('footstep');        // 現在の倍率
 window.SoundSettings.getGains();       // 全倍率の一覧
 ```
-対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat / companion_join / companion_reply / companion_hit / companion_leave`、動物SE `wolf_howl / wolf_growl / snake_hiss / snake_strike / weasel_screech / bird_screech / bird_wingflap / attack_bite / animal_hurt / animal_die / squirrel_chitter / rabbit_thump / guineapig_wheek / hedgehog_huff / pet_squeak / pet_bite / pet_happy / pet_pee`）。
+対象 name は上の効果音一覧と同じ（`footstep / jump / land / break / place / eat / pickup / craft / splash / swim / attack / hit / hurt / thunder / mob / whiff / charge_start / charge_full / boss_roar / boss_defeat / companion_join / companion_reply / companion_hit / companion_leave`、`aggro_stinger`、動物SE `wolf_howl / wolf_growl / snake_hiss / snake_strike / weasel_screech / bird_screech / bird_wingflap / attack_bite / animal_hurt / animal_die / squirrel_chitter / rabbit_thump / guineapig_wheek / hedgehog_huff / pet_squeak / pet_bite / pet_happy / pet_pee / pet_purr / pet_sandbath / pet_dust`）。
 
 > 体感後に「この音だけ大きい/小さい」が出たら、上記 `setSfxGain` で1行調整 → そのまま保存されます。
 

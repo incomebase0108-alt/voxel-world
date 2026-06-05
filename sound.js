@@ -16,13 +16,13 @@
   const gains = {
     footstep: 1, jump: 1, land: 1, break: 1, place: 1, eat: 1, pickup: 1, craft: 1,
     splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
-    whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1,
+    whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1, aggro_stinger: 1,
     companion_join: 1, companion_reply: 1, companion_hit: 1, companion_leave: 1, // 仲間システム
     // チンチラ世界の動物SE（敵/仲間/ペット）。個別倍率で「狼うるさい」等に即対応。
     wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, snake_strike: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, attack_bite: 1, // 敵
     animal_hurt: 1, animal_die: 1,                                                                     // 被ダメ/死亡（共通・種別ピッチ）
     squirrel_chitter: 1, rabbit_thump: 1, guineapig_wheek: 1, hedgehog_huff: 1,                       // 仲間
-    pet_squeak: 1, pet_bite: 1, pet_happy: 1, pet_pee: 1,                                              // ペット(さくら)
+    pet_squeak: 1, pet_bite: 1, pet_happy: 1, pet_pee: 1, pet_purr: 1, pet_sandbath: 1, pet_dust: 1,    // ペット(さくら)
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
   let limiter = null; // ③ master 直前のセーフティ・リミッタ（多数のSE＋BGM重畳時のクリップ防止）
@@ -212,6 +212,13 @@
           tone(220, 0.90, 'square', 0.06, 110);          // 中空の不気味音
           tone(370, 1.00, 'sine', 0.05, 370); tone(392, 1.00, 'sine', 0.04, 392); // 短2度ずれの鐘
           break;
+        case 'queen':         // ⑧ 女王さくら（最終ボス）：気高くも威圧的な巨大チンチラ女王の咆哮
+          tone(1500, 0.38, 'sawtooth', 0.09, 2200);                                   // 甲高い威嚇の金切り（squeak を巨大化）
+          tone(2100, 0.30, 'square',   0.05, 1400, null, 0.18);                        // 重ねの叫び（下降）
+          tone(196.00, 1.30, 'triangle', 0.10, 196.00); tone(233.08, 1.30, 'triangle', 0.07, 233.08); // 荘厳な低い和音(G–A#＝威圧の緊張)
+          tone(880, 1.50, 'sine', 0.04, 880, null, 0.20);                              // 気高い鐘の余韻（女王の威厳）
+          for (let i = 0; i < 3; i++) tone(1760, 0.05, 'sine', 0.045, 2300, null, 0.55 + i * 0.07); // 締めの小刻みチチッ（チンチラらしさ）
+          break;
       }
     },
     // ② ボス撃破の勝利ファンファーレ。1号機 window.onBossDefeat(type) 連携（達成感の音）。
@@ -227,6 +234,13 @@
       tone(180, 0.18, 'sine', 0.15, 60, null, 0.00); tone(180, 0.18, 'sine', 0.13, 60, null, 0.24); // ティンパニ風の一撃×2
       tone(1174.66, 0.55, 'sine', 0.06, 1567.98, null, 0.55);  // きらめき(D6→G6)
       tone(1567.98, 0.50, 'triangle', 0.05, 1567.98, null, 0.72); // 締めの高域
+    },
+    // ⑧ 敵 aggro スティンガー：敵が交戦状態に入った瞬間の短い「ハッ」とする緊張の刺し。頻発しうるので短く軽く。
+    aggro_stinger() {
+      tone(110, 0.18, 'sawtooth', 0.12, 70);                                   // 低い衝撃（ドン）
+      tone(440, 0.10, 'square', 0.09, 660, null, 0.04);                        // 緊張の上昇①
+      tone(660, 0.10, 'square', 0.08, 880, null, 0.12);                        // 緊張の上昇②
+      noise(0.05, 0.06, 2600, 'highpass');                                     // 立ち上がりのエッジ
     },
 
     // === 仲間システム（NPCが仲間になる新機能）。1号機が口を呼ぶだけ・未呼出なら無音待機 ===
@@ -320,6 +334,12 @@
     pet_pee(o)        { const d = aDest(o), v = (o && o.vol) || 1;                 // 威嚇オシッコ：噴射のシャーッ＋威嚇のキュッ
                         noise(0.35, 0.05 * v, 3500, 'highpass', d);
                         tone(1300, 0.10, 'square', 0.05 * v, 1900, d); },
+    pet_purr(o)       { const d = aDest(o), v = (o && o.vol) || 1;                 // なでられ満足：低くやわらかい連続のゴロゴロ（小刻みパルス4拍）
+                        for (let i = 0; i < 4; i++) { tone(120, 0.10, 'triangle', 0.06 * v, 100, d, i * 0.09); noise(0.08, 0.02 * v, 320, 'lowpass', d, i * 0.09); }
+                        tone(620, 0.18, 'sine', 0.03 * v, 720, d, 0.10); },          // 上にうっすら満足のクークー
+    pet_sandbath(o)   { const d = aDest(o), v = (o && o.vol) || 1;                 // 砂浴び：砂にころがる連続の「ふっふっ」＋ごきげんキュッ
+                        for (let i = 0; i < 3; i++) { noise(0.12, 0.05 * v, 1100, 'bandpass', d, i * 0.14); tone(420, 0.06, 'sine', 0.025 * v, 240, d, i * 0.14); }
+                        tone(1100, 0.08, 'sine', 0.05 * v, 1500, d, 0.42); },        // 締めの嬉しいキュッ
     // ── 全種共通の被ダメ/死亡（opts.species で種ごとにピッチ・音色を変える＝聞き分け。playAnimalSFX が species を注入）──
     animal_hurt(o)    { animHurt(o && o.species, o); },                            // 短い痛みの悲鳴
     animal_die(o)     { animDie(o && o.species, o); },                             // 力尽きる下降
@@ -369,6 +389,14 @@
   //   撃破後は戦闘継続でなければコアが setMusicScene を day/night 等へ戻せばBGMも平常へ（既存挙動）。
   window.onBossDefeat  = (type) => window.playSFX('boss_defeat', { type });
 
+  // === ⑧ 女王さくら（最終ボス）＆ 敵 aggro 連携（防御的: 1号機が呼ぶだけ・未呼出なら無音待機）=====
+  //   window.onQueenAppear() … 女王さくら出現＝咆哮スティンガー boss_roar('queen')＋専用威圧テーマ setMusicScene('queen') を同時に。
+  //   window.onQueenDefeat() … 女王撃破＝既存の勝利ファンファーレ。撃破後コアが setMusicScene を平常へ戻せばOK。
+  //   window.onEnemyAggro()  … 敵が交戦状態に入った瞬間の短い緊張スティンガー（頻発OK・軽量）。
+  window.onQueenAppear = () => { window.playSFX('boss_roar', { type: 'queen' }); try { window.setMusicScene && window.setMusicScene('queen'); } catch (e) {} };
+  window.onQueenDefeat = () => window.playSFX('boss_defeat', { type: 'queen' });
+  window.onEnemyAggro  = () => window.playSFX('aggro_stinger');
+
   // === 仲間システム連携（防御的: 1号機が口を呼ぶだけ・未呼出なら無音待機）=====
   //   window.onCompanionJoin(type)  … ① NPCが仲間になった時の心強い加入音。type=仲間種（'knight'|'archer'|'mage' 等／省略=汎用）
   //   window.onCompanionReply(type) … ② 指示を受けた時の了解音（コマンド発行時の「了解！」）。type省略可【②用に新設＝1号機へ呼出依頼】
@@ -399,7 +427,7 @@
     guineapig: { spot: 'guineapig_wheek',  hurt: 'animal_hurt',        die: 'animal_die',   skill: 'guineapig_wheek',  tamed: 'guineapig_wheek',  happy: 'guineapig_wheek',                   default: 'guineapig_wheek' },
     hedgehog:  { spot: 'hedgehog_huff',    curl: 'hedgehog_huff',      hurt: 'animal_hurt', die: 'animal_die', skill: 'hedgehog_huff',    tamed: 'hedgehog_huff',                              default: 'hedgehog_huff' },
     // ペット（さくら）
-    pet:       { spot: 'pet_squeak', attack: 'pet_bite', skill: 'pet_pee', happy: 'pet_happy', tamed: 'pet_happy', hurt: 'pet_squeak', die: 'pet_squeak', default: 'pet_squeak' },
+    pet:       { spot: 'pet_squeak', attack: 'pet_bite', skill: 'pet_pee', happy: 'pet_happy', tamed: 'pet_happy', hurt: 'pet_squeak', die: 'pet_squeak', purr: 'pet_purr', petted: 'pet_purr', sandbath: 'pet_sandbath', dust: 'pet_sandbath', default: 'pet_squeak' },
   };
   // SEキーを 3D 定位つきで再生（座標があればパンナー経由・無ければ sfxBus）。makePanner は ③ 空間音響で定義（hoist 済）。
   function playAnimalKey(key, o) {
@@ -438,6 +466,9 @@
     // ① ボス戦専用シーン（combatより重厚）。1号機のボス三系統(golem/dragon/skeleton_king)接近時に setMusicScene('boss')。
     //   combatより低い音域＋三全音テンション(G#3=207.65 vs 根音D)＋重いサブベース(bassG高)で威圧感。テンポはやや遅く=重い。
     boss:   { tempo: 132, scale: [146.83, 174.61, 207.65, 220.00, 261.63], pad: [73.42,  87.31,  110.00], wave: 'sawtooth', density: 0.90, drums: true,  level: 1.1, bassG: 0.11,  shimmer: false, bassline: true,  tremHz: 0.5,  tremDepth: 0.13 },
+    // ⑧ 女王さくら（最終ボス）専用の威圧テーマ。boss より速く張りつめ、shimmer で気高さの艶を足す＝「気高くも威圧的」。
+    //   F マイナー寄りクラスタ(F–G#–A–C–D#)で緊張＋荘厳。1号機が女王接近で setMusicScene('queen')。
+    queen:  { tempo: 138, scale: [174.61, 207.65, 220.00, 261.63, 311.13], pad: [87.31,  130.81, 174.61], wave: 'sawtooth', density: 0.92, drums: true,  level: 1.12, bassG: 0.12, shimmer: true,  bassline: true,  tremHz: 0.55, tremDepth: 0.12 },
   };
   let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false, lastNoteTime = 0;
   let xfadeUntil = 0; // クロスフェード進行中の終了時刻（この間はscheduler の stuck回復ガードを抑止＝自動化の衝突回避）
