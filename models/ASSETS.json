@@ -16,7 +16,7 @@
   },
   "totals": {
     "count": 132,
-    "size_bytes": 19094140,
+    "size_bytes": 19094200,
     "size_mb": 18.21
   },
   "assets": [
@@ -1261,8 +1261,8 @@
       "file": "pet_chinchilla.glb",
       "name": "pet_chinchilla",
       "category": "その他",
-      "size_bytes": 135904,
-      "size_mb": 0.1296,
+      "size_bytes": 135964,
+      "size_mb": 0.1297,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
