@@ -3281,9 +3281,9 @@ function updatePet(m, dt, dx, dz, dist) {
   m.angerCd -= dt;
   const idle = m.zoomT <= 0 && m.sitT <= 0 && m.biteT <= 0 && m.fumeT <= 0 && m.standT <= 0;
   if (m.angerCd <= 0 && idle) {
-    const foe = petHas(m, 'timid') ? null : nearestHostileTo(m.obj.position.x, m.obj.position.z, 7);
+    const foe = petHas(m, 'timid') ? null : nearestHostileTo(m.obj.position.x, m.obj.position.z, 9); // 索敵やや広め＝早めに気づく
     if (foe) {
-      m.angerCd = 3 + Math.random() * 3;
+      m.angerCd = 1.5 + Math.random() * 1.5;          // 敵が居る間は短い間隔で連続して助太刀（共闘の手応え）
       const fdx = foe.obj.position.x - m.obj.position.x, fdz = foe.obj.position.z - m.obj.position.z, fd = Math.hypot(fdx, fdz) || 1;
       const isQueen = foe.def.type === 'queen_sakura';                                                          // 同名の女王には噛みつかない（畏れ＆威嚇）
       if (!isQueen && fd < 2.2 && Math.random() < 0.5) { petBite(m, fdx, fdz, fd); if (!foe.dying) companionAttack(m, foe, 4); } // 敵を噛む（少しダメージ＝助太刀）
@@ -3897,11 +3897,11 @@ function updatePredator(m, dt, dx, dz, dist, dy) {
     m.dartCd = (m.dartCd != null ? m.dartCd : 1) - dt; m.dartT = Math.max(0, (m.dartT || 0) - dt); m.evadeT = Math.max(0, (m.evadeT || 0) - dt);
     if (m.dartCd <= 0 && dist < 14) { m.dartT = 0.4; m.dartCd = 1.5 + Math.random() * 1.5; }      // 時々ダート（加速）
     if (m.evadeT > 0) { hx = -dx / dist - dz / dist * 0.6; hz = -dz / dist + dx / dist * 0.6; moving = true; anim = 'walk'; spd = 5.5; } // 斜め後退で回避
-    else if (dist <= 1.4) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 0.7; damage(Math.max(1, C.meleeDmg - 1), 'mob'); critterSE(m, 'attack'); m.evadeT = 0.5; } } // 噛んだら離脱
+    else if (dist <= 1.4) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 0.7; damage(Math.max(1, C.meleeDmg - 1), 'mob'); critterSE(m, 'attack'); m.evadeT = 0.6; } } // 噛んだら離脱（反撃を受けにくいよう少し長め＝hit&runの読み）
     else if (dist < 20) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); const w = Math.sin(m.wPhase) * 0.5; hx = h.x - h.z * w; hz = h.z + h.x * w; moving = true; anim = 'walk'; spd = m.dartT > 0 ? 6.5 : 3.6; }
   }
   if (moving) tryMoveMob(m, hx, hz, spd, dt); else followFloor(m, dt);
-  const windup = !howl && dist < 2.4 && m.atkCd > 0 && m.atkCd < 0.28; // 攻撃発生直前の溜め（テレグラフ）
+  const windup = !howl && dist < 2.4 && m.atkCd > 0 && m.atkCd < 0.34; // 攻撃発生直前の溜め（テレグラフ＝読み合いの窓を少し広く）
   critterGesture(m, dt, { moving, animName: anim, howl, windup }); // 種別の仕草（プロウル/遠吠え/スリザー/バウンド/溜め）＋ぴょこ弾み
 }
 // 経路探索の負荷計測（診断用）。毎秒スナップショットを取る
