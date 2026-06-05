@@ -2639,17 +2639,21 @@ function updateHeldShield() {
   if (equip.shield && equipTemplates.shield) { heldShield = equipTemplates.shield.clone(true); attachWorldFollow(heldShield, SHIELD_HOLD.hand, SHIELD_HOLD.rotX, SHIELD_HOLD.offset); } // 盾は左前腕
 }
 // (C) プレイヤー＝チンチラ。8色から選んでアバターを読み込む（選択は保存）
+// 主人公アバター8色：4号機の専用「立ち姿勢」player_chinchilla_<色>.glb を本命に、
+//   未配置/失敗時は従来の pet_chinchilla_<色>.glb（fb）へフォールバック（詰み防止）。
 const PLAYER_SKINS = [
-  { file:'models/pet_chinchilla_grey.glb',     name:'標準',     color:'#8f9196' },
-  { file:'models/pet_chinchilla_beige.glb',    name:'ベージュ', color:'#b0a392' },
-  { file:'models/pet_chinchilla_white.glb',    name:'ホワイト', color:'#ece9e6' },
-  { file:'models/pet_chinchilla_ebony.glb',    name:'エボニー', color:'#353539' },
-  { file:'models/pet_chinchilla_violet.glb',   name:'バイオレット', color:'#9b93a6' },
-  { file:'models/pet_chinchilla_sapphire.glb', name:'サファイア', color:'#8a98ad' },
-  { file:'models/pet_chinchilla_brown.glb',    name:'ブラウン', color:'#7a6450' },
-  { file:'models/pet_chinchilla_pink.glb',     name:'ピンク',   color:'#f0d9d6' },
+  { file:'models/player_chinchilla_grey.glb',     fb:'models/pet_chinchilla_grey.glb',     name:'標準',     color:'#8f9196' },
+  { file:'models/player_chinchilla_beige.glb',    fb:'models/pet_chinchilla_beige.glb',    name:'ベージュ', color:'#b0a392' },
+  { file:'models/player_chinchilla_white.glb',    fb:'models/pet_chinchilla_white.glb',    name:'ホワイト', color:'#ece9e6' },
+  { file:'models/player_chinchilla_ebony.glb',    fb:'models/pet_chinchilla_ebony.glb',    name:'エボニー', color:'#353539' },
+  { file:'models/player_chinchilla_violet.glb',   fb:'models/pet_chinchilla_violet.glb',   name:'バイオレット', color:'#9b93a6' },
+  { file:'models/player_chinchilla_sapphire.glb', fb:'models/pet_chinchilla_sapphire.glb', name:'サファイア', color:'#8a98ad' },
+  { file:'models/player_chinchilla_brown.glb',    fb:'models/pet_chinchilla_brown.glb',    name:'ブラウン', color:'#7a6450' },
+  { file:'models/player_chinchilla_pink.glb',     fb:'models/pet_chinchilla_pink.glb',     name:'ピンク',   color:'#f0d9d6' },
 ];
-const DEFAULT_PLAYER_FILE = 'models/pet_chinchilla_grey.glb';
+const DEFAULT_PLAYER_FILE = 'models/player_chinchilla_grey.glb';
+const HERO_HEIGHT = 1.8;   // 主人公チンチラの目標総高(m)。読み込んだGLBの実寸から自動スケール＝モデル差し替えに強い
+function playerFallbackFor(file) { const s = PLAYER_SKINS.find(x => x.file === file); return (s && s.fb) || 'models/pet_chinchilla_grey.glb'; }
 let currentPlayerFile = localStorage.getItem('voxel_player_model') || DEFAULT_PLAYER_FILE;
 
 // ===================================================================
@@ -2678,44 +2682,52 @@ let ownedShield = false; // 盾を一度でも入手したか（toggleの可否�
 loadWorld();
 function loadAvatar(file) {
   if (!file || file.indexOf('chinchilla') < 0) file = DEFAULT_PLAYER_FILE; // 主人公は必ずチンチラ（旧人間アバターは弾く）
-  currentPlayerFile = file;
+  currentPlayerFile = file;                                                // 選択を保持＝セーブされる。本命未配置でもフォールバック表示で、配置後は自動採用
   try { localStorage.setItem('voxel_player_model', file); } catch (e) {}
+  const fb = playerFallbackFor(file);                                      // 本命が読めない時の代替（pet_chinchilla_<色>）
   // 既存アバター・ミキサーを破棄
   if (playerAvatar) { scene.remove(playerAvatar); playerAvatar = null; }
   if (mixer) { mixer.stopAllAction(); mixer = null; }
   actIdle = actWalk = actAttack = actSwim = curAction = null; avatarAttackTimer = 0;
-  gltfLoader.load(file,
-    (gltf) => {
-      playerAvatar = gltf.scene;
-      playerAvatar.rotation.order = 'YXZ'; // ヨー(向き)→ピッチ(前傾)の順＝うつ伏せ時も頭が進行方向を向く
-      playerIsChinchilla = /chinchilla/.test(file);     // チンチラ主人公＝アニメ無し・専用の弾み/スケール
-      if (playerIsChinchilla) playerAvatar.scale.setScalar(1.8); // ちょっと大きめの「ヒーローチンチラ」（~1.4m）
-      playerAvatar.visible = thirdPerson; // 三人称なら即表示
-      scene.add(playerAvatar);
-      captureHandRig(); // ★装着リグ(手アンカー/腕回転)を bind pose で採取（mixer 更新前＝中立）。§3 ワールド追従の基準
-      let v = 0, mc = 0;
-      playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
-      diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc, clips:[] };
-      if (gltf.animations && gltf.animations.length) {
-        mixer = new THREE.AnimationMixer(playerAvatar);
-        const byName = {}; gltf.animations.forEach(c => byName[c.name] = c);
-        diag.glb.clips = gltf.animations.map(c => c.name);
-        actIdle = mixer.clipAction(byName['idle'] || gltf.animations[0]);
-        actWalk = mixer.clipAction(byName['walk'] || gltf.animations[1] || (byName['idle'] || gltf.animations[0]));
-        if (byName['attack']) { actAttack = mixer.clipAction(byName['attack']); actAttack.loop = THREE.LoopOnce; actAttack.clampWhenFinished = true; } // 攻撃モーション
-        if (byName['swim']) actSwim = mixer.clipAction(byName['swim']); // 泳ぎモーション（4号機。あれば前傾の代わりに再生）
-        actIdle.play(); curAction = actIdle;
-        resetAvatarAnim(); // ★ロード/開始直後は明示的に idle へ（swim 等の引きずりを断つ・星野さん報告の固着対策）
-      }
-      updateHeldWeapon(); // 装備中の武器/盾を手に反映（読込直後・セーブ復元の武器も）
-      console.log(`[voxel] アバター読込 OK(${file})：頂点${v} / clips=[${diag.glb.clips}]`);
-    },
-    undefined,
-    (err) => {
-      diag.glb = { tried:true, ok:false, error:String((err && err.message) || err || 'load error'), vertices:0, meshes:0, clips:[] };
-      console.warn('[voxel] アバター読込 失敗（未配置なら無視可）:', err);
+  // 読み込んだGLBを実際に適用（成功ハンドラ＝本命/フォールバック 共通）
+  const applyGltf = (gltf, srcFile) => {
+    playerAvatar = gltf.scene;
+    playerAvatar.rotation.order = 'YXZ'; // ヨー(向き)→ピッチ(前傾)の順＝うつ伏せ時も頭が進行方向を向く
+    playerIsChinchilla = /chinchilla/.test(srcFile);  // チンチラ主人公＝アニメ無し・専用の弾み/スケール
+    if (playerIsChinchilla) { // 総高を HERO_HEIGHT へ正規化＝立ち姿勢の新モデルでも旧ペットでも背丈/カメラ基準を一定に保つ（接地Y=0前提）
+      const box = new THREE.Box3().setFromObject(playerAvatar);
+      const h = Math.max(0.01, box.max.y - box.min.y);
+      playerAvatar.scale.setScalar(HERO_HEIGHT / h);
     }
-  );
+    playerAvatar.visible = thirdPerson; // 三人称なら即表示
+    scene.add(playerAvatar);
+    captureHandRig(); // ★装着リグ(手アンカー/腕回転)を bind pose で採取（mixer 更新前＝中立）。§3 ワールド追従の基準
+    let v = 0, mc = 0;
+    playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
+    diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc, clips:[] };
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(playerAvatar);
+      const byName = {}; gltf.animations.forEach(c => byName[c.name] = c);
+      diag.glb.clips = gltf.animations.map(c => c.name);
+      actIdle = mixer.clipAction(byName['idle'] || gltf.animations[0]);
+      actWalk = mixer.clipAction(byName['walk'] || gltf.animations[1] || (byName['idle'] || gltf.animations[0]));
+      if (byName['attack']) { actAttack = mixer.clipAction(byName['attack']); actAttack.loop = THREE.LoopOnce; actAttack.clampWhenFinished = true; } // 攻撃モーション
+      if (byName['swim']) actSwim = mixer.clipAction(byName['swim']); // 泳ぎモーション（4号機。あれば前傾の代わりに再生）
+      actIdle.play(); curAction = actIdle;
+      resetAvatarAnim(); // ★ロード/開始直後は明示的に idle へ（swim 等の引きずりを断つ・星野さん報告の固着対策）
+    }
+    updateHeldWeapon(); // 装備中の武器/盾を手に反映（読込直後・セーブ復元の武器も）
+    console.log(`[voxel] アバター読込 OK(${srcFile})：頂点${v} / clips=[${diag.glb.clips}]`);
+  };
+  // 本命を試し、失敗したらフォールバックへ（さらに失敗時のみ診断にエラー記録）
+  gltfLoader.load(file, (g) => applyGltf(g, file), undefined, (err) => {
+    console.warn('[voxel] 本命アバター読込失敗→フォールバック', file, err);
+    if (fb && fb !== file) gltfLoader.load(fb, (g) => applyGltf(g, fb), undefined, (e2) => {
+      diag.glb = { tried:true, ok:false, error:String((e2 && e2.message) || e2 || 'load error'), vertices:0, meshes:0, clips:[] };
+      console.warn('[voxel] フォールバックも失敗（未配置なら無視可）:', e2);
+    });
+    else diag.glb = { tried:true, ok:false, error:String((err && err.message) || err || 'load error'), vertices:0, meshes:0, clips:[] };
+  });
 }
 // 旧セーブ/旧設定が人間アバターを指していたらチンチラへ移行（主人公＝チンチラ）
 if (!PLAYER_SKINS.some(s => s.file === currentPlayerFile)) currentPlayerFile = DEFAULT_PLAYER_FILE;
