@@ -16,8 +16,8 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 23945096,
-    "size_mb": 22.836
+    "size_bytes": 24115236,
+    "size_mb": 22.998
   },
   "assets": [
     {
@@ -1321,8 +1321,8 @@
       "file": "enemy_snake.glb",
       "name": "enemy_snake",
       "category": "その他",
-      "size_bytes": 273292,
-      "size_mb": 0.2606,
+      "size_bytes": 226828,
+      "size_mb": 0.2163,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
@@ -1333,24 +1333,24 @@
       "file": "enemy_weasel.glb",
       "name": "enemy_weasel",
       "category": "その他",
-      "size_bytes": 233188,
-      "size_mb": 0.2224,
+      "size_bytes": 342076,
+      "size_mb": 0.3262,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 35,
+      "materials": 65,
       "error": null
     },
     {
       "file": "enemy_wolf.glb",
       "name": "enemy_wolf",
       "category": "その他",
-      "size_bytes": 346256,
-      "size_mb": 0.3302,
+      "size_bytes": 453972,
+      "size_mb": 0.4329,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 45,
+      "materials": 86,
       "error": null
     },
     {
