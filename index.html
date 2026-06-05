@@ -134,7 +134,7 @@ const SWATCH = {
 const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand, B.snow, B.planks, B.stonebrick, B.glass];
 const counts = {};          // ブロック種別ごとの所持数（破壊で増え、設置で減る）
 HOTBAR.forEach(b => counts[b] = 0);
-const itemCounts = { meat:0, egg:0, coin:0, apple:0, coal:0, iron:0, gold:0 }; // ドロップ品・採掘素材の所持数（早期宣言＝ロード時に参照するため）
+const itemCounts = { meat:0, egg:0, coin:0, apple:0, coal:0, iron:0, gold:0, himawari:0 }; // ドロップ品・採掘素材の所持数（himawari=ペットの大好物。早期宣言＝ロード時に参照）
 const bossKills = {}; // ⑥ ボス種別ごとの討伐数（達成感の記録。セーブ・H診断に反映）
 
 // ===================================================================
@@ -2757,12 +2757,14 @@ function updateAllyMarker(m, dt) {
 const pets = [];
 let petIdSeq = 0;
 const MAX_PETS = 2;
-const PET_FOODS = ['meat', 'apple', 'egg'];                       // 餌（この順で消費）
+const PET_FOODS = ['himawari', 'meat', 'apple', 'egg'];           // 餌（大好物のひまわりから消費）
+const PET_FAVORITE = 'himawari';                                  // 大好物（特別に機嫌が上がる）
 const PET_TAME_TYPES = ['cow', 'sheep', 'pig', 'chicken', 'horse']; // 野生からなつかせられる動物
 const PET_TELEPORT = 44;                                          // これ以上離れたら近くへワープ（迷子防止）
 const PET_TRAITS = {
   playful: { label: 'やんちゃ' }, lazy: { label: 'なまけ' }, clingy: { label: '甘えん坊' },
   glutton: { label: '食いしん坊' }, timid: { label: 'びびり' }, aloof: { label: 'つんでれ' },
+  wary: { label: '警戒心' },
 };
 const PET_NAMES = ['もふ', 'チビ', 'マル', 'ココ', 'むぎ', 'きなこ', 'あずき', 'そら'];
 const clampPet = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -2799,6 +2801,7 @@ function initPet(m, opts = {}) {
   m.patCd = 0; m.emoteCd = 1.5 + Math.random() * 2; m.habitCd = 3 + Math.random() * 4;
   m.hopT = Math.random() * 6; m.sitT = 0; m.zoomT = 0; m.sulkT = 0; m.gy = null; m.zoomDir = 1;
   m.biteT = 0; m.fumeT = 0; m.standT = 0; m.angerCd = 3 + Math.random() * 3; // 怒り行動（噛みつき/立ちオシッコ/プンプン）
+  m.eatT = 0; m.alertT = 0;                                                  // 手で持って食べる演出 / 警戒スキャン
   if (pets.indexOf(m) < 0) pets.push(m);
   attachPetMarker(m);
 }
@@ -2832,16 +2835,21 @@ function petInteract() {
   itemCounts[food]--;
   initPet(best, {});
   best.mood = clampPet(best.mood + 15, 0, 100); best.petHunger = clampPet(best.petHunger - 30, 0, 100); best.moodBand = petMoodBand(best.mood);
+  best.eatT = 2.0; // なついた直後に手で持って食べる
   petEmote(best); window.playSFX && window.playSFX('eat');
   toast(`🐾「${best.petName}」がなついた！ 性格:${best.traits.map(t => PET_TRAITS[t].label).join('・')}`);
   scheduleSave();
 }
 function feedPet(m, food) {
   itemCounts[food]--;
-  m.mood = clampPet(m.mood + (petHas(m, 'glutton') ? 34 : 24), 0, 100);
-  m.petHunger = clampPet(m.petHunger - 55, 0, 100);
-  petEmote(m); window.playSFX && window.playSFX('eat');
-  toast(`🐾「${m.petName}」に${ITEM_NAMES[food]}をあげた（${petMoodLabel(m)}）`);
+  const fav = food === PET_FAVORITE;                            // 大好物（ひまわり）は特別
+  let gain = petHas(m, 'glutton') ? 34 : 24; if (fav) gain += 16;
+  m.mood = clampPet(m.mood + gain, 0, 100);
+  m.petHunger = clampPet(m.petHunger - (fav ? 65 : 55), 0, 100);
+  m.eatT = 2.2;                                                 // 座って手で持って食べる
+  petEmote(m); if (fav) petEmote(m); window.playSFX && window.playSFX('eat');
+  toast(fav ? `🌻「${m.petName}」がひまわりを手で持ってもぐもぐ！（大好物・${petMoodLabel(m)}）`
+            : `🐾「${m.petName}」に${ITEM_NAMES[food]}をあげた（手で持ってもぐもぐ・${petMoodLabel(m)}）`);
   petBandToast(m); scheduleSave();
 }
 function patPet(m) {
@@ -2895,6 +2903,7 @@ function updatePet(m, dt, dx, dz, dist) {
   else if (dist > 22) dm -= (petHas(m, 'clingy') ? 0.55 : petHas(m, 'aloof') ? 0.12 : 0.32) * dt; // 放置はしょんぼり
   if (m.petHunger > 70) dm -= 0.45 * dt;                                                     // 空腹で下がる
   if (petHas(m, 'timid') && nearestHostileTo(m.obj.position.x, m.obj.position.z, 10)) dm -= 1.1 * dt; // びびりは怖がる
+  if (petHas(m, 'wary') && dm > 0) dm *= 0.82;                                                       // 警戒心＝心を開くのがゆっくり
   m.mood = clampPet(m.mood + dm, 0, 100);
   petBandToast(m);
   const band = petMoodBand(m.mood);
@@ -2906,6 +2915,12 @@ function updatePet(m, dt, dx, dz, dist) {
   let spd = band === 'happy' ? 8.5 : band === 'normal' ? 6 : 3.6;
   if (petHas(m, 'lazy')) spd *= 0.7;
   if (petHas(m, 'playful') && band !== 'grumpy') spd *= 1.15;
+  // 餌を持っていると寄ってくる（大好物ひまわりだと一目散）
+  const holdingFav = (itemCounts[PET_FAVORITE] || 0) > 0;
+  const holdingFood = holdingFav || PET_FOODS.some(f => (itemCounts[f] || 0) > 0);
+  if (holdingFood && dist < 16) { want = Math.min(want, holdingFav ? 1.5 : 2.0); spd = Math.max(spd, holdingFav ? 9 : 7); }
+  // 警戒心：敵が視界(12m)にいると間合いを広く取り慎重になる
+  if (petHas(m, 'wary') && nearestHostileTo(m.obj.position.x, m.obj.position.z, 12)) want += 2.0;
   // --- 癖の発動（一定間隔でミニ仕草）---
   m.habitCd -= dt;
   if (m.habitCd <= 0) {
@@ -2914,6 +2929,7 @@ function updatePet(m, dt, dx, dz, dist) {
     else if (petHas(m, 'lazy') && Math.random() < 0.6) m.sitT = 2 + Math.random() * 2.5;
     else if (band === 'grumpy' && Math.random() < 0.5) m.sulkT = 1.0 + Math.random() * 1.4;
     else if (petHas(m, 'aloof') && Math.random() < 0.5) m.sitT = 1.4 + Math.random() * 1.6;
+    if (petHas(m, 'wary') && m.alertT <= 0 && m.zoomT <= 0 && m.sitT <= 0 && Math.random() < 0.45) m.alertT = 1.0 + Math.random() * 1.2; // 警戒：辺りをうかがう
   }
   // --- 怒り：噛みつく / 立ってオシッコ / プンプン ---
   //   ① 近くの敵に対して威嚇（機嫌に関係なく・びびりは除く＝防衛本能）
@@ -2940,6 +2956,7 @@ function updatePet(m, dt, dx, dz, dist) {
   const faceP = () => { m.obj.rotation.y = Math.atan2(-dx, -dz); };
   const faceAway = () => { m.obj.rotation.y = Math.atan2(dx, dz); };
   if (m.biteT > 0) { m.biteT -= dt; faceP(); hx = dx / dist; hz = dz / dist; moving = dist > 1.1; anim = 'walk'; spd = 12; } // 噛みつき突進
+  else if (m.eatT > 0) { m.eatT -= dt; faceP(); anim = 'idle'; }                                                          // 手で持ってもぐもぐ
   else if (m.fumeT > 0) { m.fumeT -= dt; faceP(); anim = 'idle'; m.obj.rotation.y += (Math.random() - 0.5) * 0.14; } // 怒って震える
   else if (m.sitT > 0) { m.sitT -= dt; anim = 'idle'; faceP(); }
   else if (m.zoomT > 0) {                                   // やんちゃ：プレイヤー周りをくるくるダッシュ
@@ -2951,19 +2968,22 @@ function updatePet(m, dt, dx, dz, dist) {
   }
   else if (band === 'grumpy' && m.sulkT > 0) { m.sulkT -= dt; hx = -dx / dist; hz = -dz / dist; moving = true; anim = 'walk'; spd *= 0.8; } // 拗ねて離れる
   else if (dist > want) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; if (dist > 14) spd *= 1.7; }
-  else { anim = 'idle'; if (band === 'grumpy') faceAway(); else faceP(); }
+  else { anim = 'idle'; if (m.alertT > 0) { m.alertT -= dt; m.obj.rotation.y += dt * 1.4; } else if (band === 'grumpy') faceAway(); else faceP(); } // 警戒スキャン＝辺りを見回す
   if (moving) tryMoveMob(m, hx, hz, spd, dt);
   // --- 接地＋弾み（ごきげんだとぴょこぴょこ＋しっぽワグ）---
   const fy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
   m.gy = (m.gy == null) ? fy : m.gy + (fy - m.gy) * Math.min(1, dt * 12);
   m.hopT += dt * (anim === 'walk' ? 9 : 5);
   let bob = 0;
-  if (band === 'happy') bob = Math.max(0, Math.sin(m.hopT)) * 0.10 * (petHas(m, 'playful') ? 1.7 : 1);
+  if (m.eatT > 0) bob = Math.abs(Math.sin(m.hopT * 7)) * 0.025;                                       // もぐもぐ（手で持って食べる）
+  else if (band === 'happy') bob = Math.max(0, Math.sin(m.hopT)) * 0.10 * (petHas(m, 'playful') ? 1.7 : 1);
   m.obj.position.y = m.gy + bob;
-  if (band === 'happy' && !moving) m.obj.rotation.y += Math.sin(m.hopT * 1.3) * 0.05;
-  // 立ち上がり（おしっこ威嚇）：縦に伸びて細くなる→戻る
+  if (band === 'happy' && !moving && m.eatT <= 0) m.obj.rotation.y += Math.sin(m.hopT * 1.3) * 0.05;
+  // ポーズ別の伸縮：立ちオシッコ=縦に伸びる / 食事=ちょこんと持ち上げる → それ以外は戻る
   if (m.standT > 0) m.standT -= dt;
-  const tSY = m.standT > 0 ? 1.5 : 1.0, tSXZ = m.standT > 0 ? 0.86 : 1.0;
+  let tSY = 1.0, tSXZ = 1.0;
+  if (m.standT > 0) { tSY = 1.5; tSXZ = 0.86; }
+  else if (m.eatT > 0) { tSY = 1.12; tSXZ = 0.96; }
   m.obj.scale.y += (tSY - m.obj.scale.y) * Math.min(1, dt * 12);
   m.obj.scale.x += (tSXZ - m.obj.scale.x) * Math.min(1, dt * 12);
   m.obj.scale.z += (tSXZ - m.obj.scale.z) * Math.min(1, dt * 12);
@@ -2981,8 +3001,9 @@ function maybeIntroducePet() {
   const a = player.yaw + Math.PI, sx = player.pos.x + Math.sin(a) * 2.2, sz = player.pos.z + Math.cos(a) * 2.2;
   const m = spawnMob('chinchilla', sx, sz, { hp: 30 });
   if (m) {
-    initPet(m, { petName: 'もふ', traits: ['playful'], mood: 72, petHunger: 10 });
-    if (typeof toast === 'function') toast('🐾 ペットのチンチラ「もふ」がついてきた！（Pでなでる/餌・やんちゃ）');
+    initPet(m, { petName: 'もふ', traits: ['playful', 'wary'], mood: 72, petHunger: 10 });
+    if ((itemCounts.himawari || 0) < 12) itemCounts.himawari = 12; // 大好物のひまわりを少し持たせて始める
+    if (typeof toast === 'function') toast('🐾 チンチラ「もふ」がついてきた！ 🌻ひまわりを持ってP＝寄ってきて手で食べる（やんちゃ/警戒心）');
   }
 }
 // 海ボス クラーケンAI：海面に半身を出して定位置に留まり、船(プレイヤー)が近いと触手で攻撃。陸へ上がらない。
@@ -3597,7 +3618,7 @@ function updateArrows(dt) {
 // ===================================================================
 // ⑦ 戦闘（プレイヤー→モブ攻撃）とドロップ・アイテム入手
 // ===================================================================
-const ITEM_DEFS = ['meat','egg','coin','apple','coal','iron','gold']; // インベントリ表示用（鉱石素材含む）
+const ITEM_DEFS = ['meat','egg','coin','apple','coal','iron','gold','himawari']; // インベントリ表示用（鉱石素材・ペットの餌含む）
 const ITEM_MODELS = ['meat','egg','coin','apple'];                    // 地面ドロップに3Dモデルがある物のみ（鉱石は採掘→直接所持＝モデル不要）
 const itemTemplates = {};
 ITEM_MODELS.forEach(n => gltfLoader.load(`models/item_${n}.glb`, g => { itemTemplates[n] = g.scene; }, undefined, () => {})); // item_coal/iron/gold.glb は無い＝404回避
@@ -3715,7 +3736,7 @@ function openChestProp(x, y, z) {
   p.opened = true;
   if (p.actOpen) { p.actOpen.reset().play(); if (p.actIdle) p.actIdle.stop(); }
 }
-const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご', coal:'石炭', iron:'鉄', gold:'金' };
+const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご', coal:'石炭', iron:'鉄', gold:'金', himawari:'ひまわりの種' };
 const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin' };
 // ⑥ ボス撃破の特別報酬（探索の目標＝倒す意味）。exp=追加EXP / gold,coin=資源 / equips=確定レア装備数 / name=表示名
 const BOSS_REWARD = {

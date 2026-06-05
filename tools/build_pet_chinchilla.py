@@ -124,49 +124,47 @@ TAILTIP= (0.92, 0.90, 0.87)   # 尻尾の先（クリーム白）
 # チンチラ造形（座り姿勢・正面 -Z）
 #   ※座標: +Y 上 / -Z 正面 / 後で min(y)=0 へ平行移動
 # ----------------------------------------------------------------------
-# 体（まんまるの胴・座っているので下が広い）
-ellipsoid(0.0, 0.27, 0.00, 0.250, 0.285, 0.230, FUR, ring=12)
+# 体（まんまる＝ほぼ球。後ろから見ると丸い）
+ellipsoid(0.0, 0.255, 0.00, 0.258, 0.255, 0.248, FUR, ring=13)
 # 腹〜胸（前面のクリーム・控えめに）
-ellipsoid(0.0, 0.215, 0.180, 0.140, 0.180, 0.085, BELLY, ring=10)
-# 頭（大きめ・胴と繋がる・前へ少し出す）
-ellipsoid(0.0, 0.520, 0.075, 0.205, 0.195, 0.195, FUR, ring=12)
+ellipsoid(0.0, 0.205, 0.185, 0.140, 0.160, 0.080, BELLY, ring=10)
+# 頭（まんまるの球＝胴の上にもう一つの丸。「丸二つ」のシルエット）
+ellipsoid(0.0, 0.560, 0.045, 0.196, 0.190, 0.192, FUR, ring=13)
 # 口元・頬（白・小さめ）
-ellipsoid(0.0, 0.450, 0.215, 0.105, 0.088, 0.090, BELLY, ring=10)
+ellipsoid(0.0, 0.490, 0.200, 0.098, 0.080, 0.084, BELLY, ring=10)
 # 鼻（ピンク・小さな逆三角）
-ellipsoid(0.0, 0.468, 0.300, 0.030, 0.024, 0.024, NOSE, ring=8)
-# 目（左右・大きく真っ黒・顔の表面に出す）＋ハイライト
+ellipsoid(0.0, 0.508, 0.285, 0.029, 0.023, 0.023, NOSE, ring=8)
+# 目（左右・つぶらなルビー目＝小さめ）＋ハイライト
 for sx in (-1, 1):
-    ellipsoid(sx*0.105, 0.565, 0.215, 0.076, 0.082, 0.060, EYE, seg=18, ring=12, rough=0.14,
+    ellipsoid(sx*0.100, 0.590, 0.200, 0.057, 0.061, 0.049, EYE, seg=16, ring=11, rough=0.14,
               emis=(0.50, 0.04, 0.06))  # ほんのり赤く光らせて「ルビー目」に
-    ellipsoid(sx*0.085, 0.595, 0.262, 0.023, 0.023, 0.016, EYEHI, seg=8, ring=6,
+    ellipsoid(sx*0.084, 0.612, 0.240, 0.017, 0.017, 0.012, EYEHI, seg=8, ring=6,
               rough=0.06, emis=(0.9, 0.9, 0.9))
-# 耳（特大の丸耳：地肌のピンク。立ち気味＝写真2準拠）＋内耳の陰
+# 耳（特大の丸耳：地肌のピンク。頭の丸から飛び出す）＋内耳の陰
 for sx in (-1, 1):
-    ellipsoid(sx*0.175, 0.770, -0.010, 0.130, 0.180, 0.050, EAR_OUT,
+    ellipsoid(sx*0.172, 0.795, -0.005, 0.126, 0.176, 0.050, EAR_OUT,
               seg=16, ring=11, rotZ=sx*0.10, rotX=-0.04, rough=0.6)
-    ellipsoid(sx*0.175, 0.770, 0.020, 0.082, 0.126, 0.030, EAR_IN,
+    ellipsoid(sx*0.172, 0.795, 0.025, 0.080, 0.124, 0.030, EAR_IN,
               seg=14, ring=9, rotZ=sx*0.10, rotX=-0.04, rough=0.6)
-# 前足（ちょこんと揃える・胸の前・白っぽい）＝手のひら＋4本指
+# 前足（短い手＝手のひら＋ずんぐり4本指。ものを掴む形）
 for sx in (-1, 1):
-    ellipsoid(sx*0.088, 0.110, 0.190, 0.046, 0.052, 0.055, PAW, seg=12, ring=8)  # 手のひら
-    # 4本指（前へすっと伸ばす・中指が少し長い）
-    fingers = [(0.050, 0.120, 0.052), (0.074, 0.126, 0.062),
-               (0.098, 0.126, 0.062), (0.121, 0.118, 0.050)]
-    for (fx, fy, fl) in fingers:
-        ellipsoid(sx*fx, fy, 0.250, 0.0125, 0.0135, fl, PAW, seg=8, ring=6, rotX=-0.28)
-# 後足（座って前へ投げ出す）
+    ellipsoid(sx*0.090, 0.110, 0.180, 0.048, 0.052, 0.052, PAW, seg=12, ring=8)  # 手のひら
+    fingers = [0.054, 0.078, 0.102, 0.124]                                       # 4本・短いずんぐり指
+    for fx in fingers:
+        ellipsoid(sx*fx, 0.122, 0.214, 0.0145, 0.0145, 0.024, PAW, seg=8, ring=6, rotX=-0.45)
+# 後足（座って前へ投げ出す・小さめ＝後ろからはほぼ見えない）
 for sx in (-1, 1):
-    ellipsoid(sx*0.140, 0.035, 0.095, 0.072, 0.034, 0.125, PAW, seg=12, ring=8)
-# 尻尾（ふさふさ・後ろへ跳ね上げ・先はクリーム白）
-ellipsoid(0.0, 0.20, -0.255, 0.095, 0.135, 0.115, TAIL, ring=10)
-ellipsoid(0.0, 0.370,-0.305, 0.082, 0.108, 0.090, TAIL, ring=10)
-ellipsoid(0.0, 0.500,-0.320, 0.066, 0.082, 0.070, TAILTIP, ring=10)
+    ellipsoid(sx*0.135, 0.030, 0.085, 0.066, 0.030, 0.112, PAW, seg=12, ring=8)
+# 尻尾（ふさふさ・後ろへ跳ね上げ・先はクリーム白＝後ろ姿の差し色）
+ellipsoid(0.0, 0.20, -0.250, 0.095, 0.135, 0.115, TAIL, ring=10)
+ellipsoid(0.0, 0.370,-0.300, 0.082, 0.108, 0.090, TAIL, ring=10)
+ellipsoid(0.0, 0.500,-0.315, 0.066, 0.082, 0.070, TAILTIP, ring=10)
 # ひげ（左右に長め・数本）
 for sx in (-1, 1):
-    base = (sx*0.06, 0.455, 0.285)
+    base = (sx*0.06, 0.480, 0.270)
     for (dx, dy, dz) in [(0.40, 0.06, 0.07), (0.42, -0.01, 0.05),
                          (0.39, -0.08, 0.07), (0.35, 0.12, 0.06)]:
-        whisker(base, (sx*dx, 0.455+dy, 0.285+dz), 0.005, WHISK)
+        whisker(base, (sx*dx, 0.480+dy, 0.270+dz), 0.005, WHISK)
 
 # ----------------------------------------------------------------------
 # 足元を y=0 に合わせる
@@ -282,7 +280,8 @@ def build_glb(path):
 def render_preview(path, W=440, H=520):
     panels = []
     for (ry, rx, label) in [(math.radians(28), math.radians(12), "3/4"),
-                            (0.0, math.radians(6), "front")]:
+                            (0.0, math.radians(6), "front"),
+                            (math.radians(180), math.radians(10), "back")]:
         buf = [[(238, 236, 232) for _ in range(W)] for _ in range(H)]
         depth = [[-1e9]*W for _ in range(H)]  # +Z がカメラ手前。大きいほど手前。
         R = matmul(rotx(rx), roty(ry))
@@ -349,13 +348,16 @@ def render_preview(path, W=440, H=520):
                         depth[py][px] = zz
                         buf[py][px] = (r, g, bb)
         panels.append(buf)
-    # 2枚を横に連結
-    GW = W*2 + 12
+    # 各ビューを横に連結
+    gap = 12; n = len(panels)
+    GW = W*n + gap*(n-1)
     out = [[(238, 236, 232) for _ in range(GW)] for _ in range(H)]
-    for y in range(H):
-        for x in range(W):
-            out[y][x] = panels[0][y][x]
-            out[y][x+W+12] = panels[1][y][x]
+    for pi, pn in enumerate(panels):
+        ox0 = pi*(W+gap)
+        for y in range(H):
+            row = out[y]; src = pn[y]
+            for x in range(W):
+                row[ox0+x] = src[x]
     write_png(path, out, GW, H)
     print(f"wrote {path}  ({GW}x{H})")
 
