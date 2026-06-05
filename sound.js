@@ -17,6 +17,7 @@
     footstep: 1, jump: 1, land: 1, break: 1, place: 1, eat: 1, pickup: 1, craft: 1,
     splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
     whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1, aggro_stinger: 1, escape_success: 1,
+    maguro_appear: 1, maguro_vanish: 1, chapter_clear: 1, ending: 1, motif: 1, // ⑨ ストーリー演出音
     companion_join: 1, companion_reply: 1, companion_hit: 1, companion_leave: 1, // 仲間システム
     // チンチラ世界の動物SE（敵/仲間/ペット）。個別倍率で「狼うるさい」等に即対応。
     wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, snake_strike: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, attack_bite: 1, // 敵
@@ -133,6 +134,15 @@
     noise(0.18, 0.04 * v, 600, 'lowpass', d, 0.06);                      // 崩れ落ち
   }
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+  // ⑨ 恩人（まぐろ）モチーフ＝短い旋律。物語の節目（まぐろ登場/章クリア/女王撃破/エンディング）で再帰させ物語を締める。
+  //   A4→C5→E5→D5 のほろ苦く優しい4音。opts: {at(開始秒), gain, mul(移調倍率), wave, dur(音長), step(音間隔), dest}
+  const MOTIF = [440.00, 523.25, 659.25, 587.33];
+  function playMotif(o) {
+    o = o || {};
+    const at0 = o.at || 0, g = o.gain || 0.07, mul = o.mul || 1, wave = o.wave || 'sine', dur = o.dur || 0.34, step = o.step || 0.26, dest = o.dest || null;
+    MOTIF.forEach((f, i) => tone(f * mul, dur, wave, g, f * mul, dest, at0 + i * step));
+  }
 
   // ── 素材別パラメータ（足音・破壊・設置で材質感を出す）─────────────
   // block 名は1号機コア側の地表/ブロック種に合わせる。未知名は default。
@@ -266,6 +276,39 @@
       noise(0.50, 0.040, 1200, 'bandpass', null, 0.30);                                                       // 自由への一陣の風（ふわっ）
       tone(1046.50, 0.50, 'sine', 0.05, 1396.91, null, 0.55);                                                 // きらめき（C6→F6）
     },
+
+    // === ⑨ ストーリー演出音（チンチラ革命記）。恩人=まぐろ の霊・章クリア・エンディング。恩人モチーフ playMotif を再帰 ===
+    // まぐろ登場＝恩人の霊の幻想ジングル（聖/切ない）：聖歌のロング和音 swell＋鐘の恩人モチーフ＋高い倍音の霊性。
+    maguro_appear() {
+      [261.63, 329.63, 392.00].forEach((f, i) => tone(f, 2.4, 'triangle', 0.030, f, null, i * 0.06)); // 聖歌のロング和音(Cメジャー)
+      tone(130.81, 2.6, 'sine', 0.026, 130.81);                                                         // 低いドローン(C3)
+      playMotif({ wave: 'sine', gain: 0.055, dur: 0.50, step: 0.34, at: 0.5 });                         // 鐘の恩人モチーフ(ゆっくり)
+      tone(880.00, 1.4, 'sine', 0.020, 880.00, null, 0.5);                                              // 高い倍音の艶（霊性）
+    },
+    // まぐろ消滅＝光になって消える：高域へ昇って溶けるきらめき＋光の粒の拡散＋消え入る最後のきらめき。
+    maguro_vanish() {
+      [659.25, 880.00, 1174.66, 1567.98].forEach((f, i) => tone(f, 0.6 + i * 0.1, 'sine', 0.05 - i * 0.008, f * 1.3, null, i * 0.10)); // 上昇して薄れる
+      noise(0.80, 0.025, 4000, 'highpass', null, 0.10);                                                 // 光の粒の拡散
+      tone(1975.53, 0.9, 'triangle', 0.020, 2637.02, null, 0.35);                                       // 最後のきらめき(消え入る)
+    },
+    // 章クリア演出音：達成の解決カデンツ＋恩人モチーフのほのめかし。idx で僅かに上へ積む(章が進むほど高揚)。
+    chapter_clear(o) {
+      const idx = (o && o.idx) || 0, mul = Math.pow(2, Math.min(idx, 3) / 12); // 章ごと半音ずつ上げ(最大3半音)
+      [523.25, 659.25, 783.99].forEach((f) => tone(f * mul, 0.6, 'triangle', 0.09, f * mul, null, 0.0)); // Cメジャー和音の解決
+      tone(261.63 * mul, 0.7, 'sine', 0.08, 261.63 * mul);                                              // 低音土台
+      playMotif({ wave: 'triangle', gain: 0.05, dur: 0.28, step: 0.20, at: 0.5, mul: mul });            // 恩人モチーフのほのめかし
+      tone(1046.50 * mul, 0.5, 'sine', 0.04, 1318.51 * mul, null, 0.55);                                // きらめき
+    },
+    // エンディング＝恩人モチーフを温かくフル再帰させ物語を締める（大団円）。主旋律＋1oct上のハモリ＋締めの高域。
+    ending() {
+      [261.63, 329.63, 392.00, 523.25].forEach((f, i) => tone(f, 2.0, 'triangle', 0.05, f, null, i * 0.04)); // 温かいCメジャー積み
+      tone(130.81, 2.2, 'sine', 0.06, 130.81);                                                          // 低音土台(C3)
+      playMotif({ wave: 'sine',     gain: 0.080, dur: 0.50, step: 0.36, at: 0.4 });                     // 恩人モチーフ(主)
+      playMotif({ wave: 'triangle', gain: 0.035, dur: 0.50, step: 0.36, at: 0.4, mul: 2 });             // 1oct上のハモリ
+      tone(1046.50, 1.4, 'sine', 0.03, 1567.98, null, 1.6);                                             // 締めの高域きらめき
+    },
+    // 恩人モチーフ単体（女王戦/エンディング等で再帰利用）。opts で at/gain/mul/wave を渡せる。
+    motif(o) { playMotif(o); },
 
     // === 仲間システム（NPCが仲間になる新機能）。1号機が口を呼ぶだけ・未呼出なら無音待機 ===
     //   type は仲間種（'knight'|'archer'|'mage' 等）。省略でも汎用音として成立。
@@ -421,13 +464,25 @@
   //   window.onQueenDefeat() … 女王撃破＝既存の勝利ファンファーレ。撃破後コアが setMusicScene を平常へ戻せばOK。
   //   window.onEnemyAggro()  … 敵が交戦状態に入った瞬間の短い緊張スティンガー（頻発OK・軽量）。
   window.onQueenAppear = () => { window.playSFX('boss_roar', { type: 'queen' }); try { window.setMusicScene && window.setMusicScene('queen'); } catch (e) {} };
-  window.onQueenDefeat = () => window.playSFX('boss_defeat', { type: 'queen' });
+  // 女王撃破＝勝利ファンファーレ＋恩人(まぐろ)モチーフのこだま（恩人の祝福で物語が締まる）。
+  window.onQueenDefeat = () => { window.playSFX('boss_defeat', { type: 'queen' }); window.playSFX('motif', { at: 1.1, gain: 0.05, wave: 'sine' }); };
   window.onEnemyAggro  = () => window.playSFX('aggro_stinger');
 
   // === ⓪ 序章『脱走』連携（防御的: 1号機が呼ぶだけ・未呼出なら無音待機）=====
   //   脱走シーン突入で window.setMusicScene('escape')（忍び/緊張テーマ）。緊張の高まりは window.setDangerLevel(0..1)（P2）で。
   //   window.onEscapeSuccess() … 脱走成功＝達成の高揚ジングル。成功後は 1号機が setMusicScene('day'|…) で平常へ。
   window.onEscapeSuccess = () => window.playSFX('escape_success');
+
+  // === ⑨ ストーリー演出音 連携（チンチラ革命記・防御的: 1号機/3号機が呼ぶだけ）=====
+  //   window.onMaguroAppear() … 恩人まぐろの霊が現れる幻想ジングル（聖/切ない）。
+  //   window.onMaguroVanish() … まぐろが光になって消える音。
+  //   window.onChapterClear(idx) … 章クリア演出音（idx=章番号で僅かに高揚・省略可）。
+  //   window.onEnding() … エンディング＝恩人モチーフをフル再帰させる大団円。
+  //   恩人モチーフは女王撃破(onQueenDefeat)にもこだまとして再帰し、物語を締める。
+  window.onMaguroAppear = () => window.playSFX('maguro_appear');
+  window.onMaguroVanish = () => window.playSFX('maguro_vanish');
+  window.onChapterClear = (idx) => window.playSFX('chapter_clear', { idx: idx });
+  window.onEnding       = () => window.playSFX('ending');
 
   // === 仲間システム連携（防御的: 1号機が口を呼ぶだけ・未呼出なら無音待機）=====
   //   window.onCompanionJoin(type)  … ① NPCが仲間になった時の心強い加入音。type=仲間種（'knight'|'archer'|'mage' 等／省略=汎用）

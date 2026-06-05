@@ -8,7 +8,8 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 動物SE（敵/仲間/ペット） | `playAnimalSFX(species, event, {x,y,z,vol})` | **推奨**。種×イベント→SE。座標で3D定位。`critterSE` から委譲済 |
 | 効果音 個別 | `playSFX('key', opts)` | 上表の個別キーを直叩き |
 | 環境音 切替 | `setAmbient('forest'|…)` / `setAmbient(null)` | 未呼出でも `getBiome()` 連動で自動 |
-| 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音 |
+| 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音＋恩人モチーフのこだま |
+| ストーリー演出 | `onMaguroAppear()` / `onMaguroVanish()` / `onChapterClear(idx)` / `onEnding()` | 恩人まぐろの霊／光になって消える／章クリア／大団円 |
 | 敵 aggro | `onEnemyAggro()` | 交戦突入の緊張スティンガー |
 | 既存ボス | `onBossAppear(type)` / `onBossDefeat(type)` | `type`=golem/dragon/skeleton_king/queen |
 | BGMシーン | `setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape'|'explore_rocky'|'explore_forest')` | 1.8sクロスフェード |
@@ -167,6 +168,16 @@ window.getAmbientBiome();      // 現在鳴っている環境音タイプ（診�
 - `boss_roar` の `type`: `golem` / `dragon` / `skeleton_king` / **`queen`**（省略でも汎用咆哮）。
 
 > **1号機へ依頼（⑧）**: 女王さくらの出現確定で `onQueenAppear()`、撃破で `onQueenDefeat()` を1回ずつ。任意の敵が aggro 状態へ遷移した瞬間に `onEnemyAggro()` を呼べば緊張スティンガーが鳴ります（**sound.js側は受け口実装済み・呼ぶだけ**）。
+
+### ⑨ ストーリー演出音（チンチラ革命記）
+物語の核を音で締める。**恩人モチーフ**（A4→C5→E5→D5 のほろ苦く優しい4音）を節目で再帰させ、物語に一本の糸を通す。
+- **まぐろ登場**: `window.onMaguroAppear()` → 恩人の霊の幻想ジングル（聖歌のロング和音swell＋鐘の恩人モチーフ＋霊性の高倍音／聖・切ない）。
+- **まぐろ消滅**: `window.onMaguroVanish()` → 光になって昇り溶けるきらめき＋光の粒の拡散。
+- **章クリア**: `window.onChapterClear(idx)` → 達成の解決カデンツ＋恩人モチーフのほのめかし。`idx`（章番号）で僅かに高揚（最大3半音上げ・省略可）。
+- **エンディング**: `window.onEnding()` → 恩人モチーフを温かくフル再帰（主旋律＋1oct上ハモリ）させる大団円。
+- **再帰**: 女王撃破 `onQueenDefeat()` でも勝利ファンファーレの後に恩人モチーフがこだまし、「恩人の祝福」で物語が締まる。任意で `playSFX('motif', {at,gain,mul,wave})` を直接呼べば、他のシーンにもモチーフを差し込める。
+
+> **1号機/3号機へ依頼（⑨）**: 演出のタイミングで上記を1回ずつ呼ぶだけ（**受け口実装済み**）。`onChapterClear` には章番号を渡すと盛り上がりが増します。
 
 ---
 
