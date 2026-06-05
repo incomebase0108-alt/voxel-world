@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 151,
-    "size_bytes": 25635636,
-    "size_mb": 24.448
+    "count": 153,
+    "size_bytes": 25885908,
+    "size_mb": 24.687
   },
   "assets": [
     {
@@ -1495,6 +1495,18 @@
       "error": null
     },
     {
+      "file": "sakura_tree.glb",
+      "name": "sakura_tree",
+      "category": "その他",
+      "size_bytes": 238156,
+      "size_mb": 0.2271,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 30,
+      "error": null
+    },
+    {
       "file": "fx_ally_halo.glb",
       "name": "fx_ally_halo",
       "category": "演出（ボス出現FX）",
@@ -1576,6 +1588,18 @@
       "meshes": 3,
       "nodes": 3,
       "materials": 4,
+      "error": null
+    },
+    {
+      "file": "fx_petal_sakura.glb",
+      "name": "fx_petal_sakura",
+      "category": "演出（ボス出現FX）",
+      "size_bytes": 12116,
+      "size_mb": 0.0116,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 3,
       "error": null
     },
     {

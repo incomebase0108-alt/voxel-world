@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 151 ファイル / 24.45 MB
+**合計**: 153 ファイル / 24.69 MB
 
 
 ## プレイヤー
@@ -176,6 +176,7 @@
 | `pet_chinchilla_violet.glb` | 0.3320 | —（静物） | 1/1 |
 | `pet_chinchilla_violet_baby.glb` | 0.2756 | —（静物） | 1/1 |
 | `pet_chinchilla_white.glb` | 0.3321 | —（静物） | 1/1 |
+| `sakura_tree.glb` | 0.2271 | —（静物） | 1/1 |
 
 ## 演出（ボス出現FX）
 
@@ -187,6 +188,7 @@
 | `fx_collapse.glb` | 0.0738 | `loop` | 3/3 |
 | `fx_magic_circle.glb` | 0.3806 | `loop` | 3/3 |
 | `fx_miasma.glb` | 0.3016 | `loop` | 3/3 |
+| `fx_petal_sakura.glb` | 0.0116 | —（静物） | 1/1 |
 
 ## 室内・ダンジョン
 
