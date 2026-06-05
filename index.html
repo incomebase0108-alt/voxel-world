@@ -2803,6 +2803,7 @@ function initPet(m, opts = {}) {
   m.hopT = Math.random() * 6; m.sitT = 0; m.zoomT = 0; m.sulkT = 0; m.gy = null; m.zoomDir = 1;
   m.biteT = 0; m.fumeT = 0; m.standT = 0; m.angerCd = 3 + Math.random() * 3; // 怒り行動（噛みつき/立ちオシッコ/プンプン）
   m.eatT = 0; m.alertT = 0;                                                  // 手で持って食べる演出 / 警戒スキャン
+  m.queenSeen = false;                                                       // 最終ボス「女王さくら」を察知済みか（同名つながり演出）
   if (pets.indexOf(m) < 0) pets.push(m);
   attachPetMarker(m);
 }
@@ -2908,6 +2909,20 @@ function updatePet(m, dt, dx, dz, dist) {
   m.mood = clampPet(m.mood + dm, 0, 100);
   petBandToast(m);
   const band = petMoodBand(m.mood);
+  // --- 最終ボス「女王さくら」を察知＝同名の主に身構える（毛を逆立てる）---
+  let queen = null;
+  for (const o of mobs) {
+    if (o.def.type === 'queen_sakura' && !o.dying) {
+      const qd = Math.hypot(o.obj.position.x - m.obj.position.x, o.obj.position.z - m.obj.position.z);
+      if (qd < 32) { queen = o; break; }
+    }
+  }
+  if (queen) {
+    if (!m.queenSeen) { // 初遭遇：毛を逆立てて身構える（緊張で機嫌が少し下がる）
+      m.queenSeen = true; m.alertT = 1.8; m.mood = clampPet(m.mood - 6, 0, 100); m.moodBand = petMoodBand(m.mood);
+      if (typeof toast === 'function') toast(`🐾「${m.petName}」は女王さくらに気づき、毛を逆立てて身構えた…！`);
+    }
+  } else if (m.queenSeen) m.queenSeen = false;
   // --- 追従距離・速さ（機嫌・癖で変化）---
   let want = band === 'happy' ? 2.3 : band === 'normal' ? 4.2 : 7.5;
   if (petHas(m, 'clingy')) want *= 0.7;
@@ -2922,6 +2937,7 @@ function updatePet(m, dt, dx, dz, dist) {
   if (holdingFood && dist < 16) { want = Math.min(want, holdingFav ? 1.5 : 2.0); spd = Math.max(spd, holdingFav ? 9 : 7); }
   // 警戒心：敵が視界(12m)にいると間合いを広く取り慎重になる
   if (petHas(m, 'wary') && nearestHostileTo(m.obj.position.x, m.obj.position.z, 12)) want += 2.0;
+  if (queen) want = Math.max(want, 3.5); // 女王さくらには近づきすぎない（同名でも懐かない）
   // --- 癖の発動（一定間隔でミニ仕草）---
   m.habitCd -= dt;
   if (m.habitCd <= 0) {
@@ -2942,8 +2958,13 @@ function updatePet(m, dt, dx, dz, dist) {
     if (foe) {
       m.angerCd = 3 + Math.random() * 3;
       const fdx = foe.obj.position.x - m.obj.position.x, fdz = foe.obj.position.z - m.obj.position.z, fd = Math.hypot(fdx, fdz) || 1;
-      if (fd < 2.2 && Math.random() < 0.5) { petBite(m, fdx, fdz, fd); if (!foe.dying) companionAttack(m, foe, 4); } // 敵を噛む（少しダメージ＝助太刀）
+      const isQueen = foe.def.type === 'queen_sakura';                                                          // 同名の女王には噛みつかない（畏れ＆威嚇）
+      if (!isQueen && fd < 2.2 && Math.random() < 0.5) { petBite(m, fdx, fdz, fd); if (!foe.dying) companionAttack(m, foe, 4); } // 敵を噛む（少しダメージ＝助太刀）
       else petPee(m, fdx, fdz, fd);                                                                              // 敵におしっこ威嚇
+    } else if (queen) {                                                                                          // 女王さくらが視界に＝遠目から立ちオシッコ/プンプンで威嚇
+      m.angerCd = 4 + Math.random() * 4;
+      const qdx = queen.obj.position.x - m.obj.position.x, qdz = queen.obj.position.z - m.obj.position.z, qd = Math.hypot(qdx, qdz) || 1;
+      if (Math.random() < 0.6) petPee(m, qdx, qdz, qd); else petFume(m);
     } else if (band === 'grumpy') {
       m.angerCd = 5 + Math.random() * 5;
       const r = Math.random();
