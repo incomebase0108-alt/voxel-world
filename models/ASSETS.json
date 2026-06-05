@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 140,
-    "size_bytes": 20366268,
-    "size_mb": 19.423
+    "count": 148,
+    "size_bytes": 21076660,
+    "size_mb": 20.1
   },
   "assets": [
     {
@@ -1255,6 +1255,102 @@
       "meshes": 1,
       "nodes": 1,
       "materials": 13,
+      "error": null
+    },
+    {
+      "file": "ally_guineapig.glb",
+      "name": "ally_guineapig",
+      "category": "その他",
+      "size_bytes": 57988,
+      "size_mb": 0.0553,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 14,
+      "error": null
+    },
+    {
+      "file": "ally_hedgehog.glb",
+      "name": "ally_hedgehog",
+      "category": "その他",
+      "size_bytes": 139016,
+      "size_mb": 0.1326,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 56,
+      "error": null
+    },
+    {
+      "file": "ally_rabbit.glb",
+      "name": "ally_rabbit",
+      "category": "その他",
+      "size_bytes": 72700,
+      "size_mb": 0.0693,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 15,
+      "error": null
+    },
+    {
+      "file": "ally_squirrel.glb",
+      "name": "ally_squirrel",
+      "category": "その他",
+      "size_bytes": 78424,
+      "size_mb": 0.0748,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 16,
+      "error": null
+    },
+    {
+      "file": "enemy_bird.glb",
+      "name": "enemy_bird",
+      "category": "その他",
+      "size_bytes": 85228,
+      "size_mb": 0.0813,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 22,
+      "error": null
+    },
+    {
+      "file": "enemy_snake.glb",
+      "name": "enemy_snake",
+      "category": "その他",
+      "size_bytes": 94240,
+      "size_mb": 0.0899,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 22,
+      "error": null
+    },
+    {
+      "file": "enemy_weasel.glb",
+      "name": "enemy_weasel",
+      "category": "その他",
+      "size_bytes": 88000,
+      "size_mb": 0.0839,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 19,
+      "error": null
+    },
+    {
+      "file": "enemy_wolf.glb",
+      "name": "enemy_wolf",
+      "category": "その他",
+      "size_bytes": 94796,
+      "size_mb": 0.0904,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 19,
       "error": null
     },
     {

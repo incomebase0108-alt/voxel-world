@@ -170,7 +170,8 @@ const CFG = {
     speedBoss: 1.4, speedHostile: 2.2, speedNeutral: 1.3, speedVillager: 1.0, // 移動速度
     hp: { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30, dragon:50, skeleton_king:60, demon:80, kraken:120, queen_sakura:240,
           blacksmith:8, merchant:6, farmer:6, guard:14, child:4, elder:5, woman:6, baker:6,
-          fish:3, fish_koi:3, fish_tropical:3, fish_puffer:4, soldier_spear:16, soldier_sword:18, soldier_captain:26 }, // 種別ごとの体力
+          fish:3, fish_koi:3, fish_tropical:3, fish_puffer:4, soldier_spear:16, soldier_sword:18, soldier_captain:26,
+          weasel:6, bird:7, snake:6, wolf:14, rabbit:5, guineapig:5, squirrel:5, hedgehog:6 }, // 種別ごとの体力（天敵/仲間）
   },
   level: {
     baseExp: 12, curve: 1.6,    // 次Lvまでの必要EXP = round(baseExp * Lv^curve)
@@ -2548,6 +2549,16 @@ const MOB_DEFS = [
   { type:'chinchilla_sapphire', file:'models/pet_chinchilla_sapphire.glb', role:'neutral', chin:true },
   { type:'chinchilla_brown',    file:'models/pet_chinchilla_brown.glb',    role:'neutral', chin:true },
   { type:'chinchilla_pink',     file:'models/pet_chinchilla_pink.glb',     role:'neutral', chin:true },
+  // 敵＝チンチラの天敵4種（基本の敵を置き換え）。critter=アニメ無し→コードでぴょこ動く
+  { type:'weasel', file:'models/enemy_weasel.glb', role:'melee', critter:true }, // イタチ：速い
+  { type:'bird',   file:'models/enemy_bird.glb',   role:'melee', critter:true }, // 鳥：襲ってくる
+  { type:'snake',  file:'models/enemy_snake.glb',  role:'melee', critter:true }, // 蛇：忍び寄る
+  { type:'wolf',   file:'models/enemy_wolf.glb',   role:'melee', critter:true }, // 狼：強い
+  // 仲間＝チンチラの味方になる小動物4種（餌/コインで recruit＝共闘）。ally=雇用可能・neutral
+  { type:'rabbit',    file:'models/ally_rabbit.glb',    role:'neutral', ally:true, critter:true },
+  { type:'guineapig', file:'models/ally_guineapig.glb', role:'neutral', ally:true, critter:true },
+  { type:'squirrel',  file:'models/ally_squirrel.glb',  role:'neutral', ally:true, critter:true },
+  { type:'hedgehog',  file:'models/ally_hedgehog.glb',  role:'neutral', ally:true, critter:true },
   // 王国軍 兵士NPC（4号機・villager骨格＝idle/walk/attack）。resident=城/砦/村に駐留・警戒徘徊
   { type:'soldier_spear',   file:'models/npc_soldier_spear.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
   { type:'soldier_sword',   file:'models/npc_soldier_sword.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
@@ -2747,6 +2758,10 @@ function updateCompanion(m, dt, dx, dz, dist) {
   }
   if (moving) tryMoveMob(m, dhx, dhz, spd, dt);
   else followFloor(m, dt);
+  if (m.def.critter) { // アニメ無しの仲間動物はコードでぴょこぴょこ
+    m.hopT = (m.hopT || 0) + dt * (animName === 'walk' ? 10 : 4);
+    m.obj.position.y = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y) + Math.max(0, Math.sin(m.hopT)) * 0.06;
+  }
   setMobAnim(m, animName);
 }
 // 仲間マーカー：頭上に fx_ally_star（金の五芒星・0.6m）。loop再生＋横回転＋上下バウンスで「味方」を一目で示す。
@@ -3256,7 +3271,7 @@ function playerUnderground() {
 function isWaterColumnSurface(x, z) { return heightAt(Math.floor(x), Math.floor(z)) <= WATER_LEVEL; }
 // 敵性モブを近くに湧かせる（cave=地下の足場へ / 地上はリング状）
 function spawnHostileNear(cave) {
-  const types = ['zombie', 'slime', 'skeleton'];
+  const types = ['weasel', 'bird', 'snake', 'wolf']; // チンチラの天敵（基本の敵）
   if (!cave && Math.random() < 0.12) types.push('golem');         // 地上の夜はまれにボス
   if (!cave && Math.random() < 0.05) types.push('dragon');        // ⑤ さらにまれに上位ボス（ドラゴン）
   if (!cave && Math.random() < 0.03) types.push('skeleton_king'); // ⑤ ボス第2弾（大ボス・最も希少）
@@ -3446,8 +3461,8 @@ function updateMobs(dt) {
     } else if (role === 'melee' && dist < 20) {
       if (dist > 1.4 || dy > 2.5) { const h = chaseHeading(m, dt); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; } // 経路探索で追跡（高低差大なら接近優先＝不可視攻撃を遮断）
       else { m.obj.rotation.y = Math.atan2(-dx, -dz); animName = 'attack'; m.atkCd -= dt; if (m.atkCd <= 0) { m.atkCd = C.meleeCd; damage(C.meleeDmg, 'mob'); } }
-    } else if (role === 'neutral' && dist < 5 && !m.home) {
-      dhx = -dx/dist; dhz = -dz/dist; moving = true; animName = 'walk'; // 動物はプレイヤーから逃げる（住人は逃げない）
+    } else if (role === 'neutral' && dist < 5 && !m.home && !m.def.ally) {
+      dhx = -dx/dist; dhz = -dz/dist; moving = true; animName = 'walk'; // 動物はプレイヤーから逃げる（住人・味方動物は逃げない）
     } else if (m.home) {
       // 住人NPCの生活AI：昼=仕事場周辺(半径12)を徘徊／夜=home(村中心・半径3)へ帰る
       const hx = m.home.x - m.obj.position.x, hz = m.home.z - m.obj.position.z, hd = Math.hypot(hx, hz) || 1;
@@ -3469,11 +3484,11 @@ function updateMobs(dt) {
     } else {
       followFloor(m, dt); // 静止時も足場へ吸着
     }
-    // 野生チンチラはアニメ無し＝コードで軽くぴょこぴょこ（スライド移動を防ぐ・かわいさ要員）
-    if (m.def.chin) {
+    // アニメ無しの生き物（チンチラ/天敵/仲間）はコードで軽くぴょこぴょこ（スライド移動を防ぐ）
+    if (m.def.chin || m.def.critter) {
       m.hopT = (m.hopT || 0) + dt * (animName === 'walk' ? 9 : 4);
       const cfy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
-      m.obj.position.y = cfy + Math.max(0, Math.sin(m.hopT)) * 0.06;
+      m.obj.position.y = cfy + Math.max(0, Math.sin(m.hopT)) * (m.def.type === 'snake' ? 0.02 : 0.06);
     }
     setMobAnim(m, animName);
     if (m.mixer) m.mixer.update(dt);
@@ -3625,7 +3640,7 @@ function updateSpawners(dt) {
     s.cd -= dt;
     if (s.cd <= 0 && mobs.length < M.totalCap) {
       s.cd = 6 + Math.random()*4;
-      const type = Math.random() < 0.6 ? 'zombie' : 'skeleton';
+      const type = ['weasel', 'snake', 'bird', 'wolf'][Math.floor(Math.random()*4)]; // 巣穴から天敵が湧く
       if (mobTemplates[type]) spawnMob(type, s.x + (Math.random()*2-1), s.z + (Math.random()*2-1), { y: s.y });
     }
   }
@@ -3794,7 +3809,8 @@ function openChestProp(x, y, z) {
   if (p.actOpen) { p.actOpen.reset().play(); if (p.actIdle) p.actIdle.stop(); }
 }
 const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご', coal:'石炭', iron:'鉄', gold:'金', himawari:'ひまわりの種' };
-const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin' };
+const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin',
+  weasel:'meat', wolf:'meat', bird:'egg', snake:'coin' }; // 天敵を倒すとドロップ
 // ⑥ ボス撃破の特別報酬（探索の目標＝倒す意味）。exp=追加EXP / gold,coin=資源 / equips=確定レア装備数 / name=表示名
 const BOSS_REWARD = {
   golem:         { exp: 30,  gold: 2, coin: 4,  equips: 1, name: 'ゴーレム' },
@@ -3968,8 +3984,10 @@ const TRADE_TABLE = {
   baker:      [ {give:{coin:3},get:{meat:2}}, {give:{coin:2},get:{apple:2}} ],
   default:    [ {give:{coin:2},get:{apple:1}}, {give:{apple:2},get:{coin:3}} ],
 };
-const NPC_GREETING = { merchant:'いい品揃えだよ、見ていきな', blacksmith:'鉄はあるか？武器を打つぜ', farmer:'作物と交換しないか', baker:'焼きたてだよ！', guard:'通行人か、気をつけてな', elder:'よく来たな、若いの', child:'わー、ぼうけんしゃだ！', woman:'こんにちは', villager:'やあ' };
-const JOB_LABEL = { merchant:'商人', blacksmith:'鍛冶屋', farmer:'農民', baker:'パン屋', guard:'衛兵', elder:'長老', child:'子供', woman:'住人', villager:'村人', soldier_spear:'槍兵', soldier_sword:'剣兵', soldier_captain:'隊長' };
+const NPC_GREETING = { merchant:'いい品揃えだよ、見ていきな', blacksmith:'鉄はあるか？武器を打つぜ', farmer:'作物と交換しないか', baker:'焼きたてだよ！', guard:'通行人か、気をつけてな', elder:'よく来たな、若いの', child:'わー、ぼうけんしゃだ！', woman:'こんにちは', villager:'やあ',
+  rabbit:'いっしょに行こう！', guineapig:'ぷぷっ（仲間にして）', squirrel:'木の実あげる！', hedgehog:'前は任せて！' };
+const JOB_LABEL = { merchant:'商人', blacksmith:'鍛冶屋', farmer:'農民', baker:'パン屋', guard:'衛兵', elder:'長老', child:'子供', woman:'住人', villager:'村人', soldier_spear:'槍兵', soldier_sword:'剣兵', soldier_captain:'隊長',
+  rabbit:'うさぎ', guineapig:'モルモット', squirrel:'リス', hedgehog:'ハリネズミ' };
 let currentTradeNpc = null;
 function equipDisplayName(kind) { return (WEAPONS[kind] && WEAPONS[kind].name) || (kind === 'armor' ? '防具' : kind === 'shield' ? '盾' : kind); }
 function buildTradeSession(m) {
@@ -3998,7 +4016,7 @@ function buildTradeSession(m) {
 // 会話中の住人を雇って仲間にする（3号機UIの「仲間にする」ボタン→ VoxelGame.recruit）
 window.VoxelGame.recruit = () => {
   const m = currentTradeNpc;
-  if (!m || !m.home || m.companion) return false;                       // 会話中の住人(未仲間)のみ
+  if (!m || (!m.home && !m.def.ally) || m.companion) return false;      // 会話中の住人 or 味方動物（未仲間）
   if (companions.length >= MAX_COMPANIONS) { if (typeof toast==='function') toast(`仲間は満員（最大${MAX_COMPANIONS}人）`); return false; }
   if ((itemCounts.coin || 0) < COMPANION_COST) { if (typeof toast==='function') toast(`コインが足りない（${COMPANION_COST}枚必要）`); return false; }
   itemCounts.coin -= COMPANION_COST;
@@ -4041,11 +4059,11 @@ window.VoxelGame.trade = (offerId) => {
 function talkToNPC() {
   let best = null, bd = 4.5; // 会話可能距離（雇用しやすいよう少し広め）
   for (const m of mobs) {
-    if (!m.home || m.dying) continue; // 住人(home付き)のみ
+    if ((!m.home && !(m.def.ally && !m.companion)) || m.dying) continue; // 住人 or 味方動物（未仲間）
     const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
     if (d < bd) { bd = d; best = m; }
   }
-  if (!best) { if (typeof toast === 'function') toast('近くに住人がいません（村・砦・王国城、または道中の旅人を探そう）'); return; }
+  if (!best) { if (typeof toast === 'function') toast('近くに住人/仲間にできる動物がいません（村や、うさぎ/モルモット/リス/ハリネズミを探そう）'); return; }
   currentTradeNpc = best;
   best.obj.rotation.y = Math.atan2(-(player.pos.x - best.obj.position.x), -(player.pos.z - best.obj.position.z)); // プレイヤーを向く
   setMobAnim(best, 'talk');
