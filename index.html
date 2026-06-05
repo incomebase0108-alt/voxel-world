@@ -3596,12 +3596,17 @@ function critterGesture(m, dt, ctx) {
   const t = m.def.type;
   const walking = !!ctx.moving || ctx.animName === 'walk';
   const fy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
-  m.hopT = (m.hopT || 0) + dt * (walking ? 9 : 4);
+  // 歩行↔停止のクロスフェード係数（0=停止/1=歩行）。ポーズや跳ねを滑らかに繋ぐ
+  m.gWalk = (m.gWalk != null ? m.gWalk : (walking ? 1 : 0)) + ((walking ? 1 : 0) - (m.gWalk != null ? m.gWalk : 0)) * Math.min(1, dt * 8);
+  const wf = m.gWalk;                                     // walk factor（補間済み）
+  m.hopT = (m.hopT || 0) + dt * (4 + 5 * wf);             // 歩行で速く（補間）
   m.gPhase = (m.gPhase || Math.random() * 6) + dt;        // 仕草用の汎用位相
+  const ally = (t === 'rabbit' || t === 'guineapig' || t === 'squirrel' || t === 'hedgehog');
   let bobAmp = (t === 'snake') ? 0.02 : 0.06;             // 既定の弾み（スライド移動を防ぐぴょこ）
-  let rotZ = 0, rotXTarget = null, sclY = 1, sclXZ = 1, extraY = 0, yawAdd = 0;
+  let rotZ = 0, rotXTarget = (t === 'bird') ? null : 0, sclY = 1, sclXZ = 1, extraY = 0, yawAdd = 0;
+  const lerp = (a, b) => a + (b - a) * wf;                // 停止値↔歩行値の補間
   if (t === 'rabbit') {                                   // うさぎ：ぴょこ跳ねロコモーション＋停止中の耳ぴく
-    bobAmp = walking ? 0.18 : 0.05; if (walking) m.hopT += dt * 4;
+    bobAmp = lerp(0.05, 0.18); m.hopT += dt * 4 * wf;
     m.earCd = (m.earCd != null ? m.earCd : 1) - dt;
     if (!walking && m.earCd <= 0 && (m.earT || 0) <= 0) { m.earCd = 1.5 + Math.random() * 2.5; m.earT = 0.18; }
     if ((m.earT || 0) > 0) { m.earT -= dt; rotZ = Math.sin((0.18 - Math.max(0, m.earT)) / 0.18 * Math.PI * 2) * 0.06; }
@@ -3619,21 +3624,41 @@ function critterGesture(m, dt, ctx) {
     if (m.curl > 0.02) { sclY = 1 - 0.42 * m.curl; sclXZ = 1 + 0.30 * m.curl; bobAmp = 0.02 * (1 - m.curl); }
   } else if (t === 'wolf') {                              // 狼：低く構えたプロウル歩き＋遠吠えポーズ（頭上げ）
     if (ctx.howl) rotXTarget = -0.42;                     // 遠吠え＝頭を上げる
-    else if (walking) { rotXTarget = 0.18; sclY = 0.93; } // プロウル＝前傾＋やや低く
-    else rotXTarget = 0;
+    else { rotXTarget = lerp(0, 0.18); sclY = lerp(1, 0.93); } // プロウル＝歩行で前傾＋やや低く（補間）
   } else if (t === 'weasel') {                            // イタチ：ジグザグ(既存AI)に上下バウンドgaitを足す
-    bobAmp = walking ? 0.13 : 0.05; if (walking) m.hopT += dt * 5;
+    bobAmp = lerp(0.05, 0.13); m.hopT += dt * 5 * wf;
   } else if (t === 'bird') {                              // 鳥：羽ばたき＝横スケールの小刻みパルス＋ホバの微浮き（pitchはAI側）
     sclXZ = 1 + Math.sin(m.gPhase * 16) * 0.05; extraY += Math.sin(m.gPhase * 8) * 0.03;
   } else if (t === 'snake') {                             // 蛇：胴のヨー揺れ＝スリザー波（移動中のみ＝idle時のドリフト防止）
     if (walking) yawAdd = Math.sin(m.gPhase * 5) * 0.20; bobAmp = 0.015;
   }
+  // ---- アイドルのバリエーション＋その場ターン（停止中・丸まり/ポップ/溜め以外）----
+  //   全種：きょろきょろ/その場ターン。仲間はさらに eat（前かがみで小刻み）/ groom（体を捻る）。
+  if (!walking && !ctx.windup && (m.curl || 0) < 0.05 && (m.popT || 0) <= 0 && t !== 'bird') {
+    m.idleCd = (m.idleCd != null ? m.idleCd : 1 + Math.random() * 3) - dt;
+    if (m.idleCd <= 0 && (m.idleT || 0) <= 0) {
+      m.idleCd = 2.5 + Math.random() * 3.5;
+      const acts = ally ? ['turn', 'eat', 'groom', 'look'] : ['turn', 'look', 'look'];
+      m.idleAct = acts[Math.floor(Math.random() * acts.length)];
+      m.idleT = (m.idleAct === 'turn') ? 0.7 : 1.3;
+      if (m.idleAct === 'turn') m.idleYaw = m.obj.rotation.y + (Math.random() * 2 - 1) * 1.3;
+    }
+    if ((m.idleT || 0) > 0) {
+      m.idleT -= dt;
+      if (m.idleAct === 'turn') m.obj.rotation.y += (m.idleYaw - m.obj.rotation.y) * Math.min(1, dt * 6); // その場でくるりと向き変え
+      else if (m.idleAct === 'eat') { extraY += Math.abs(Math.sin(m.gPhase * 9)) * 0.03; rotXTarget = 0.25; }   // 餌をついばむ＝前かがみで小刻み
+      else if (m.idleAct === 'groom') { rotZ += Math.sin(m.gPhase * 7) * 0.10; sclY = Math.min(sclY, 0.97); }   // 毛づくろい＝体を捻る
+      else if (m.idleAct === 'look') m.obj.rotation.y += Math.sin(m.gPhase * 1.5) * dt * 1.1;                   // きょろきょろ
+    }
+  }
+  // ---- 敵：攻撃前の溜め（テレグラフ）＝のけぞって構える（読み合いの一拍）----
+  if (ctx.windup) { rotXTarget = -0.30; sclY = 1.05; sclXZ = 0.96; }
   // ---- 適用（鳥はAIが y/pitch を管理するので上下は触らない）----
   if (t !== 'bird') m.obj.position.y = fy + Math.max(0, Math.sin(m.hopT)) * bobAmp + extraY;
   else m.obj.position.y += extraY * dt;                   // 鳥はホバの微揺れだけ薄く足す
   m.obj.rotation.z = rotZ;
   m.obj.rotation.y += yawAdd;
-  if (rotXTarget != null) m.obj.rotation.x += (rotXTarget - m.obj.rotation.x) * Math.min(1, dt * 10); // プロウル/遠吠えはイージング
+  if (rotXTarget != null) m.obj.rotation.x += (rotXTarget - m.obj.rotation.x) * Math.min(1, dt * 10); // プロウル/遠吠え/溜め/食事はイージングで滑らかに
   m.obj.scale.y  += (sclY  - m.obj.scale.y)  * Math.min(1, dt * 12);
   m.obj.scale.x  += (sclXZ - m.obj.scale.x)  * Math.min(1, dt * 12);
   m.obj.scale.z  += (sclXZ - m.obj.scale.z)  * Math.min(1, dt * 12);
@@ -3690,7 +3715,8 @@ function updatePredator(m, dt, dx, dz, dist, dy) {
     else if (dist < 20) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); const w = Math.sin(m.wPhase) * 0.5; hx = h.x - h.z * w; hz = h.z + h.x * w; moving = true; anim = 'walk'; spd = 3.6; }
   }
   if (moving) tryMoveMob(m, hx, hz, spd, dt); else followFloor(m, dt);
-  critterGesture(m, dt, { moving, animName: anim, howl }); // 種別の仕草（プロウル/遠吠え/スリザー/バウンド…）＋ぴょこ弾み
+  const windup = !howl && dist < 2.4 && m.atkCd > 0 && m.atkCd < 0.28; // 攻撃発生直前の溜め（テレグラフ）
+  critterGesture(m, dt, { moving, animName: anim, howl, windup }); // 種別の仕草（プロウル/遠吠え/スリザー/バウンド/溜め）＋ぴょこ弾み
 }
 // 経路探索の負荷計測（診断用）。毎秒スナップショットを取る
 let pathCallsAcc = 0, pathNodesAcc = 0, pathCallsPerSec = 0, pathNodesPerSec = 0;
