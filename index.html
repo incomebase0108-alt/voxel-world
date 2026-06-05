@@ -3381,7 +3381,7 @@ function maybeIntroducePet() {
 //   ※1ブロック≒1m。スポーン地点を中心に建築（既に建っていれば再建築しない）。
 // ===================================================================
 const HOUSE = { ox:0, oy:0, oz:0, W:28, D1:20, D2:15, exit:null, start:null };
-let houseChecked = false, houseIntroActive = false;
+let houseChecked = false, houseIntroActive = false, houseReached1F = false; // 序章「脱走」の進行（1階に降りたチェックポイント）
 function hSet(x, y, z, b) { setBlock(HOUSE.ox + x, HOUSE.oy + y, HOUSE.oz + z, b); }
 function hFloor(x0, z0, x1, z1, y, b) { for (let x=x0;x<=x1;x++) for (let z=z0;z<=z1;z++) hSet(x,y,z,b); }
 function hClear(x0, z0, x1, z1, y0, y1) { for (let y=y0;y<=y1;y++) for (let x=x0;x<=x1;x++) for (let z=z0;z<=z1;z++) hSet(x,y,z,B.air); }
@@ -3445,21 +3445,32 @@ function maybeBuildHouse() {
     player.pos.set(HOUSE.start.x, HOUSE.start.y, HOUSE.start.z); player.vel.set(0, 0, 0); player.yaw = HOUSE.start.yaw;
     spawnPoint = { x: HOUSE.exit.x, y: HOUSE.oy + 2, z: HOUSE.exit.z };
     maguroPending = true; maguroPhase = 0; maguroWait = 0; // 💜 まぐろ登場の発端
+    progress.chapter = 'prologue'; progress.escaped = false; houseReached1F = false; // 📖 序章スタート
     if (typeof toast === 'function') {
       toast('🏠 ここはあなたの家。2階・子供部屋のケージの中で、さくらは目を覚ました…');
       setTimeout(() => toast('🪜 扉が開いたら——ホールの階段で1階へ（Space＝ジャンプ／空中でもう一度＝二段）'), 5000);
       setTimeout(() => toast('🚪 1階の玄関から外へ！ ※内縁の妻に捕まると逆らえずケージへ戻る'), 9000);
     }
+  } else if (progress.chapter === 'escape' && !progress.escaped) {
+    houseIntroActive = true; // ロード：脱走の途中（扉は開いた）なら判定を再開して続きから
   }
   spawnHouseNpcs(); // 飼い主(わたし)＆内縁の妻を配置（建て直さない既存の家でも毎回1回だけ）
 }
 function checkHouseEscape() {
   if (!houseIntroActive) return;
   const px = player.pos.x, pz = player.pos.z;
+  // チェックポイント①：2F子供部屋 → ホールの階段 → 1Fへ降りた
+  if (!houseReached1F && player.pos.y <= HOUSE.oy + 2.4 && player.onGround) {
+    houseReached1F = true;
+    if (typeof toast === 'function') toast('🪜 1階に降りた！ 玄関（南）から外へ — ※内縁の妻に捕まらないで');
+  }
+  // チェックポイント②：家の外周を抜けた＝脱走成功（章クリア）
   if ((px < HOUSE.ox - 1 || px > HOUSE.ox + HOUSE.W + 1 || pz < HOUSE.oz - 1 || pz > HOUSE.oz + HOUSE.D1 + 1) && player.onGround) {
     houseIntroActive = false;
+    progress.escaped = true; progress.chapter = 'world';                  // 📖 序章クリア＝自由探索へ
+    camShake = Math.max(camShake, 0.5);                                   // 章クリアの手応え（カメラ）
     if (typeof toast === 'function') toast('🐭✨ 脱走成功！もう飼われない——自由だ！（チンチラ革命のはじまり）');
-    gainExp(10);
+    gainExp(10); scheduleSave();                                         // BGMは updateCombatMusic が day/night へ自動復帰
   }
 }
 // ===================================================================
@@ -3511,6 +3522,7 @@ function updateHouseNpc(m, dt, dx, dz, dist) {
   // 脱走中：内縁の妻がさくらに触れたら「逆らえない」＝抱き上げられてケージへ戻る
   if (m.houseNpc === 'wife' && houseIntroActive && sameFloor && dist < 1.6) {
     player.pos.set(HOUSE.start.x, HOUSE.start.y, HOUSE.start.z); player.vel.set(0, 0, 0);
+    houseReached1F = false;                                              // ケージへ戻された＝1階チェックポイントもリセット（やり直し）
     spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.4, m.obj.position.z, 1.2, 0.6);
     if (typeof toast === 'function') toast('🫶 内縁の妻にそっと抱き上げられた…さくらは逆らえない。ケージへ戻された');
     m.emoteCd = 3;
@@ -3552,6 +3564,7 @@ function setGhostOpacity(obj, a) {
 function openCageDoor() { // 扉（柵）を上3段とも消して通れるようにする
   if (HOUSE.cageDoor) for (let y = HOUSE.oy + 5; y <= HOUSE.oy + 7; y++) setBlock(HOUSE.cageDoor.x, y, HOUSE.cageDoor.z, B.air);
   houseIntroActive = true; maguroPending = false;
+  if (progress.chapter === 'prologue') { progress.chapter = 'escape'; scheduleSave(); } // 📖 扉が開いた＝脱走パート開始
 }
 function startMaguroIntro() {
   if (!maguroPending) return;
