@@ -15,9 +15,9 @@
     "draco": "不使用（ゲーム側GLTFLoaderが未対応のため）"
   },
   "totals": {
-    "count": 132,
-    "size_bytes": 19114720,
-    "size_mb": 18.229
+    "count": 140,
+    "size_bytes": 20366268,
+    "size_mb": 19.423
   },
   "assets": [
     {
@@ -1262,6 +1262,102 @@
       "name": "pet_chinchilla",
       "category": "その他",
       "size_bytes": 156484,
+      "size_mb": 0.1492,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 36,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_beige.glb",
+      "name": "pet_chinchilla_beige",
+      "category": "その他",
+      "size_bytes": 156484,
+      "size_mb": 0.1492,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 36,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_brown.glb",
+      "name": "pet_chinchilla_brown",
+      "category": "その他",
+      "size_bytes": 156472,
+      "size_mb": 0.1492,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 36,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_ebony.glb",
+      "name": "pet_chinchilla_ebony",
+      "category": "その他",
+      "size_bytes": 156400,
+      "size_mb": 0.1492,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 36,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_grey.glb",
+      "name": "pet_chinchilla_grey",
+      "category": "その他",
+      "size_bytes": 156412,
+      "size_mb": 0.1492,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 36,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_pink.glb",
+      "name": "pet_chinchilla_pink",
+      "category": "その他",
+      "size_bytes": 156480,
+      "size_mb": 0.1492,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 36,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_sapphire.glb",
+      "name": "pet_chinchilla_sapphire",
+      "category": "その他",
+      "size_bytes": 156416,
+      "size_mb": 0.1492,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 36,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_violet.glb",
+      "name": "pet_chinchilla_violet",
+      "category": "その他",
+      "size_bytes": 156460,
+      "size_mb": 0.1492,
+      "clips": [],
+      "meshes": 1,
+      "nodes": 1,
+      "materials": 36,
+      "error": null
+    },
+    {
+      "file": "pet_chinchilla_white.glb",
+      "name": "pet_chinchilla_white",
+      "category": "その他",
+      "size_bytes": 156424,
       "size_mb": 0.1492,
       "clips": [],
       "meshes": 1,

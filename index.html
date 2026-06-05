@@ -164,7 +164,7 @@ const CFG = {
     armorPerPiece: 0.12, shieldDef: 0.10, defenseCap: 0.6, // 装備：防具1枚/盾の被ダメ軽減と上限
   },
   mob: {
-    totalCap: 12, hostileCap: 7, neutralCap: 8,        // 同時存在の総/敵性/中立 上限
+    totalCap: 18, hostileCap: 7, neutralCap: 13,       // 同時存在の総/敵性/中立 上限（チンチラだらけ＝中立多め）
     spawnMin: 18, spawnMax: 40, caveMin: 6, caveMax: 18, despawn: 75, // 地上/地下の湧き距離・消滅距離
     spawnEveryMin: 2, spawnEveryRand: 2,               // 湧き判定の間隔（最小＋ランダム秒）
     speedBoss: 1.4, speedHostile: 2.2, speedNeutral: 1.3, speedVillager: 1.0, // 移動速度
@@ -2523,6 +2523,15 @@ const MOB_DEFS = [
   { type:'fish_puffer',   file:'models/mob_fish_puffer.glb',   role:'neutral', aquatic:true },
   // ペット：チンチラ「さくら」（pet_chinchilla）。petbase=ランダム湧き対象外・コードからのみ生成し initPet で相棒化
   { type:'chinchilla', file:'models/pet_chinchilla.glb', role:'neutral', petbase:true },
+  // 色違いの野生チンチラ（世界に大量に湧く中立動物。餌でなつかせOK＝コレクション）
+  { type:'chinchilla_beige',    file:'models/pet_chinchilla_beige.glb',    role:'neutral', chin:true },
+  { type:'chinchilla_grey',     file:'models/pet_chinchilla_grey.glb',     role:'neutral', chin:true },
+  { type:'chinchilla_white',    file:'models/pet_chinchilla_white.glb',    role:'neutral', chin:true },
+  { type:'chinchilla_ebony',    file:'models/pet_chinchilla_ebony.glb',    role:'neutral', chin:true },
+  { type:'chinchilla_violet',   file:'models/pet_chinchilla_violet.glb',   role:'neutral', chin:true },
+  { type:'chinchilla_sapphire', file:'models/pet_chinchilla_sapphire.glb', role:'neutral', chin:true },
+  { type:'chinchilla_brown',    file:'models/pet_chinchilla_brown.glb',    role:'neutral', chin:true },
+  { type:'chinchilla_pink',     file:'models/pet_chinchilla_pink.glb',     role:'neutral', chin:true },
   // 王国軍 兵士NPC（4号機・villager骨格＝idle/walk/attack）。resident=城/砦/村に駐留・警戒徘徊
   { type:'soldier_spear',   file:'models/npc_soldier_spear.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
   { type:'soldier_sword',   file:'models/npc_soldier_sword.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
@@ -2756,7 +2765,7 @@ function updateAllyMarker(m, dt) {
 // ===================================================================
 const pets = [];
 let petIdSeq = 0;
-const MAX_PETS = 2;
+const MAX_PETS = 4;
 const PET_FOODS = ['himawari', 'meat', 'apple', 'egg'];           // 餌（大好物のひまわりから消費）
 const PET_FAVORITE = 'himawari';                                  // 大好物（特別に機嫌が上がる）
 const PET_TAME_TYPES = ['cow', 'sheep', 'pig', 'chicken', 'horse']; // 野生からなつかせられる動物
@@ -2798,7 +2807,7 @@ function initPet(m, opts = {}) {
   m.mood = Number.isFinite(opts.mood) ? clampPet(opts.mood, 0, 100) : 60;
   m.petHunger = Number.isFinite(opts.petHunger) ? clampPet(opts.petHunger, 0, 100) : 12;
   m.moodBand = petMoodBand(m.mood);
-  m.petMarkH = m.def.type === 'horse' ? 2.3 : m.def.type === 'chinchilla' ? 0.95 : 1.35;
+  m.petMarkH = m.def.type === 'horse' ? 2.3 : m.def.type.indexOf('chinchilla') === 0 ? 0.95 : 1.35;
   m.patCd = 0; m.emoteCd = 1.5 + Math.random() * 2; m.habitCd = 3 + Math.random() * 4;
   m.hopT = Math.random() * 6; m.sitT = 0; m.zoomT = 0; m.sulkT = 0; m.gy = null; m.zoomDir = 1;
   m.biteT = 0; m.fumeT = 0; m.standT = 0; m.angerCd = 3 + Math.random() * 3; // 怒り行動（噛みつき/立ちオシッコ/プンプン）
@@ -2820,7 +2829,7 @@ function petInteract() {
   let best = null, bd = 3.8;
   for (const m of mobs) {
     if (m.dying) continue;
-    const tame = PET_TAME_TYPES.indexOf(m.def.type) >= 0 && !m.home && !m.companion && !m.pet;
+    const tame = (PET_TAME_TYPES.indexOf(m.def.type) >= 0 || m.def.chin) && !m.home && !m.companion && !m.pet;
     if (!(m.pet || tame)) continue;
     const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
     if (d < bd) { bd = d; best = m; }
@@ -3254,9 +3263,13 @@ function spawnHostileNear(cave) {
 }
 function spawnNeutralNear() {
   // 動物のみ（villager・住人NPCは村/砦に定住／魚は水中専用＝ここ(地上)では湧かせない）
-  const pool = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && !d.resident && !d.aquatic && !d.petbase && mobTemplates[d.type]);
-  if (!pool.length) return;
-  const def = pool[Math.floor(Math.random()*pool.length)];
+  // ★チンチラだらけ：85%の確率で色違いチンチラ、残りは従来の動物
+  const chins  = MOB_DEFS.filter(d => d.chin && mobTemplates[d.type]);
+  const others = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && !d.resident && !d.aquatic && !d.petbase && !d.chin && mobTemplates[d.type]);
+  let def = null;
+  if (chins.length && (Math.random() < 0.85 || !others.length)) def = chins[Math.floor(Math.random()*chins.length)];
+  else if (others.length) def = others[Math.floor(Math.random()*others.length)];
+  if (!def) return;
   const ang = Math.random()*Math.PI*2, dist = M.spawnMin + Math.random()*(M.spawnMax-M.spawnMin);
   const x = player.pos.x + Math.cos(ang)*dist, z = player.pos.z + Math.sin(ang)*dist;
   if (isWaterColumnSurface(x, z)) return;
@@ -3439,6 +3452,12 @@ function updateMobs(dt) {
       } else m.stuck = 0;
     } else {
       followFloor(m, dt); // 静止時も足場へ吸着
+    }
+    // 野生チンチラはアニメ無し＝コードで軽くぴょこぴょこ（スライド移動を防ぐ・かわいさ要員）
+    if (m.def.chin) {
+      m.hopT = (m.hopT || 0) + dt * (animName === 'walk' ? 9 : 4);
+      const cfy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
+      m.obj.position.y = cfy + Math.max(0, Math.sin(m.hopT)) * 0.06;
     }
     setMobAnim(m, animName);
     if (m.mixer) m.mixer.update(dt);

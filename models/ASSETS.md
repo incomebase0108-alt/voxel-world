@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 132 ファイル / 18.23 MB
+**合計**: 140 ファイル / 19.42 MB
 
 
 ## プレイヤー
@@ -157,6 +157,14 @@
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
 | `pet_chinchilla.glb` | 0.1492 | —（静物） | 1/1 |
+| `pet_chinchilla_beige.glb` | 0.1492 | —（静物） | 1/1 |
+| `pet_chinchilla_brown.glb` | 0.1492 | —（静物） | 1/1 |
+| `pet_chinchilla_ebony.glb` | 0.1492 | —（静物） | 1/1 |
+| `pet_chinchilla_grey.glb` | 0.1492 | —（静物） | 1/1 |
+| `pet_chinchilla_pink.glb` | 0.1492 | —（静物） | 1/1 |
+| `pet_chinchilla_sapphire.glb` | 0.1492 | —（静物） | 1/1 |
+| `pet_chinchilla_violet.glb` | 0.1492 | —（静物） | 1/1 |
+| `pet_chinchilla_white.glb` | 0.1492 | —（静物） | 1/1 |
 
 ## 演出（ボス出現FX）
 

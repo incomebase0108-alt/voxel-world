@@ -105,73 +105,73 @@ def whisker(p0, p1, r, color):
     add(verts, faces, color, rough=0.5)
 
 # ----------------------------------------------------------------------
-# 配色（写真2枚目準拠：温かみのあるグレージュ＝バイオレット系ベージュ）
+# 色プリセット（チンチラの代表的なカラー）。EYE_EMIS=None で黒目、値ありでルビー目。
 # ----------------------------------------------------------------------
-FUR    = (0.66, 0.61, 0.585)  # 本体の毛：温かいグレージュ
-FUR_SH = (0.55, 0.50, 0.49)   # 背・後頭の陰
-BELLY  = (0.93, 0.91, 0.87)   # 腹・口元のクリーム白
-EAR_OUT= (0.92, 0.72, 0.72)   # 大きな耳：地肌のピンク（外）
-EAR_IN = (0.85, 0.58, 0.60)   # 内耳の陰ピンク
-NOSE   = (0.95, 0.66, 0.68)   # 鼻ピンク
-EYE    = (0.66, 0.07, 0.10)   # 大きなルビーレッドの目（ベージュ・チンチラ）
-EYEHI  = (1.0, 1.0, 1.0)      # 目のハイライト
-PAW    = (0.88, 0.85, 0.80)   # 前足・後足（白っぽい）
-WHISK  = (0.97, 0.96, 0.95)   # 長い白ひげ
-TAIL   = (0.62, 0.57, 0.555)  # 尻尾（毛と同系・やや暗）
-TAILTIP= (0.92, 0.90, 0.87)   # 尻尾の先（クリーム白）
+VARIANTS = {
+    # key: (FUR, BELLY, EAR_OUT, EAR_IN, NOSE, EYE, EYE_EMIS, PAW, TAIL, TAILTIP)
+    'beige':    ((0.66,0.61,0.585),(0.93,0.91,0.87),(0.92,0.72,0.72),(0.85,0.58,0.60),(0.95,0.66,0.68),(0.66,0.07,0.10),(0.50,0.04,0.06),(0.88,0.85,0.80),(0.62,0.57,0.555),(0.92,0.90,0.87)),
+    'grey':     ((0.55,0.56,0.60),(0.93,0.93,0.94),(0.74,0.62,0.66),(0.62,0.50,0.54),(0.40,0.40,0.44),(0.05,0.05,0.06),None,            (0.90,0.91,0.93),(0.45,0.46,0.50),(0.93,0.93,0.95)),
+    'white':    ((0.94,0.93,0.92),(0.98,0.98,0.97),(0.96,0.80,0.80),(0.88,0.66,0.68),(0.96,0.70,0.72),(0.06,0.05,0.06),None,            (0.97,0.96,0.95),(0.90,0.89,0.88),(0.99,0.99,0.98)),
+    'ebony':    ((0.20,0.20,0.23),(0.16,0.16,0.19),(0.34,0.22,0.24),(0.24,0.15,0.17),(0.30,0.22,0.24),(0.04,0.03,0.05),None,            (0.30,0.30,0.34),(0.16,0.16,0.19),(0.34,0.34,0.38)),
+    'violet':   ((0.60,0.56,0.64),(0.94,0.93,0.95),(0.90,0.74,0.78),(0.80,0.60,0.66),(0.90,0.66,0.72),(0.62,0.10,0.16),(0.42,0.05,0.10),(0.90,0.90,0.94),(0.50,0.47,0.55),(0.94,0.93,0.96)),
+    'sapphire': ((0.50,0.55,0.64),(0.93,0.94,0.96),(0.78,0.68,0.74),(0.64,0.54,0.62),(0.70,0.66,0.72),(0.05,0.05,0.07),None,            (0.90,0.92,0.95),(0.42,0.47,0.56),(0.93,0.94,0.97)),
+    'brown':    ((0.48,0.38,0.30),(0.90,0.84,0.74),(0.86,0.64,0.62),(0.74,0.50,0.50),(0.86,0.58,0.58),(0.55,0.10,0.10),(0.36,0.05,0.05),(0.84,0.78,0.70),(0.40,0.32,0.26),(0.90,0.84,0.74)),
+    'pink':     ((0.95,0.88,0.87),(0.99,0.97,0.96),(0.97,0.78,0.80),(0.90,0.66,0.70),(0.96,0.70,0.74),(0.70,0.10,0.16),(0.50,0.06,0.10),(0.98,0.95,0.94),(0.90,0.84,0.84),(0.99,0.97,0.97)),
+}
+VARIANT_LABEL = {'beige':'ベージュ','grey':'スタンダードグレー','white':'ホワイト','ebony':'エボニー',
+                 'violet':'バイオレット','sapphire':'サファイア','brown':'ブラウン','pink':'ピンクホワイト'}
+WHISK = (0.97, 0.96, 0.95)
 
 # ----------------------------------------------------------------------
-# チンチラ造形（座り姿勢・正面 -Z）
+# チンチラ造形（座り姿勢・正面 -Z）。色プリセット C を受けて PARTS を組み立てる。
 #   ※座標: +Y 上 / -Z 正面 / 後で min(y)=0 へ平行移動
 # ----------------------------------------------------------------------
-# 体（まんまる＝ほぼ球。後ろから見ると丸い）
-ellipsoid(0.0, 0.255, 0.00, 0.258, 0.255, 0.248, FUR, ring=13)
-# 腹〜胸（前面のクリーム・控えめに）
-ellipsoid(0.0, 0.205, 0.185, 0.140, 0.160, 0.080, BELLY, ring=10)
-# 頭（まんまるの球＝胴の上にもう一つの丸。「丸二つ」のシルエット）
-ellipsoid(0.0, 0.560, 0.045, 0.196, 0.190, 0.192, FUR, ring=13)
-# 口元・頬（白・小さめ）
-ellipsoid(0.0, 0.490, 0.200, 0.098, 0.080, 0.084, BELLY, ring=10)
-# 鼻（ピンク・小さな逆三角）
-ellipsoid(0.0, 0.508, 0.285, 0.029, 0.023, 0.023, NOSE, ring=8)
-# 目（左右・つぶらなルビー目＝小さめ）＋ハイライト
-for sx in (-1, 1):
-    ellipsoid(sx*0.100, 0.590, 0.200, 0.057, 0.061, 0.049, EYE, seg=16, ring=11, rough=0.14,
-              emis=(0.50, 0.04, 0.06))  # ほんのり赤く光らせて「ルビー目」に
-    ellipsoid(sx*0.084, 0.612, 0.240, 0.017, 0.017, 0.012, EYEHI, seg=8, ring=6,
-              rough=0.06, emis=(0.9, 0.9, 0.9))
-# 耳（特大の丸耳：地肌のピンク。頭の丸から飛び出す）＋内耳の陰
-for sx in (-1, 1):
-    ellipsoid(sx*0.172, 0.795, -0.005, 0.126, 0.176, 0.050, EAR_OUT,
-              seg=16, ring=11, rotZ=sx*0.10, rotX=-0.04, rough=0.6)
-    ellipsoid(sx*0.172, 0.795, 0.025, 0.080, 0.124, 0.030, EAR_IN,
-              seg=14, ring=9, rotZ=sx*0.10, rotX=-0.04, rough=0.6)
-# 前足（短い手＝手のひら＋ずんぐり4本指。ものを掴む形）
-for sx in (-1, 1):
-    ellipsoid(sx*0.090, 0.110, 0.180, 0.048, 0.052, 0.052, PAW, seg=12, ring=8)  # 手のひら
-    fingers = [0.054, 0.078, 0.102, 0.124]                                       # 4本・短いずんぐり指
-    for fx in fingers:
-        ellipsoid(sx*fx, 0.122, 0.214, 0.0145, 0.0145, 0.024, PAW, seg=8, ring=6, rotX=-0.45)
-# 後足（座って前へ投げ出す・小さめ＝後ろからはほぼ見えない）
-for sx in (-1, 1):
-    ellipsoid(sx*0.135, 0.030, 0.085, 0.066, 0.030, 0.112, PAW, seg=12, ring=8)
-# 尻尾（ふさふさ・後ろへ跳ね上げ・先はクリーム白＝後ろ姿の差し色）
-ellipsoid(0.0, 0.20, -0.250, 0.095, 0.135, 0.115, TAIL, ring=10)
-ellipsoid(0.0, 0.370,-0.300, 0.082, 0.108, 0.090, TAIL, ring=10)
-ellipsoid(0.0, 0.500,-0.315, 0.066, 0.082, 0.070, TAILTIP, ring=10)
-# ひげ（左右に長め・数本）
-for sx in (-1, 1):
-    base = (sx*0.06, 0.480, 0.270)
-    for (dx, dy, dz) in [(0.40, 0.06, 0.07), (0.42, -0.01, 0.05),
-                         (0.39, -0.08, 0.07), (0.35, 0.12, 0.06)]:
-        whisker(base, (sx*dx, 0.480+dy, 0.270+dz), 0.005, WHISK)
-
-# ----------------------------------------------------------------------
-# 足元を y=0 に合わせる
-# ----------------------------------------------------------------------
-miny = min(v[1] for p in PARTS for v in p['verts'])
-for p in PARTS:
-    p['verts'] = [(x, y - miny, z) for (x, y, z) in p['verts']]
+def build_parts(C):
+    PARTS.clear()
+    (FUR, BELLY, EAR_OUT, EAR_IN, NOSE, EYE, EYE_EMIS, PAW, TAIL, TAILTIP) = C
+    # 体（まんまる＝ほぼ球。後ろから見ると丸い）
+    ellipsoid(0.0, 0.255, 0.00, 0.258, 0.255, 0.248, FUR, ring=13)
+    # 腹〜胸（前面のクリーム・控えめに）
+    ellipsoid(0.0, 0.205, 0.185, 0.140, 0.160, 0.080, BELLY, ring=10)
+    # 頭（まんまるの球＝胴の上にもう一つの丸。「丸二つ」のシルエット）
+    ellipsoid(0.0, 0.560, 0.045, 0.196, 0.190, 0.192, FUR, ring=13)
+    # 口元・頬（白・小さめ）
+    ellipsoid(0.0, 0.490, 0.200, 0.098, 0.080, 0.084, BELLY, ring=10)
+    # 鼻（ピンク・小さな逆三角）
+    ellipsoid(0.0, 0.508, 0.285, 0.029, 0.023, 0.023, NOSE, ring=8)
+    # 目（左右・つぶら）＋ハイライト
+    for sx in (-1, 1):
+        ellipsoid(sx*0.100, 0.590, 0.200, 0.057, 0.061, 0.049, EYE, seg=16, ring=11, rough=0.14, emis=EYE_EMIS)
+        ellipsoid(sx*0.084, 0.612, 0.240, 0.017, 0.017, 0.012, (1.0,1.0,1.0), seg=8, ring=6,
+                  rough=0.06, emis=(0.9, 0.9, 0.9))
+    # 耳（特大の丸耳：地肌のピンク。頭の丸から飛び出す）＋内耳の陰
+    for sx in (-1, 1):
+        ellipsoid(sx*0.172, 0.795, -0.005, 0.126, 0.176, 0.050, EAR_OUT,
+                  seg=16, ring=11, rotZ=sx*0.10, rotX=-0.04, rough=0.6)
+        ellipsoid(sx*0.172, 0.795, 0.025, 0.080, 0.124, 0.030, EAR_IN,
+                  seg=14, ring=9, rotZ=sx*0.10, rotX=-0.04, rough=0.6)
+    # 前足（短い手＝手のひら＋ずんぐり4本指。ものを掴む形）
+    for sx in (-1, 1):
+        ellipsoid(sx*0.090, 0.110, 0.180, 0.048, 0.052, 0.052, PAW, seg=12, ring=8)
+        for fx in (0.054, 0.078, 0.102, 0.124):
+            ellipsoid(sx*fx, 0.122, 0.214, 0.0145, 0.0145, 0.024, PAW, seg=8, ring=6, rotX=-0.45)
+    # 後足（座って前へ投げ出す・小さめ）
+    for sx in (-1, 1):
+        ellipsoid(sx*0.135, 0.030, 0.085, 0.066, 0.030, 0.112, PAW, seg=12, ring=8)
+    # 尻尾（ふさふさ・後ろへ跳ね上げ・先はクリーム白＝後ろ姿の差し色）
+    ellipsoid(0.0, 0.20, -0.250, 0.095, 0.135, 0.115, TAIL, ring=10)
+    ellipsoid(0.0, 0.370,-0.300, 0.082, 0.108, 0.090, TAIL, ring=10)
+    ellipsoid(0.0, 0.500,-0.315, 0.066, 0.082, 0.070, TAILTIP, ring=10)
+    # ひげ（左右に長め・数本）
+    for sx in (-1, 1):
+        base = (sx*0.06, 0.480, 0.270)
+        for (dx, dy, dz) in [(0.40, 0.06, 0.07), (0.42, -0.01, 0.05),
+                             (0.39, -0.08, 0.07), (0.35, 0.12, 0.06)]:
+            whisker(base, (sx*dx, 0.480+dy, 0.270+dz), 0.005, WHISK)
+    # 足元を y=0 に合わせる
+    miny = min(v[1] for p in PARTS for v in p['verts'])
+    for p in PARTS:
+        p['verts'] = [(x, y - miny, z) for (x, y, z) in p['verts']]
 
 # ======================================================================
 # GLB 書き出し
@@ -275,91 +275,99 @@ def build_glb(path):
     print(f"wrote {path}  parts={len(PARTS)} tris={tris} size={total/1024:.1f}KB")
 
 # ======================================================================
-# プレビュー（標準ライブラリだけのソフトレンダ：3/4 と 正面）
+# プレビュー（標準ライブラリだけのソフトレンダ）
 # ======================================================================
-def render_preview(path, W=440, H=520):
-    panels = []
-    for (ry, rx, label) in [(math.radians(28), math.radians(12), "3/4"),
-                            (0.0, math.radians(6), "front"),
-                            (math.radians(180), math.radians(10), "back")]:
-        buf = [[(238, 236, 232) for _ in range(W)] for _ in range(H)]
-        depth = [[-1e9]*W for _ in range(H)]  # +Z がカメラ手前。大きいほど手前。
-        R = matmul(rotx(rx), roty(ry))
-        light = (-0.4, 0.75, 0.55)
-        ll = math.sqrt(sum(c*c for c in light)); light = tuple(c/ll for c in light)
-        # ワールド境界（フィット用）
-        allv = []
-        for p in PARTS:
-            for v in p['verts']:
-                x, y, z = v
-                allv.append((R[0]*x+R[1]*y+R[2]*z, R[4]*x+R[5]*y+R[6]*z, R[8]*x+R[9]*y+R[10]*z))
-        minx = min(v[0] for v in allv); maxx = max(v[0] for v in allv)
-        miny = min(v[1] for v in allv); maxy = max(v[1] for v in allv)
-        cxw = (minx+maxx)/2; cyw = (miny+maxy)/2
-        span = max(maxx-minx, maxy-miny) * 1.18
-        scale = min(W, H) / span
-        ox, oy = W/2, H/2 + 6
-        def project(v):
+def render_panel(W, H, ry, rx):
+    """現在の PARTS を1枚に描画して RGB バッファを返す。"""
+    buf = [[(238, 236, 232) for _ in range(W)] for _ in range(H)]
+    depth = [[-1e9]*W for _ in range(H)]  # +Z がカメラ手前。大きいほど手前。
+    R = matmul(rotx(rx), roty(ry))
+    light = (-0.4, 0.75, 0.55)
+    ll = math.sqrt(sum(c*c for c in light)); light = tuple(c/ll for c in light)
+    allv = []
+    for p in PARTS:
+        for v in p['verts']:
             x, y, z = v
-            vx = R[0]*x+R[1]*y+R[2]*z; vy = R[4]*x+R[5]*y+R[6]*z; vz = R[8]*x+R[9]*y+R[10]*z
-            sx = ox + (vx-cxw)*scale
-            sy = oy - (vy-cyw)*scale
-            return sx, sy, vz
-        def rotn(n):
-            return (R[0]*n[0]+R[1]*n[1]+R[2]*n[2],
-                    R[4]*n[0]+R[5]*n[1]+R[6]*n[2],
-                    R[8]*n[0]+R[9]*n[1]+R[10]*n[2])
-        for p in PARTS:
-            verts = p['verts']; faces = p['faces']
-            col = p['color']; emis = p['emis']
-            vn = [rotn(n) for n in smooth_normals(verts, faces)]  # スムーズ法線（縞を消す）
-            proj = [project(v) for v in verts]
-            for (a, b, c) in faces:
-                ax, ay, az = proj[a]; bx, by, bz = proj[b]; cx, cy, cz = proj[c]
-                na, nb, nc = vn[a], vn[b], vn[c]
-                # おおまかな裏面除去（3頂点とも手前を向いていない面は捨てる）
-                if na[2] <= -0.05 and nb[2] <= -0.05 and nc[2] <= -0.05:
-                    continue
-                minX = max(0, int(min(ax, bx, cx))); maxX = min(W-1, int(max(ax, bx, cx))+1)
-                minY = max(0, int(min(ay, by, cy))); maxY = min(H-1, int(max(ay, by, cy))+1)
-                denom = (by-cy)*(ax-cx) + (cx-bx)*(ay-cy)
-                if abs(denom) < 1e-7:
-                    continue
-                for py in range(minY, maxY+1):
-                    for px in range(minX, maxX+1):
-                        w0 = ((by-cy)*(px-cx) + (cx-bx)*(py-cy)) / denom
-                        w1 = ((cy-ay)*(px-cx) + (ax-cx)*(py-cy)) / denom
-                        w2 = 1 - w0 - w1
-                        if w0 < -0.001 or w1 < -0.001 or w2 < -0.001:
-                            continue
-                        zz = w0*az + w1*bz + w2*cz
-                        if zz <= depth[py][px]:
-                            continue
-                        nx = w0*na[0] + w1*nb[0] + w2*nc[0]
-                        ny = w0*na[1] + w1*nb[1] + w2*nc[1]
-                        nz = w0*na[2] + w1*nb[2] + w2*nc[2]
-                        nl = math.sqrt(nx*nx+ny*ny+nz*nz) or 1.0
-                        diff = max(0.0, (nx*light[0]+ny*light[1]+nz*light[2])/nl)
-                        rim = max(0.0, 1.0 - nz/nl) ** 2 * 0.12   # ふちの柔らかな明かり
-                        shade = 0.46 + 0.58*diff + rim
-                        r = min(255, int(col[0]*255*shade + (emis[0]*70 if emis else 0)))
-                        g = min(255, int(col[1]*255*shade + (emis[1]*70 if emis else 0)))
-                        bb = min(255, int(col[2]*255*shade + (emis[2]*70 if emis else 0)))
-                        depth[py][px] = zz
-                        buf[py][px] = (r, g, bb)
-        panels.append(buf)
-    # 各ビューを横に連結
-    gap = 12; n = len(panels)
-    GW = W*n + gap*(n-1)
-    out = [[(238, 236, 232) for _ in range(GW)] for _ in range(H)]
-    for pi, pn in enumerate(panels):
-        ox0 = pi*(W+gap)
+            allv.append((R[0]*x+R[1]*y+R[2]*z, R[4]*x+R[5]*y+R[6]*z, R[8]*x+R[9]*y+R[10]*z))
+    minx = min(v[0] for v in allv); maxx = max(v[0] for v in allv)
+    miny = min(v[1] for v in allv); maxy = max(v[1] for v in allv)
+    cxw = (minx+maxx)/2; cyw = (miny+maxy)/2
+    span = max(maxx-minx, maxy-miny) * 1.18
+    scale = min(W, H) / span
+    ox, oy = W/2, H/2 + 6
+    def project(v):
+        x, y, z = v
+        vx = R[0]*x+R[1]*y+R[2]*z; vy = R[4]*x+R[5]*y+R[6]*z; vz = R[8]*x+R[9]*y+R[10]*z
+        return ox + (vx-cxw)*scale, oy - (vy-cyw)*scale, vz
+    def rotn(n):
+        return (R[0]*n[0]+R[1]*n[1]+R[2]*n[2], R[4]*n[0]+R[5]*n[1]+R[6]*n[2], R[8]*n[0]+R[9]*n[1]+R[10]*n[2])
+    for p in PARTS:
+        verts = p['verts']; faces = p['faces']
+        col = p['color']; emis = p['emis']
+        vn = [rotn(n) for n in smooth_normals(verts, faces)]  # スムーズ法線（縞を消す）
+        proj = [project(v) for v in verts]
+        for (a, b, c) in faces:
+            ax, ay, az = proj[a]; bx, by, bz = proj[b]; cx, cy, cz = proj[c]
+            na, nb, nc = vn[a], vn[b], vn[c]
+            if na[2] <= -0.05 and nb[2] <= -0.05 and nc[2] <= -0.05:
+                continue
+            minX = max(0, int(min(ax, bx, cx))); maxX = min(W-1, int(max(ax, bx, cx))+1)
+            minY = max(0, int(min(ay, by, cy))); maxY = min(H-1, int(max(ay, by, cy))+1)
+            denom = (by-cy)*(ax-cx) + (cx-bx)*(ay-cy)
+            if abs(denom) < 1e-7:
+                continue
+            for py in range(minY, maxY+1):
+                for px in range(minX, maxX+1):
+                    w0 = ((by-cy)*(px-cx) + (cx-bx)*(py-cy)) / denom
+                    w1 = ((cy-ay)*(px-cx) + (ax-cx)*(py-cy)) / denom
+                    w2 = 1 - w0 - w1
+                    if w0 < -0.001 or w1 < -0.001 or w2 < -0.001:
+                        continue
+                    zz = w0*az + w1*bz + w2*cz
+                    if zz <= depth[py][px]:
+                        continue
+                    nx = w0*na[0] + w1*nb[0] + w2*nc[0]
+                    ny = w0*na[1] + w1*nb[1] + w2*nc[1]
+                    nz = w0*na[2] + w1*nb[2] + w2*nc[2]
+                    nl = math.sqrt(nx*nx+ny*ny+nz*nz) or 1.0
+                    diff = max(0.0, (nx*light[0]+ny*light[1]+nz*light[2])/nl)
+                    rim = max(0.0, 1.0 - nz/nl) ** 2 * 0.12
+                    shade = 0.46 + 0.58*diff + rim
+                    r = min(255, int(col[0]*255*shade + (emis[0]*70 if emis else 0)))
+                    g = min(255, int(col[1]*255*shade + (emis[1]*70 if emis else 0)))
+                    bb = min(255, int(col[2]*255*shade + (emis[2]*70 if emis else 0)))
+                    depth[py][px] = zz
+                    buf[py][px] = (r, g, bb)
+    return buf
+
+def compose(panels, cols, W, H, gap=12):
+    rows = (len(panels) + cols - 1) // cols
+    GW = W*cols + gap*(cols-1); GH = H*rows + gap*(rows-1)
+    out = [[(238, 236, 232) for _ in range(GW)] for _ in range(GH)]
+    for i, pn in enumerate(panels):
+        ox0 = (i % cols)*(W+gap); oy0 = (i // cols)*(H+gap)
         for y in range(H):
-            row = out[y]; src = pn[y]
+            row = out[oy0+y]; src = pn[y]
             for x in range(W):
                 row[ox0+x] = src[x]
-    write_png(path, out, GW, H)
-    print(f"wrote {path}  ({GW}x{H})")
+    return out, GW, GH
+
+def render_preview(path, W=440, H=520):
+    panels = [render_panel(W, H, math.radians(28), math.radians(12)),
+              render_panel(W, H, 0.0, math.radians(6)),
+              render_panel(W, H, math.radians(180), math.radians(10))]
+    out, GW, GH = compose(panels, 3, W, H)
+    write_png(path, out, GW, GH)
+    print(f"wrote {path}  ({GW}x{GH})")
+
+def render_contact_sheet(path, keys, W=300, H=340):
+    panels = []
+    for k in keys:
+        build_parts(VARIANTS[k])
+        panels.append(render_panel(W, H, math.radians(20), math.radians(10)))
+    out, GW, GH = compose(panels, 4, W, H)
+    write_png(path, out, GW, GH)
+    print(f"wrote {path}  ({GW}x{GH})  variants={','.join(keys)}")
 
 def write_png(path, buf, W, H):
     raw = bytearray()
@@ -381,5 +389,14 @@ def write_png(path, buf, W, H):
 if __name__ == '__main__':
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.dirname(here)
-    build_glb(os.path.join(root, 'models', 'pet_chinchilla.glb'))
+    models = os.path.join(root, 'models')
+    # 各カラーの GLB を生成（pet_chinchilla_<key>.glb）
+    for key, col in VARIANTS.items():
+        build_parts(col)
+        build_glb(os.path.join(models, f'pet_chinchilla_{key}.glb'))
+    # ベージュを「さくら」用の基本ファイルにも複製（pet_chinchilla.glb・セーブ互換）
+    build_parts(VARIANTS['beige'])
+    build_glb(os.path.join(models, 'pet_chinchilla.glb'))
+    # プレビュー：さくら（ベージュ）の3面＋全カラーのコンタクトシート
     render_preview(os.path.join(here, 'preview_pet_chinchilla.png'))
+    render_contact_sheet(os.path.join(here, 'preview_pet_chinchilla_colors.png'), list(VARIANTS.keys()))
