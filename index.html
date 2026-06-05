@@ -997,6 +997,7 @@ function serializeWorld() {
     counts, itemCounts,                                               // インベントリ
     bossKills: { ...bossKills }, sakuraCape: hasSakuraCape,           // ⑥ ボス討伐数／さくらの毛皮マント所持
     progress: { ...progress },                                        // 📖 物語の進行（章/脱走/ボス撃破フラグ）
+    dex: [...dexSeen],                                                // 🧬 図鑑：発見した毛色
     playerModel: currentPlayerFile,                                   // 選択アバター
     equip: { weapon: currentWeapon, owned: [...ownedWeapons], armor: { ...equip.armor }, shield: equip.shield, ownedShield }, // 装備
     time: { dayTime, weather, autoWeather, weatherTimer },            // 時刻・天候
@@ -1081,6 +1082,7 @@ function loadWorld(slot = currentSlot) {
       p.escaped = !!obj.progress.escaped; p.queenSeen = !!obj.progress.queenSeen; p.queenDefeated = !!obj.progress.queenDefeated;
       progress = p;
     }
+    if (Array.isArray(obj.dex)) { dexSeen.clear(); for (const c of obj.dex) if (CHIN_COLORS.indexOf(c) >= 0) dexSeen.add(c); } // 🧬 図鑑復元
     if (typeof obj.playerModel === 'string') currentPlayerFile = obj.playerModel;
     if (obj.equip && typeof obj.equip === 'object') { // 装備の復元（防御的に）
       if (Array.isArray(obj.equip.owned)) for (const w of obj.equip.owned) if (WEAPONS[w]) ownedWeapons.add(w);
@@ -3007,6 +3009,30 @@ function updateAllyMarker(m, dt) {
 const pets = [];
 let petIdSeq = 0;
 const MAX_PETS = 4;
+// 🧬 チンチラ8色の遺伝＋図鑑（なつかせ/繁殖で発見した毛色を記録）
+const CHIN_COLORS = ['grey', 'beige', 'white', 'ebony', 'violet', 'sapphire', 'brown', 'pink'];
+const CHIN_DISPLAY = { grey:{name:'標準',hex:'#8f9196'}, beige:{name:'ベージュ',hex:'#b0a392'}, white:{name:'ホワイト',hex:'#ece9e6'}, ebony:{name:'エボニー',hex:'#353539'}, violet:{name:'バイオレット',hex:'#9b93a6'}, sapphire:{name:'サファイア',hex:'#8a98ad'}, brown:{name:'ブラウン',hex:'#7a6450'}, pink:{name:'ピンク',hex:'#f0d9d6'} };
+const dexSeen = new Set();                                         // 図鑑：見つけた/育てた毛色（color suffix）
+function chinColorOf(m) { const t = m && m.def && m.def.type; if (!t) return null; if (t === 'chinchilla' || t === 'chinchilla_violet_baby') return t === 'chinchilla' ? 'beige' : 'violet'; const s = t.indexOf('chinchilla_') === 0 ? t.slice(11) : null; return CHIN_COLORS.indexOf(s) >= 0 ? s : null; }
+function dexDiscover(color) { if (color && CHIN_COLORS.indexOf(color) >= 0 && !dexSeen.has(color)) { dexSeen.add(color); scheduleSave(); } }
+// 遺伝表：特定の掛け合わせは特別色、それ以外は親のどちらかを継ぐ＋稀に突然変異（thematicな簡易モデル）
+const CHIN_CROSS = { 'grey+white':'violet', 'ebony+grey':'ebony', 'beige+white':'pink', 'sapphire+violet':'sapphire', 'brown+white':'beige', 'beige+ebony':'brown' };
+function breedColor(a, b) {
+  if (a === b) return a;                                          // 純血同士＝同色（true breeding）
+  const key = [a, b].sort().join('+');
+  if (CHIN_CROSS[key] && Math.random() < 0.55) return CHIN_CROSS[key]; // 特別な掛け合わせ
+  if (Math.random() < 0.08) return CHIN_COLORS[Math.floor(Math.random() * CHIN_COLORS.length)]; // 稀な突然変異
+  return Math.random() < 0.5 ? a : b;                             // 通常は親のどちらかの色
+}
+function getDexState() {
+  return {
+    total: CHIN_COLORS.length, discovered: dexSeen.size,
+    colors: CHIN_COLORS.map(c => ({ color: c, name: CHIN_DISPLAY[c].name, hex: CHIN_DISPLAY[c].hex,
+      discovered: dexSeen.has(c),
+      owned: (typeof pets !== 'undefined') ? pets.filter(p => chinColorOf(p) === c).length : 0 })),
+  };
+}
+window.getDexState = () => { try { return getDexState(); } catch (e) { return null; } }; // 3号機の図鑑UI向け読み取り口
 const PET_FOODS = ['himawari', 'meat', 'apple', 'egg'];           // 餌（大好物のひまわりから消費）
 const PET_FAVORITE = 'himawari';                                  // 大好物（特別に機嫌が上がる）
 const PET_TAME_TYPES = ['cow', 'sheep', 'pig', 'chicken', 'horse']; // 野生からなつかせられる動物
@@ -3064,6 +3090,8 @@ function initPet(m, opts = {}) {
   m.bathT = 0; m.bathFxCd = 0;                                               // 砂浴び中の残り秒／砂煙クールダウン
   m.popT = 0;                                                                // ぴょこ跳ね（ごきげん時の単発ジャンプ）
   m.earT = 0; m.earCd = 1.5 + Math.random() * 3;                            // 耳ぴく（擬似：頭側を一瞬ぴくっと傾ける）
+  m.breedCd = 30 + Math.random() * 20;                                       // 🧬 繁殖クールダウン（なつかせ直後はしばらく繁殖しない）
+  dexDiscover(chinColorOf(m));                                               // 図鑑：この毛色を発見
   if (pets.indexOf(m) < 0) pets.push(m);
   attachPetFur(m);                                                           // ふさふさ感：先にファーの殻（マーカー複製を避けるため最初に）
   attachPetMarker(m);
@@ -3319,6 +3347,26 @@ function updatePet(m, dt, dx, dz, dist) {
     if (wild && band !== 'grumpy') { m.wildLook = wild; m.wildLookT = 1.4; if (Math.random() < 0.5) petEmote(m); }
   }
   if ((m.wildLookT || 0) > 0) m.wildLookT -= dt;
+  // --- 🧬 繁殖：ごきげんなチンチラ同士が寄り添うと子が生まれる（毛色は遺伝）。pid小さい側が起点＝二重出産防止 ---
+  m.breedCd = Math.max(0, (m.breedCd || 0) - dt);
+  const myColor = chinColorOf(m);
+  if (myColor && band === 'happy' && m.breedCd <= 0 && pets.length < MAX_PETS && m.eatT <= 0 && m.bathT <= 0) {
+    for (const o of pets) {
+      if (o === m || o.dying || o.pid < m.pid) continue;                    // 起点は pid 小さい方だけ
+      const oc = chinColorOf(o); if (!oc || petMoodBand(o.mood) !== 'happy' || (o.breedCd || 0) > 0) continue;
+      if (Math.hypot(o.obj.position.x - m.obj.position.x, o.obj.position.z - m.obj.position.z) > 3.5) continue;
+      const childColor = breedColor(myColor, oc);
+      const baby = spawnMob('chinchilla_' + childColor, (m.obj.position.x + o.obj.position.x) / 2 + 0.5, (m.obj.position.z + o.obj.position.z) / 2, {});
+      if (baby) {
+        initPet(baby, { mood: 75 }); dexDiscover(childColor);
+        m.breedCd = o.breedCd = 90 + Math.random() * 30;                    // 親はしばらく繁殖休み
+        petEmote(m); petEmote(o); petEmote(baby);
+        if (window.playAnimalSFX) try { window.playAnimalSFX('pet', 'happy', { x: baby.obj.position.x, y: baby.obj.position.y, z: baby.obj.position.z }); } catch (e) {}
+        if (typeof toast === 'function') toast(`🌸💕 あかちゃんチンチラが生まれた！（毛色：${CHIN_DISPLAY[childColor].name}）`);
+      } else m.breedCd = 20;                                                // 生成失敗時は短い再試行
+      break;
+    }
+  }
   // --- 移動の決定 ---
   let moving = false, anim = 'idle', hx = 0, hz = 0;
   const faceP = () => { m.obj.rotation.y = Math.atan2(-dx, -dz); };
