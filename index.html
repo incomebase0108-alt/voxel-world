@@ -1827,7 +1827,10 @@ function dustBath() {
   spawnFx('fx_collapse', player.pos.x, player.pos.y + 0.2, player.pos.z, 1.4, 1.4); // 砂煙
   window.playSFX && window.playSFX('place');
   if (typeof pets !== 'undefined') for (const p of pets) {
-    if (Math.hypot(p.obj.position.x - player.pos.x, p.obj.position.z - player.pos.z) < 5) { p.mood = clampPet(p.mood + 12, 0, 100); petEmote(p); }
+    if (Math.hypot(p.obj.position.x - player.pos.x, p.obj.position.z - player.pos.z) < 5) {
+      p.mood = clampPet(p.mood + 12, 0, 100); petEmote(p);
+      if (typeof startPetBath === 'function') startPetBath(p); // 飼い主に合わせて一緒に砂浴び
+    }
   }
   if (typeof toast === 'function') toast('🛁 砂浴びでさっぱり！（体温ダウン）');
 }
@@ -2663,6 +2666,8 @@ const MOB_DEFS = [
   { type:'fish_puffer',   file:'models/mob_fish_puffer.glb',   role:'neutral', aquatic:true },
   // ペット：チンチラ「さくら」（pet_chinchilla）。petbase=ランダム湧き対象外・コードからのみ生成し initPet で相棒化
   { type:'chinchilla', file:'models/pet_chinchilla.glb', role:'neutral', petbase:true },
+  // まぐろ専用：子チンチラ(バイオレット)。小ささはモデルに焼き込み済。petbase=ランダム湧き対象外・序章でのみ生成。未配置時は chinchilla_violet にフォールバック
+  { type:'chinchilla_violet_baby', file:'models/pet_chinchilla_violet_baby.glb', role:'neutral', petbase:true },
   // 色違いの野生チンチラ（世界に大量に湧く中立動物。餌でなつかせOK＝コレクション）
   { type:'chinchilla_beige',    file:'models/pet_chinchilla_beige.glb',    role:'neutral', chin:true },
   { type:'chinchilla_grey',     file:'models/pet_chinchilla_grey.glb',     role:'neutral', chin:true },
@@ -2960,7 +2965,11 @@ function attachPetMarker(m) {
   m.obj.add(o); m.petMarker = o;
   if (tpl.animations.length) { m.petHaloMixer = new THREE.AnimationMixer(o); m.petHaloMixer.clipAction(tpl.animations[0]).play(); }
 }
-function removePetMarker(m) { if (m.petMarker && m.petMarker.parent) m.petMarker.parent.remove(m.petMarker); m.petMarker = null; m.petHaloMixer = null; }
+function removePetMarker(m) {
+  if (m.petMarker && m.petMarker.parent) m.petMarker.parent.remove(m.petMarker); m.petMarker = null; m.petHaloMixer = null;
+  if (m.petShadow) { scene.remove(m.petShadow); m.petShadow = null; } // 影も一緒に片付ける
+  if (m.petFur && m.petFur.parent) { m.petFur.parent.remove(m.petFur); m.petFur = null; } // ファーの殻も
+}
 function petEmote(m) { spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + (m.petMarkH || 1.0) + 0.15, m.obj.position.z, 1.1, 0.5); }
 // 相棒化（野生mob／セーブ復元mob を共通でペットに）
 function initPet(m, opts = {}) {
@@ -2979,8 +2988,16 @@ function initPet(m, opts = {}) {
   m.biteT = 0; m.fumeT = 0; m.standT = 0; m.angerCd = 3 + Math.random() * 3; // 怒り行動（噛みつき/立ちオシッコ/プンプン）
   m.eatT = 0; m.alertT = 0;                                                  // 手で持って食べる演出 / 警戒スキャン
   m.queenSeen = false;                                                       // 最終ボス「女王さくら」を察知済みか（同名つながり演出）
+  // --- リアルな仕草（すべてルートobjの変形で表現＝メッシュ差し替えに強い）---
+  m.breathPh = Math.random() * 6.28;                                         // 呼吸の位相（常時のかすかな上下）
+  m.groomT = 0;                                                              // 毛づくろい中の残り秒
+  m.bathT = 0; m.bathFxCd = 0;                                               // 砂浴び中の残り秒／砂煙クールダウン
+  m.popT = 0;                                                                // ぴょこ跳ね（ごきげん時の単発ジャンプ）
+  m.earT = 0; m.earCd = 1.5 + Math.random() * 3;                            // 耳ぴく（擬似：頭側を一瞬ぴくっと傾ける）
   if (pets.indexOf(m) < 0) pets.push(m);
+  attachPetFur(m);                                                           // ふさふさ感：先にファーの殻（マーカー複製を避けるため最初に）
   attachPetMarker(m);
+  attachPetShadow(m);                                                        // ふさふさ感：足元のソフトシャドウ
 }
 function petBandToast(m) {
   const nb = petMoodBand(m.mood);
@@ -3063,9 +3080,58 @@ function petFume(m) {                          // プンプン：その場で小
   window.playSFX && window.playSFX('pickup');
   if (typeof toast === 'function') toast(`💢「${m.petName}」はプンプン怒っている…`);
 }
+// 足元が砂地/岩場か（チンチラが砂浴びできる地面）
+function onDustGround(m) {
+  const b = getBlock(Math.floor(m.obj.position.x), Math.floor(m.obj.position.y) - 1, Math.floor(m.obj.position.z));
+  return b === B.sand || b === B.stone;
+}
+// 砂浴び開始：その場でぱたぱた転がってご機嫌になる（暑さに弱いチンチラの十八番）
+function startPetBath(m) {
+  if (m.bathT > 0 || m.biteT > 0 || m.standT > 0) return;
+  m.bathT = 1.8 + Math.random() * 0.8; m.bathFxCd = 0;
+  m.mood = clampPet(m.mood + 6, 0, 100); m.moodBand = petMoodBand(m.mood);
+}
+// ── ふさふさ感の演出（影／フェイクファー）。どちらもルートobjへ後付け＝メッシュ非依存 ──
+const PET_FUR_RIM = true;                       // フェイクファー（やわらかい輪郭）の ON/OFF（重い/不要なら false）
+let _petShadowTex = null;
+function petShadowTexture() {                    // 黒の放射状グラデ＝やわらかい接地影（全ペット共用）
+  if (_petShadowTex) return _petShadowTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+  grad.addColorStop(0, 'rgba(0,0,0,0.42)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.20)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  _petShadowTex = new THREE.CanvasTexture(cv);
+  return _petShadowTex;
+}
+function attachPetShadow(m) {                    // 足元に敷くソフトシャドウ（sceneに直付けし updatePet で追従）
+  if (m.petShadow || !m.obj) return;
+  const geo = new THREE.PlaneGeometry(1, 1);
+  const mat = new THREE.MeshBasicMaterial({ map: petShadowTexture(), transparent: true, depthWrite: false });
+  const sh = new THREE.Mesh(geo, mat);
+  sh.rotation.x = -Math.PI / 2; sh.renderOrder = -1;
+  const s = (m.def.type.indexOf('chinchilla') === 0) ? 0.7 : 1.2; // 体格に合わせた影の広さ
+  sh.userData.baseScale = s; sh.scale.set(s, s, s);
+  scene.add(sh); m.petShadow = sh;
+}
+function attachPetFur(m) {                        // ひと回り大きい裏面シェル＝毛のふわっとした輪郭（リム風）
+  if (m.petFur || !m.obj || !PET_FUR_RIM) return;
+  const fur = m.obj.clone(true);                  // 形状を複製（geometryは共有・読み取りのみ）。※マーカー付与前に呼ぶこと
+  const furMat = new THREE.MeshBasicMaterial({
+    color: 0xfff3e6, transparent: true, opacity: 0.10,
+    side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  fur.traverse(o => { if (o.isMesh) { o.material = furMat; o.renderOrder = 1; } });
+  fur.scale.setScalar(1.035);
+  m.obj.add(fur); m.petFur = fur;
+}
 // ペットAI：機嫌(mood)と癖(traits)で 追従距離・速さ・仕草・弾み が変わる
 function updatePet(m, dt, dx, dz, dist) {
+  if (!m.petFur) attachPetFur(m);                  // 後着テンプレ対応（ファー殻）
   if (!m.petMarker) attachPetMarker(m);            // 後着テンプレ対応
+  if (!m.petShadow) attachPetShadow(m);            // 後着テンプレ対応（接地影）
   if (m.petHaloMixer) m.petHaloMixer.update(dt);
   m.patCd = Math.max(0, (m.patCd || 0) - dt);
   if (dist > PET_TELEPORT) {                        // 迷子防止ワープ
@@ -3122,6 +3188,13 @@ function updatePet(m, dt, dx, dz, dist) {
     else if (band === 'grumpy' && Math.random() < 0.5) m.sulkT = 1.0 + Math.random() * 1.4;
     else if (petHas(m, 'aloof') && Math.random() < 0.5) m.sitT = 1.4 + Math.random() * 1.6;
     if (petHas(m, 'wary') && m.alertT <= 0 && m.zoomT <= 0 && m.sitT <= 0 && Math.random() < 0.45) m.alertT = 1.0 + Math.random() * 1.2; // 警戒：辺りをうかがう
+    // リアルな日常しぐさ（機嫌で頻度・種類が変わる）。大きな行動が無く落ち着いている時だけ
+    const calm = m.zoomT <= 0 && m.sitT <= 0 && m.sulkT <= 0 && m.biteT <= 0 && m.fumeT <= 0 && m.standT <= 0 && m.eatT <= 0 && m.bathT <= 0 && m.groomT <= 0;
+    if (calm) {
+      if (band === 'happy' && m.popT <= 0 && Math.random() < 0.45) m.popT = 0.5;                       // ごきげん：その場でぴょこんと跳ねる
+      else if (band !== 'grumpy' && onDustGround(m) && Math.random() < 0.30) startPetBath(m);          // 砂地/岩場で気が向くと砂浴び
+      else if (band !== 'grumpy' && Math.random() < 0.5) m.groomT = 1.6 + Math.random() * 1.4;         // 落ち着くと毛づくろい
+    }
   }
   // --- 怒り：噛みつく / 立ってオシッコ / プンプン ---
   //   ① 近くの敵に対して威嚇（機嫌に関係なく・びびりは除く＝防衛本能）
@@ -3155,6 +3228,13 @@ function updatePet(m, dt, dx, dz, dist) {
   if (m.biteT > 0) { m.biteT -= dt; faceP(); hx = dx / dist; hz = dz / dist; moving = dist > 1.1; anim = 'walk'; spd = 12; } // 噛みつき突進
   else if (m.eatT > 0) { m.eatT -= dt; faceP(); anim = 'idle'; }                                                          // 手で持ってもぐもぐ
   else if (m.fumeT > 0) { m.fumeT -= dt; faceP(); anim = 'idle'; m.obj.rotation.y += (Math.random() - 0.5) * 0.14; } // 怒って震える
+  else if (m.bathT > 0) {                                  // 砂浴び：その場でぱたぱた転がる（向きをこまめに変える＋砂煙）
+    m.bathT -= dt; anim = 'idle'; m.obj.rotation.y += (Math.random() - 0.5) * 0.35;
+    m.bathFxCd -= dt;
+    if (m.bathFxCd <= 0) { m.bathFxCd = 0.28; spawnFx('fx_collapse', m.obj.position.x, m.obj.position.y + 0.12, m.obj.position.z, 0.7, 0.7); window.playSFX && window.playSFX('pet_dust'); }
+    if (m.bathT <= 0) petEmote(m);                         // 浴び終わりにごきげんハート
+  }
+  else if (m.groomT > 0) { m.groomT -= dt; anim = 'idle'; faceP(); m.obj.rotation.y += Math.sin(m.hopT * 6) * 0.06; } // 毛づくろい：小刻みに頭を動かす
   else if (m.sitT > 0) { m.sitT -= dt; anim = 'idle'; faceP(); }
   else if (m.zoomT > 0) {                                   // やんちゃ：プレイヤー周りをくるくるダッシュ
     m.zoomT -= dt;
@@ -3172,18 +3252,45 @@ function updatePet(m, dt, dx, dz, dist) {
   m.gy = (m.gy == null) ? fy : m.gy + (fy - m.gy) * Math.min(1, dt * 12);
   m.hopT += dt * (anim === 'walk' ? 9 : 5);
   let bob = 0;
-  if (m.eatT > 0) bob = Math.abs(Math.sin(m.hopT * 7)) * 0.025;                                       // もぐもぐ（手で持って食べる）
+  if (m.bathT > 0) bob = Math.abs(Math.sin(m.hopT * 13)) * 0.04;                                      // 砂浴び：細かくぱたぱた
+  else if (m.eatT > 0) bob = Math.abs(Math.sin(m.hopT * 7)) * 0.025;                                   // もぐもぐ（手で持って食べる）
   else if (band === 'happy') bob = Math.max(0, Math.sin(m.hopT)) * 0.10 * (petHas(m, 'playful') ? 1.7 : 1);
+  if (m.popT > 0) { m.popT -= dt; const t = Math.min(1, 1 - Math.max(0, m.popT) / 0.5); bob += Math.sin(t * Math.PI) * 0.22; } // ぴょこ跳ね（単発ジャンプの弧）
   m.obj.position.y = m.gy + bob;
   if (band === 'happy' && !moving && m.eatT <= 0) m.obj.rotation.y += Math.sin(m.hopT * 1.3) * 0.05;
   // ポーズ別の伸縮：立ちオシッコ=縦に伸びる / 食事=ちょこんと持ち上げる → それ以外は戻る
   if (m.standT > 0) m.standT -= dt;
   let tSY = 1.0, tSXZ = 1.0;
   if (m.standT > 0) { tSY = 1.5; tSXZ = 0.86; }
+  else if (m.bathT > 0) { tSY = 0.74; tSXZ = 1.16; }    // 砂浴び：べちゃっと低く広がる
   else if (m.eatT > 0) { tSY = 1.12; tSXZ = 0.96; }
+  else if (m.groomT > 0) { tSY = 0.92; tSXZ = 1.05; }   // 毛づくろい：少し丸まる
   m.obj.scale.y += (tSY - m.obj.scale.y) * Math.min(1, dt * 12);
   m.obj.scale.x += (tSXZ - m.obj.scale.x) * Math.min(1, dt * 12);
   m.obj.scale.z += (tSXZ - m.obj.scale.z) * Math.min(1, dt * 12);
+  // --- 呼吸：穏やかな時だけ、ごく小さく上下に膨らむ（常時の生命感・メッシュ非依存）---
+  m.breathPh += dt * (band === 'happy' ? 2.6 : 1.8);
+  if (m.standT <= 0 && m.eatT <= 0 && m.bathT <= 0 && m.popT <= 0) {
+    const br = Math.sin(m.breathPh) * (m.groomT > 0 ? 0.02 : 0.012);
+    m.obj.scale.y *= (1 + br); m.obj.scale.x *= (1 - br * 0.6); m.obj.scale.z *= (1 - br * 0.6);
+  }
+  // --- 耳ぴく（擬似）：ボーンが無いので頭側を一瞬だけ小さく傾けて“ぴくっ”を表現。警戒中は頻発 ---
+  m.earCd -= dt;
+  if (m.earCd <= 0 && m.earT <= 0 && m.biteT <= 0 && m.fumeT <= 0 && m.bathT <= 0) {
+    m.earCd = (m.alertT > 0 || petHas(m, 'wary')) ? 0.8 + Math.random() * 1.4 : 2.5 + Math.random() * 3.5;
+    m.earT = 0.18;
+  }
+  if (m.earT > 0) { m.earT -= dt; m.obj.rotation.z = Math.sin((0.18 - Math.max(0, m.earT)) / 0.18 * Math.PI * 2) * 0.05; }
+  else if (Math.abs(m.obj.rotation.z) > 0.001) m.obj.rotation.z += (0 - m.obj.rotation.z) * Math.min(1, dt * 14); // ぴく後は水平へ戻す
+  // --- 接地影：足元(地表)へ追従。跳ねて浮くほど薄く小さく（弧の高さに応じて）---
+  if (m.petShadow) {
+    const gy = (m.gy != null) ? m.gy : m.obj.position.y;
+    const lift = Math.max(0, m.obj.position.y - gy);
+    const s = (m.petShadow.userData.baseScale || 0.7) * (1 - Math.min(0.5, lift * 1.2));
+    m.petShadow.position.set(m.obj.position.x, gy + 0.02, m.obj.position.z);
+    m.petShadow.scale.set(s, s, s);
+    m.petShadow.material.opacity = 0.9 * (1 - Math.min(0.55, lift * 1.1));
+  }
   // --- 機嫌の絵文字（ハート）---
   m.emoteCd -= dt;
   if (m.emoteCd <= 0) { m.emoteCd = band === 'happy' ? 2.0 + Math.random() * 1.4 : 7 + Math.random() * 4; if (band === 'happy') petEmote(m); }
@@ -3384,7 +3491,10 @@ function startMaguroIntro() {
   if (!tpl) { if (maguroWait > 180) { openCageDoor(); } return; } // 3秒待っても未読込なら扉だけ開ける（詰み防止）
   maguroPending = false;
   const O = HOUSE;
-  maguro = spawnMob(violet ? 'chinchilla_violet' : 'chinchilla', O.ox + 6.3, O.oz + 3.5, { y: O.oy + 5 });
+  // まぐろ＝子チンチラ専用モデル。小ささ・子ども顔はモデルに焼き込み済（手動スケールしない）。
+  //   未ロード/失敗時は従来の chinchilla_violet（無ければ chinchilla）へフォールバックして詰みを防ぐ。
+  maguro = spawnMob('chinchilla_violet_baby', O.ox + 6.3, O.oz + 3.5, { y: O.oy + 5 })
+        || spawnMob(violet ? 'chinchilla_violet' : 'chinchilla', O.ox + 6.3, O.oz + 3.5, { y: O.oy + 5 });
   if (!maguro) { openCageDoor(); return; }
   maguro.maguro = true; maguro.noSave = true; maguro.hostile = false; maguro.home = null;
   ghostify(maguro.obj, '#b07be0');
