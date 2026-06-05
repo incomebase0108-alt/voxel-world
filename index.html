@@ -3431,9 +3431,9 @@ function initHouseNpc(m, kind, name, color, ax, az, ay) {
   m.emoteCd = 3 + Math.random()*4;
   attachNameTag(m, name, color);
 }
-function attachNameTag(m, text, color) {
+function attachNameTag(m, text, color, h) {
   if (!m.obj) return;
-  const sp = makeTextSprite(text, color); sp.position.set(0, 2.15, 0); sp.renderOrder = 999;
+  const sp = makeTextSprite(text, color); sp.position.set(0, (h != null ? h : 2.15), 0); sp.renderOrder = 999; // h省略時=2.15(人間NPC基準)
   m.obj.add(sp); m.nameTag = sp;
 }
 function updateHouseNpc(m, dt, dx, dz, dist) {
@@ -3497,8 +3497,11 @@ function startMaguroIntro() {
         || spawnMob(violet ? 'chinchilla_violet' : 'chinchilla', O.ox + 6.3, O.oz + 3.5, { y: O.oy + 5 });
   if (!maguro) { openCageDoor(); return; }
   maguro.maguro = true; maguro.noSave = true; maguro.hostile = false; maguro.home = null;
-  ghostify(maguro.obj, '#b07be0');
-  attachNameTag(maguro, '💜まぐろ（バイオレット）', '#d8b3ff');
+  // 子モデル(総高0.787m)が読めたか判定。フォールバックの大人(1.003m)時は浮遊/タグを大人基準へ戻す係数を持たせる
+  maguro.maguroBaby = (maguro.def.type === 'chinchilla_violet_baby');
+  maguro.hoverK = maguro.maguroBaby ? 1.0 : 1.27;           // 1.003/0.787≒1.27（大人フォールバック時の補正）
+  ghostify(maguro.obj, '#b07be0');                           // ※ghostifyは材質の発光/半透明のみ＝体格に応じたサイズ要素は無い（縮小不要）
+  attachNameTag(maguro, '💜まぐろ（バイオレット）', '#d8b3ff', maguro.maguroBaby ? 1.35 : 2.15); // baby総高に合わせ頭上タグを下げる（大人時は従来2.15）
   maguroPhase = 1; maguroT = 0;
   if (typeof toast === 'function') toast('💜 天国から、死んでしまったバイオレットのチンチラ「まぐろ」が会いに来た…');
 }
@@ -3513,19 +3516,19 @@ function updateMaguroIntro(dt) {
   if (maguroPending) { startMaguroIntro(); return; }
   if (!maguro || maguroPhase === 0) return;
   maguroT += dt;
-  const O = HOUSE, fy = O.oy + 5;
-  if (maguroPhase === 1) {                 // 扉へそっと近づく
-    maguro.obj.position.y = fy + 0.12 + Math.sin(maguroT * 3) * 0.06;
-    const d = maguroMoveTo(O.ox + 5.6, fy + 0.12, O.oz + 3.5, dt, 1.4);
+  const O = HOUSE, fy = O.oy + 5, k = maguro.hoverK || 1.0; // k=浮遊オフセット補正（baby=1.0 / 大人フォールバック=1.27）
+  if (maguroPhase === 1) {                 // 扉へそっと近づく（子サイズ：低めにふわっと・小刻みに）
+    maguro.obj.position.y = fy + 0.09 * k + Math.sin(maguroT * 3.6) * 0.04 * k; // 大人0.12/振幅0.06/周期3 → baby 0.09/0.04/3.6
+    const d = maguroMoveTo(O.ox + 5.6, fy + 0.09 * k, O.oz + 3.5, dt, 1.4);
     if (d < 0.35 || maguroT > 4) {
       openCageDoor();
-      spawnFx('fx_ally_heart', O.ox + 5.5, fy + 0.6, O.oz + 3.5, 1.4, 0.7);
+      spawnFx('fx_ally_heart', O.ox + 5.5, fy + 0.45 * k, O.oz + 3.5, 1.2, 0.6); // 子の頭高に合わせ低めに（大人0.6→baby0.45）
       if (typeof toast === 'function') toast('💜 まぐろがケージの扉をそっと開けた——「さくら、お逃げ。自由になって」');
       maguroPhase = 3; maguroT = 0;
     }
   } else if (maguroPhase === 3) {           // 出口の方へ導いて、ゆっくり消える
-    maguro.obj.position.y = fy + 0.3 + Math.sin(maguroT * 3) * 0.08;
-    maguroMoveTo(O.ox + 8.5, fy + 0.5, O.oz + 3.5, dt, 1.0);
+    maguro.obj.position.y = fy + 0.22 * k + Math.sin(maguroT * 3.6) * 0.05 * k; // 大人0.3/振幅0.08/周期3 → baby 0.22/0.05/3.6
+    maguroMoveTo(O.ox + 8.5, fy + 0.38 * k, O.oz + 3.5, dt, 1.0); // 大人0.5 → baby0.38
     if (maguroT > 1.5) setGhostOpacity(maguro.obj, Math.max(0, 0.55 * (1 - (maguroT - 1.5) / 2.5)));
     if (maguroT > 4) {
       scene.remove(maguro.obj);
