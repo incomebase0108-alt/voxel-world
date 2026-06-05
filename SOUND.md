@@ -11,7 +11,8 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 女王さくら（最終ボス） | `onQueenAppear()` / `onQueenDefeat()` | 咆哮＋威圧テーマ同時 / 勝利音 |
 | 敵 aggro | `onEnemyAggro()` | 交戦突入の緊張スティンガー |
 | 既存ボス | `onBossAppear(type)` / `onBossDefeat(type)` | `type`=golem/dragon/skeleton_king/queen |
-| BGMシーン | `setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen')` | 1.8sクロスフェード |
+| BGMシーン | `setMusicScene('day'|'night'|'combat'|'water'|'boss'|'queen'|'escape')` | 1.8sクロスフェード |
+| 序章『脱走』 | `setMusicScene('escape')` ＋ `onEscapeSuccess()` | 忍び/緊張テーマ＋脱走成功ジングル |
 | 仲間 | `onCompanionJoin/Reply/Hit/Leave(type)` | — |
 | 攻撃 | `onAttackHit(weapon,isCrit)` / `onAttackWhiff()` / `onAttackCharge('start'|'full')` | — |
 | 音量/診断 | `setMasterVolume/SfxVolume/BgmVolume/AmbVolume`・`setSfxGain(key,x)`・`getSoundDiag()` | ④設定・実機診断 |
@@ -69,6 +70,7 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | `water` | 浮遊（水中だと分かる程度に） | 72 | |
 | `boss` | ① ボス戦・**重厚**（低音域+三全音テンション+重いサブベース） | 132 | キックドラム＋鋸波pad。combatより低く・重い |
 | `queen` | ⑧ 女王さくら（最終ボス）・**気高くも威圧的**（Fマイナー寄りクラスタ+shimmerの艶） | 138 | bossより速く張りつめ。`setMusicScene('queen')` |
+| `escape` | ⓪ 序章『脱走』・**忍び/緊張**（低密度・小音量・半音A↔A#の不穏＋心臓の鼓動） | 100 | `setMusicScene('escape')`。`setDangerLevel(0..1)`で緊張増 |
 
 各シーンは `level`（音量バランス）を持ち、water は静かめ。陸地に出れば day/night のはっきりしたBGMに切り替わります。`boss` は combat より低い音域・重いサブベース・三全音(G#3 vs 根音D)の不協和で威圧感を出しています。
 

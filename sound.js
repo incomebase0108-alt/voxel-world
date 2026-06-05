@@ -16,7 +16,7 @@
   const gains = {
     footstep: 1, jump: 1, land: 1, break: 1, place: 1, eat: 1, pickup: 1, craft: 1,
     splash: 1, swim: 1, attack: 1, hit: 1, hurt: 1, thunder: 1, mob: 1,
-    whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1, aggro_stinger: 1,
+    whiff: 1, charge_start: 1, charge_full: 1, levelup: 1, boss_roar: 1, boss_defeat: 1, aggro_stinger: 1, escape_success: 1,
     companion_join: 1, companion_reply: 1, companion_hit: 1, companion_leave: 1, // 仲間システム
     // チンチラ世界の動物SE（敵/仲間/ペット）。個別倍率で「狼うるさい」等に即対応。
     wolf_howl: 1, wolf_growl: 1, snake_hiss: 1, snake_strike: 1, weasel_screech: 1, bird_screech: 1, bird_wingflap: 1, attack_bite: 1, // 敵
@@ -243,6 +243,14 @@
       tone(660, 0.10, 'square', 0.08, 880, null, 0.12);                        // 緊張の上昇②
       noise(0.05, 0.06, 2600, 'highpass');                                     // 立ち上がりのエッジ
     },
+    // ⓪ 脱走成功ジングル：緊張から解き放たれる達成の高揚。上昇(Fメジャー)→明るい解決和音＋自由への一陣の風＋きらめき。
+    escape_success() {
+      [349.23, 440.00, 523.25, 698.46].forEach((f, i) => tone(f, 0.16, 'triangle', 0.11, f, null, i * 0.08)); // F-A-C-F 駆け上がり
+      [349.23, 440.00, 523.25].forEach((f) => tone(f, 0.80, 'sawtooth', 0.06, f, null, 0.34));                // 解決の F メジャー和音
+      tone(174.61, 0.85, 'triangle', 0.09, 174.61, null, 0.34);                                               // 低音の土台（F3）
+      noise(0.50, 0.040, 1200, 'bandpass', null, 0.30);                                                       // 自由への一陣の風（ふわっ）
+      tone(1046.50, 0.50, 'sine', 0.05, 1396.91, null, 0.55);                                                 // きらめき（C6→F6）
+    },
 
     // === 仲間システム（NPCが仲間になる新機能）。1号機が口を呼ぶだけ・未呼出なら無音待機 ===
     //   type は仲間種（'knight'|'archer'|'mage' 等）。省略でも汎用音として成立。
@@ -401,6 +409,11 @@
   window.onQueenDefeat = () => window.playSFX('boss_defeat', { type: 'queen' });
   window.onEnemyAggro  = () => window.playSFX('aggro_stinger');
 
+  // === ⓪ 序章『脱走』連携（防御的: 1号機が呼ぶだけ・未呼出なら無音待機）=====
+  //   脱走シーン突入で window.setMusicScene('escape')（忍び/緊張テーマ）。緊張の高まりは window.setDangerLevel(0..1)（P2）で。
+  //   window.onEscapeSuccess() … 脱走成功＝達成の高揚ジングル。成功後は 1号機が setMusicScene('day'|…) で平常へ。
+  window.onEscapeSuccess = () => window.playSFX('escape_success');
+
   // === 仲間システム連携（防御的: 1号機が口を呼ぶだけ・未呼出なら無音待機）=====
   //   window.onCompanionJoin(type)  … ① NPCが仲間になった時の心強い加入音。type=仲間種（'knight'|'archer'|'mage' 等／省略=汎用）
   //   window.onCompanionReply(type) … ② 指示を受けた時の了解音（コマンド発行時の「了解！」）。type省略可【②用に新設＝1号機へ呼出依頼】
@@ -474,6 +487,9 @@
     // ⑧ 女王さくら（最終ボス）専用の威圧テーマ。boss より速く張りつめ、shimmer で気高さの艶を足す＝「気高くも威圧的」。
     //   F マイナー寄りクラスタ(F–G#–A–C–D#)で緊張＋荘厳。1号機が女王接近で setMusicScene('queen')。
     queen:  { tempo: 138, scale: [174.61, 207.65, 220.00, 261.63, 311.13], pad: [87.31,  130.81, 174.61], wave: 'sawtooth', density: 0.92, drums: true,  level: 1.12, bassG: 0.12, shimmer: true,  bassline: true,  tremHz: 0.55, tremDepth: 0.12 },
+    // ⓪ 序章『脱走』＝忍び足の緊張テーマ。低密度・小音量で息をひそめ、半音(A↔A#)の不穏＋心臓の鼓動(bassline)。
+    //   危険度レイヤー(P2 setDangerLevel)が乗ると緊張が増す余地を残す。1号機が脱走シーンで setMusicScene('escape')。
+    escape: { tempo: 100, scale: [220.00, 233.08, 277.18, 311.13, 369.99], pad: [110.00, 146.83, 174.61], wave: 'triangle', density: 0.40, drums: false, level: 0.82, bassG: 0.06,  shimmer: false, bassline: true,  tremHz: 0.25, tremDepth: 0.10 },
   };
   let bgmOn = false, bgmScene = null, bgmTimer = null, nextNoteT = 0, beat = 0, userMusicCtl = false, lastNoteTime = 0;
   let xfadeUntil = 0; // クロスフェード進行中の終了時刻（この間はscheduler の stuck回復ガードを抑止＝自動化の衝突回避）
