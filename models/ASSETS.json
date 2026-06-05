@@ -16,7 +16,7 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 23091672,
+    "size_bytes": 23091656,
     "size_mb": 22.022
   },
   "assets": [
@@ -1405,7 +1405,7 @@
       "file": "pet_chinchilla_grey.glb",
       "name": "pet_chinchilla_grey",
       "category": "その他",
-      "size_bytes": 348200,
+      "size_bytes": 348196,
       "size_mb": 0.3321,
       "clips": [],
       "meshes": 1,
@@ -1453,7 +1453,7 @@
       "file": "pet_chinchilla_violet_baby.glb",
       "name": "pet_chinchilla_violet_baby",
       "category": "その他",
-      "size_bytes": 288964,
+      "size_bytes": 288952,
       "size_mb": 0.2756,
       "clips": [],
       "meshes": 1,
