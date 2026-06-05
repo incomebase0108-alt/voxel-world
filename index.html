@@ -166,6 +166,8 @@ const CFG = {
   mob: {
     totalCap: 18, hostileCap: 7, neutralCap: 13,       // 同時存在の総/敵性/中立 上限（チンチラだらけ＝中立多め）
     spawnMin: 18, spawnMax: 40, caveMin: 6, caveMax: 18, despawn: 75, // 地上/地下の湧き距離・消滅距離
+    lodNear: 22, lodFar: 48,                           // LOD：近(<22)=フル / 中(22-48)=アニメ・仕草凍結 / 遠(>48)=非表示＋AI間引き
+
     spawnEveryMin: 2, spawnEveryRand: 2,               // 湧き判定の間隔（最小＋ランダム秒）
     speedBoss: 1.4, speedHostile: 2.2, speedNeutral: 1.3, speedVillager: 1.0, // 移動速度
     hp: { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30, dragon:50, skeleton_king:60, demon:80, kraken:120, queen_sakura:240,
@@ -2708,6 +2710,7 @@ MOB_DEFS.forEach(def => gltfLoader.load(def.file,
   undefined, () => {}));
 
 const mobs = [];
+let mobFrameTick = 0; // LOD：遠景AIを間引くためのフレームカウンタ
 // 仲間システム：住人NPCをコインで雇って追従＋共闘。companions は mobs の部分集合への参照。
 const companions = [];           // 仲間モブの配列（mobs にも入っている）
 const MAX_COMPANIONS = 3;        // 最大仲間数
@@ -3648,6 +3651,7 @@ function updateGuard(m, dt) {
 // ===================================================================
 function critterGesture(m, dt, ctx) {
   ctx = ctx || {};
+  if (m._lodMid) { if (m.def.type !== 'bird') m.obj.position.y = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y); return; } // LOD中遠：種別仕草を省いて床追従のみ（鳥は飛行高度をAIに任せる）
   const t = m.def.type;
   const walking = !!ctx.moving || ctx.animName === 'walk';
   const fy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
@@ -4053,6 +4057,7 @@ function updateMobs(dt) {
     if (Object.keys(mobTemplates).length) restorePendingMobs();
     return;
   }
+  mobFrameTick++;      // LOD：遠景AI間引き用
   maybeBuildHouse();   // 🏠 序章：さくらの家を建てて2階子供部屋からスタート（初回のみ）
   if (houseChecked && !houseNpcsSpawned) spawnHouseNpcs(); // 👫 人間モデル読込が遅れても確実に配置
   updateMaguroIntro(dt); // 💜 まぐろがケージの扉を開ける発端の演出
@@ -4085,6 +4090,12 @@ function updateMobs(dt) {
     const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z;
     const dist = Math.hypot(dx, dz) || 0.0001;
     const dy = Math.abs(m.obj.position.y - player.pos.y); // 垂直距離。地下/上空に詰まった敵の「見えない攻撃」を遮断する
+    // --- LOD：大量湧き対策。さくら(pet)/仲間/まぐろ/住人/ボスは保護＝常にフル ---
+    const lodProtected = m.pet || m.companion || m.maguro || m.houseNpc || m.def.role === 'boss' || m.def.queen;
+    const lodFar = !lodProtected && dist > M.lodFar;     // 遠：非表示＋AI間引き
+    m._lodMid = !lodProtected && dist > M.lodNear;       // 中：アニメ/仕草を凍結（critterGesture / mixer が参照）
+    if (m.obj.visible === lodFar) m.obj.visible = !lodFar; // 遠景はレンダリングを止める（描画コスト最大の削減）
+    if (lodFar && ((mobFrameTick + i) % 3 !== 0)) continue; // 遠景は3フレームに1回だけ更新（位置は保持＝瞬間移動を防ぐ）
     if (m.pet) { updatePet(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 🐾 ペットは despawn しない・専用AI（機嫌/癖）
     if (m.companion) { updateCompanion(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 仲間は despawn しない・専用AI
     if (m.houseNpc) { updateHouseNpc(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 👫 飼い主/内縁の妻は despawn しない・専用AI
@@ -4181,7 +4192,7 @@ function updateMobs(dt) {
       critterGesture(m, dt, { moving, animName, scared });
     }
     setMobAnim(m, animName);
-    if (m.mixer) m.mixer.update(dt);
+    if (m.mixer && !m._lodMid) m.mixer.update(dt); // LOD中遠：リグmobのアニメ更新を凍結（CPU削減）
   }
 }
 // ② 最寄りの村（半径 maxD 内）を返す
