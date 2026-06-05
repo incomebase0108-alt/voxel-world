@@ -3679,40 +3679,66 @@ function updatePredator(m, dt, dx, dz, dist, dy) {
   const detect = dist < 14 && dy < 8;
   if (detect && !m.spotted) { m.spotted = true; critterSE(m, 'spot'); }
   else if (!detect && dist > 20) m.spotted = false;
-  // ---- 鳥：飛行＋急降下 ----
+  // ---- 鳥：上空旋回 → 急降下アーク → 離脱 のループ（猛禽らしい一撃離脱）----
   if (t === 'bird') {
-    m.diveCd = (m.diveCd || 0) - dt; m.diveT = Math.max(0, (m.diveT || 0) - dt);
+    m.diveCd = (m.diveCd || 0) - dt; m.diveT = Math.max(0, (m.diveT || 0) - dt); m.retreatT = Math.max(0, (m.retreatT || 0) - dt);
     const gy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
-    if (m.diveCd <= 0 && dist < 12 && dy < 7) { m.diveT = 0.9; m.diveCd = 3 + Math.random() * 2.5; critterSE(m, 'dive'); } // 急降下開始（羽ばたきSE）
-    const tgtY = m.diveT > 0 ? player.pos.y + 0.4 : Math.max(player.pos.y, gy) + 3.2;
-    m.obj.position.y += (tgtY - m.obj.position.y) * Math.min(1, dt * 5);
-    if (dist > 1.4) { const ux = dx / dist, uz = dz / dist, s = m.diveT > 0 ? 12 : 6; m.obj.position.x += ux * s * dt; m.obj.position.z += uz * s * dt; }
-    m.obj.rotation.y = Math.atan2(-dx, -dz);
-    m.obj.rotation.x = m.diveT > 0 ? 0.5 : 0;          // 急降下は前のめり（AIがpitch管理）
-    if (m.atkCd <= 0 && dist < 2.2 && Math.abs(m.obj.position.y - player.pos.y) < 2.2) { m.atkCd = 1.4; damage(C.meleeDmg + 2, 'mob'); critterSE(m, 'attack'); }
-    critterGesture(m, dt, { moving: dist > 1.4, diving: m.diveT > 0 }); // 羽ばたき/ホバの微揺れ（上下はAI管理なので薄く）
+    const cruiseY = Math.max(player.pos.y, gy) + 3.4;       // 巡航高度
+    if (m.retreatT > 0) {                                   // 離脱：上昇しながら外へ逃げる（仕切り直し）
+      m.obj.position.y += (cruiseY + 1.6 - m.obj.position.y) * Math.min(1, dt * 4);
+      const ux = dx / dist, uz = dz / dist; m.obj.position.x -= ux * 7 * dt; m.obj.position.z -= uz * 7 * dt;
+      m.obj.rotation.y = Math.atan2(-dx, -dz); m.obj.rotation.x = -0.25;
+    } else if (m.diveT > 0) {                               // 急降下アーク：プレイヤーへ突っ込む
+      m.obj.position.y += (player.pos.y + 0.4 - m.obj.position.y) * Math.min(1, dt * 5);
+      if (dist > 1.2) { const ux = dx / dist, uz = dz / dist; m.obj.position.x += ux * 13 * dt; m.obj.position.z += uz * 13 * dt; }
+      m.obj.rotation.y = Math.atan2(-dx, -dz); m.obj.rotation.x = 0.5;   // 前のめり
+      if (m.atkCd <= 0 && dist < 2.2 && Math.abs(m.obj.position.y - player.pos.y) < 2.2) { m.atkCd = 1.4; damage(C.meleeDmg + 2, 'mob'); critterSE(m, 'attack'); m.diveT = 0; m.retreatT = 1.1; } // 命中→離脱
+      else if (m.diveT <= 0) m.retreatT = 0.8;              // 空振りでも一旦離脱
+    } else {                                                // 上空旋回：高度を保って周回し、隙を見て急降下
+      m.obj.position.y += (cruiseY - m.obj.position.y) * Math.min(1, dt * 4);
+      m.orbitA = (m.orbitA != null ? m.orbitA : Math.random() * 6.28) + dt * 1.6;
+      const rad = 6, tx = player.pos.x + Math.cos(m.orbitA) * rad, tz = player.pos.z + Math.sin(m.orbitA) * rad;
+      const ox = tx - m.obj.position.x, oz = tz - m.obj.position.z, od = Math.hypot(ox, oz) || 1e-4;
+      m.obj.position.x += ox / od * Math.min(od, 6 * dt); m.obj.position.z += oz / od * Math.min(od, 6 * dt);
+      m.obj.rotation.y = Math.atan2(-dx, -dz); m.obj.rotation.x = 0;
+      if (m.diveCd <= 0 && dist < 13 && dy < 7) { m.diveT = 0.9; m.diveCd = 3.5 + Math.random() * 2.5; critterSE(m, 'dive'); } // 急降下開始（羽ばたきSE）
+    }
+    critterGesture(m, dt, { moving: true, diving: m.diveT > 0 }); // 羽ばたき/ホバの微揺れ（y/pitchはAI管理）
     return;
   }
   // ---- 地上の天敵 ----
   let moving = false, anim = 'idle', hx = 0, hz = 0, spd = M.speedHostile, howl = false;
-  if (t === 'snake') {                                  // 蛇：間合いまで忍び寄り→一気に lunge
-    m.lungeT = Math.max(0, (m.lungeT || 0) - dt);
-    if (m.lungeT > 0) { hx = dx / dist; hz = dz / dist; moving = true; anim = 'walk'; spd = 11; }
-    else if (dist <= 1.6) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 1.2; damage(C.meleeDmg, 'mob'); critterSE(m, 'attack'); } }
-    else if (dist < 6) { if (m.atkCd <= 0) { m.atkCd = 1.9; m.lungeT = 0.45; critterSE(m, 'attack'); } else { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = 1.5; } } // 忍び寄り中はゆっくり
+  if (t === 'snake') {                                  // 蛇：忍び寄り → とぐろを巻いて構え(読み合い) → 一気に lunge → 後退
+    m.lungeT = Math.max(0, (m.lungeT || 0) - dt); m.coilT = Math.max(0, (m.coilT || 0) - dt); m.backT = Math.max(0, (m.backT || 0) - dt);
+    if (m.coiling && m.coilT <= 0) { m.coiling = false; m.lungeT = 0.45; critterSE(m, 'attack'); } // 構え終わり＝突進発動
+    if (m.backT > 0) { hx = -dx / dist; hz = -dz / dist; moving = true; anim = 'walk'; spd = 3.0; } // 噛みついた後はスッと退く
+    else if (m.coilT > 0) { m.obj.rotation.y = Math.atan2(-dx, -dz); } // とぐろ＝その場で静止して構える（一拍の溜め）
+    else if (m.lungeT > 0) { hx = dx / dist; hz = dz / dist; moving = true; anim = 'walk'; spd = 12; }
+    else if (dist <= 1.6) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 1.2; damage(C.meleeDmg, 'mob'); critterSE(m, 'attack'); m.backT = 0.7; } }
+    else if (dist < 6) { if (m.atkCd <= 0 && !m.coiling) { m.atkCd = 2.2; m.coilT = 0.45; m.coiling = true; } else { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = 1.5; } } // 間合いに入ったら まず とぐろ
     else if (dist < 18) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = 2.2; }
-  } else if (t === 'wolf') {                             // 狼：群れると勢いづく（速く・強く）＋たまに遠吠えポーズ
+  } else if (t === 'wolf') {                             // 狼：群れで側面包囲＋ひと吠え同期。強気(群れ)でないと間合いを詰めない
     let pack = 0; for (const o of mobs) { if (o.def.type === 'wolf' && !o.dying && Math.hypot(o.obj.position.x - m.obj.position.x, o.obj.position.z - m.obj.position.z) < 14) pack++; }
     const bold = pack >= 2;
+    if (m.flankBias == null) m.flankBias = (Math.random() * 0.5 + 0.3) * (Math.random() < 0.5 ? 1 : -1); // 個体ごとの回り込み方向
     m.howlCd = (m.howlCd != null ? m.howlCd : 3 + Math.random() * 4) - dt;
-    if (dist > 4 && dist < 22 && m.howlCd <= 0 && (m.howlT || 0) <= 0) { m.howlT = 1.0; m.howlCd = 6 + Math.random() * 6; critterSE(m, 'howl'); } // 接近前にひと吠え（群れで強気に同期）
+    if (dist > 4 && dist < 22 && m.howlCd <= 0 && (m.howlT || 0) <= 0) { m.howlT = 1.0; m.howlCd = 6 + Math.random() * 6; critterSE(m, 'howl'); } // 接近前にひと吠え
     if ((m.howlT || 0) > 0) { m.howlT -= dt; howl = true; }
-    if (dist <= 1.7) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 1.0; damage(C.meleeDmg + (bold ? 2 : 0), 'mob'); critterSE(m, 'attack'); } }
-    else if (dist < 22 && !howl) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = bold ? 3.4 : 2.4; } // 遠吠え中は足を止める
-  } else {                                               // イタチ：ジグザグに素早く迫る（上下バウンドgaitは critterGesture 側）
+    const keep = bold ? 1.7 : 3.4;                       // 強気距離：群れていない狼は間合いを取って唸るだけ
+    if (dist <= 1.9) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 1.0; damage(C.meleeDmg + (bold ? 2 : 0), 'mob'); critterSE(m, 'attack'); } }
+    else if (dist > keep && !howl) { // 側面から包囲（chase に横バイアスを乗せて回り込む）
+      const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); const b = m.flankBias * (bold ? 0.6 : 0.9);
+      hx = h.x - h.z * b; hz = h.z + h.x * b; moving = true; anim = 'walk'; spd = bold ? 3.4 : 2.4;
+    } else if (!howl && !bold) { // 強気でない＝間合いで横歩きして威嚇（包囲を保つ）
+      m.obj.rotation.y = Math.atan2(-dx, -dz); hx = -dz / dist * m.flankBias; hz = dx / dist * m.flankBias; moving = true; anim = 'walk'; spd = 1.8;
+    }
+  } else {                                               // イタチ：ジグザグ＋俊敏ダート＋一撃離脱（hit&run）
     m.wPhase = (m.wPhase || Math.random() * 6) + dt * 7;
-    if (dist <= 1.4) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 0.7; damage(Math.max(1, C.meleeDmg - 1), 'mob'); critterSE(m, 'attack'); } }
-    else if (dist < 20) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); const w = Math.sin(m.wPhase) * 0.5; hx = h.x - h.z * w; hz = h.z + h.x * w; moving = true; anim = 'walk'; spd = 3.6; }
+    m.dartCd = (m.dartCd != null ? m.dartCd : 1) - dt; m.dartT = Math.max(0, (m.dartT || 0) - dt); m.evadeT = Math.max(0, (m.evadeT || 0) - dt);
+    if (m.dartCd <= 0 && dist < 14) { m.dartT = 0.4; m.dartCd = 1.5 + Math.random() * 1.5; }      // 時々ダート（加速）
+    if (m.evadeT > 0) { hx = -dx / dist - dz / dist * 0.6; hz = -dz / dist + dx / dist * 0.6; moving = true; anim = 'walk'; spd = 5.5; } // 斜め後退で回避
+    else if (dist <= 1.4) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 0.7; damage(Math.max(1, C.meleeDmg - 1), 'mob'); critterSE(m, 'attack'); m.evadeT = 0.5; } } // 噛んだら離脱
+    else if (dist < 20) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); const w = Math.sin(m.wPhase) * 0.5; hx = h.x - h.z * w; hz = h.z + h.x * w; moving = true; anim = 'walk'; spd = m.dartT > 0 ? 6.5 : 3.6; }
   }
   if (moving) tryMoveMob(m, hx, hz, spd, dt); else followFloor(m, dt);
   const windup = !howl && dist < 2.4 && m.atkCd > 0 && m.atkCd < 0.28; // 攻撃発生直前の溜め（テレグラフ）
