@@ -941,6 +941,8 @@ function serializeWorld() {
       ry: +m.obj.rotation.y.toFixed(3), hp: m.hp, st: m.state,
       hm: m.home || undefined, // 住人NPCの定住アンカー
       cp: m.companion ? 1 : undefined, cm: m.companion ? m.cmdMode : undefined, mhp: m.companion ? m.maxHp : undefined, // 仲間（種別/指示/最大HP）
+      pt: m.pet ? 1 : undefined, pn: m.pet ? m.petName : undefined, ptr: m.pet ? (m.traits || []).join(',') : undefined, // ペット（名前/性格/機嫌/空腹）
+      pmd: m.pet ? Math.round(m.mood) : undefined, phg: m.pet ? Math.round(m.petHunger) : undefined,
     })),
   };
 }
@@ -1082,6 +1084,9 @@ window.VoxelGame = {
     // 仲間パーティ（3号機HUDの仲間表示・指示ボタン用）。操作は VoxelGame.recruit / commandCompanion
     companions: companions.map(c => ({ id:c.cid, name:JOB_LABEL[c.def.type]||c.def.type, type:c.def.type, hp:Math.ceil(c.hp), maxHp:c.maxHp||COMPANION_HP, mode:c.cmdMode })),
     companionMax: MAX_COMPANIONS,
+    // 🐾 ペット（機嫌/癖。将来のHUD表示用。操作は Pキー＝petInteract）
+    pets: pets.map(p => ({ id:p.pid, name:p.petName, type:p.def.type, mood:Math.round(p.mood), moodBand:petMoodBand(p.mood), hunger:Math.round(p.petHunger), traits:(p.traits||[]).slice() })),
+    petMax: MAX_PETS,
     bossKills: { ...bossKills }, sakuraCape: hasSakuraCape,  // ① 討伐記録（3号机ステータス画面用）＋さくらの毛皮マント所持
     // 必殺技（②）：習得済みが1つも無ければ undefined＝3号機HUD非表示。equipped/list/energy を公開
     skills: (() => {
@@ -2010,6 +2015,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') fireSkillKey(3);
   if (e.code === 'KeyC') { const eq = effectiveEquipped(); if (eq[2] && !invOpen) useSkill(eq[2]); else cycleWeapon(); }
   if (e.code === 'KeyB') cycleWeapon(); // 武器切替の予備（C が必殺技で埋まっても切替可能に）
+  if (e.code === 'KeyP') petInteract();  // 🐾 ペットをなでる/餌、または近くの動物をなつかせる
   if (e.code === 'KeyT') talkToNPC();   // 近くの住人に話しかける/取引
   if (e.code === 'KeyY') window.VoxelGame.recruit(); // 会話中の住人を仲間に（コイン）※3号機UIボタンと同じ口
   if (e.code === 'KeyU') { // 仲間の指示を一括トグル（追従→攻撃→待機）。3号機UIボタンと併用可
@@ -2225,6 +2231,7 @@ function buildDiag() {
     `モブ地中埋没  : ${mobs.filter(m=>m.buried).length}体（透明な敵の監視。0が正常／復帰処理が毎フレーム作動）`,
     `ボス討伐記録 : ドラゴン${bossKills.dragon||0} / スケ王${bossKills.skeleton_king||0} / デーモン${bossKills.demon||0} / クラーケン${bossKills.kraken||0} / 女王さくら${bossKills.queen_sakura||0} / ゴーレム${bossKills.golem||0}　マント${hasSakuraCape?'○':'-'}`,
     `仲間         : ${companions.length}/${MAX_COMPANIONS}人 ${companions.map(c=>`${JOB_LABEL[c.def.type]||c.def.type}(HP${Math.ceil(c.hp)}/${c.maxHp}・${c.cmdMode})`).join(' / ')||'なし'}　※T会話→Y雇用(${COMPANION_COST}coin)／U指示切替(追従/攻撃/待機)`,
+    `ペット🐾     : ${pets.length}/${MAX_PETS}匹 ${pets.map(p=>`${p.petName}[${(p.traits||[]).map(t=>PET_TRAITS[t].label).join('・')}](${petMoodLabel(p)}${Math.round(p.mood)}/空腹${Math.round(p.petHunger)})`).join(' / ')||'なし'}　※Pでなでる/餌・なつかせる`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
     `構造物       : 村${villages.size} / スポナー${spawners.size} / プロップ${props.size}(表示${[...props.values()].filter(p=>p.obj).length}) / structテンプレ${Object.keys(structTemplates).length}種`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
@@ -2514,6 +2521,8 @@ const MOB_DEFS = [
   { type:'fish_koi',      file:'models/mob_fish_koi.glb',      role:'neutral', aquatic:true },
   { type:'fish_tropical', file:'models/mob_fish_tropical.glb', role:'neutral', aquatic:true },
   { type:'fish_puffer',   file:'models/mob_fish_puffer.glb',   role:'neutral', aquatic:true },
+  // ペット：チンチラ「もふ」（pet_chinchilla）。petbase=ランダム湧き対象外・コードからのみ生成し initPet で相棒化
+  { type:'chinchilla', file:'models/pet_chinchilla.glb', role:'neutral', petbase:true },
   // 王国軍 兵士NPC（4号機・villager骨格＝idle/walk/attack）。resident=城/砦/村に駐留・警戒徘徊
   { type:'soldier_spear',   file:'models/npc_soldier_spear.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
   { type:'soldier_sword',   file:'models/npc_soldier_sword.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
@@ -2738,6 +2747,189 @@ function updateAllyMarker(m, dt) {
   m.allyMarker.rotation.y += dt * 1.6;                                // 横回転
   if (m.allyMixer) m.allyMixer.update(dt);                            // loopクリップ
 }
+// ===================================================================
+// ペットシステム（実物チンチラ「もふ」がモデル）
+//   ・機嫌(mood 0..100)：そばにいる/餌/なでるで上がり、放置/空腹/恐怖で下がる
+//   ・癖(traits)：やんちゃ/なまけ/甘えん坊/食いしん坊/びびり/つんでれ → 距離・速さ・仕草が変わる
+//   ・見た目の動き：ごきげんだとぴょこぴょこ弾みワグ、不機嫌だとそっぽ向いて拗ねる
+//   ・操作：Pキーで なでる/餌（自分のペット）／なつかせる（野生動物＋餌）
+// ===================================================================
+const pets = [];
+let petIdSeq = 0;
+const MAX_PETS = 2;
+const PET_FOODS = ['meat', 'apple', 'egg'];                       // 餌（この順で消費）
+const PET_TAME_TYPES = ['cow', 'sheep', 'pig', 'chicken', 'horse']; // 野生からなつかせられる動物
+const PET_TELEPORT = 44;                                          // これ以上離れたら近くへワープ（迷子防止）
+const PET_TRAITS = {
+  playful: { label: 'やんちゃ' }, lazy: { label: 'なまけ' }, clingy: { label: '甘えん坊' },
+  glutton: { label: '食いしん坊' }, timid: { label: 'びびり' }, aloof: { label: 'つんでれ' },
+};
+const PET_NAMES = ['もふ', 'チビ', 'マル', 'ココ', 'むぎ', 'きなこ', 'あずき', 'そら'];
+const clampPet = (v, a, b) => Math.max(a, Math.min(b, v));
+function petMoodBand(v) { return v >= 66 ? 'happy' : v >= 33 ? 'normal' : 'grumpy'; }
+function petMoodLabel(m) { const b = petMoodBand(m.mood); return b === 'happy' ? 'ごきげん' : b === 'normal' ? 'ふつう' : 'ごきげんななめ'; }
+function petHas(m, t) { return m.traits && m.traits.indexOf(t) >= 0; }
+function pickPetTraits() {
+  const keys = Object.keys(PET_TRAITS);
+  const a = keys[Math.floor(Math.random() * keys.length)];
+  if (Math.random() < 0.5) { let b; do { b = keys[Math.floor(Math.random() * keys.length)]; } while (b === a); return [a, b]; }
+  return [a];
+}
+// 頭上マーカー（fx_ally_halo＝「あなたのペット」の目印）
+function attachPetMarker(m) {
+  if (m.petMarker || !m.obj) return;
+  const tpl = fxTemplates['fx_ally_halo']; if (!tpl) return; // 未読込なら updatePet で後追い
+  const o = tpl.scene.clone(true); o.scale.setScalar(0.42); o.position.set(0, m.petMarkH || 1.0, 0);
+  m.obj.add(o); m.petMarker = o;
+  if (tpl.animations.length) { m.petHaloMixer = new THREE.AnimationMixer(o); m.petHaloMixer.clipAction(tpl.animations[0]).play(); }
+}
+function removePetMarker(m) { if (m.petMarker && m.petMarker.parent) m.petMarker.parent.remove(m.petMarker); m.petMarker = null; m.petHaloMixer = null; }
+function petEmote(m) { spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + (m.petMarkH || 1.0) + 0.15, m.obj.position.z, 1.1, 0.5); }
+// 相棒化（野生mob／セーブ復元mob を共通でペットに）
+function initPet(m, opts = {}) {
+  m.pet = true; m.hostile = false; m.home = null; m.companion = false; m.cmdMode = null;
+  m.pid = ++petIdSeq;
+  m.petName = opts.petName || PET_NAMES[Math.floor(Math.random() * PET_NAMES.length)];
+  m.traits = (Array.isArray(opts.traits) && opts.traits.length) ? opts.traits.filter(t => PET_TRAITS[t]) : pickPetTraits();
+  if (!m.traits.length) m.traits = pickPetTraits();
+  m.mood = Number.isFinite(opts.mood) ? clampPet(opts.mood, 0, 100) : 60;
+  m.petHunger = Number.isFinite(opts.petHunger) ? clampPet(opts.petHunger, 0, 100) : 12;
+  m.moodBand = petMoodBand(m.mood);
+  m.petMarkH = m.def.type === 'horse' ? 2.3 : m.def.type === 'chinchilla' ? 0.95 : 1.35;
+  m.patCd = 0; m.emoteCd = 1.5 + Math.random() * 2; m.habitCd = 3 + Math.random() * 4;
+  m.hopT = Math.random() * 6; m.sitT = 0; m.zoomT = 0; m.sulkT = 0; m.gy = null; m.zoomDir = 1;
+  if (pets.indexOf(m) < 0) pets.push(m);
+  attachPetMarker(m);
+}
+function petBandToast(m) {
+  const nb = petMoodBand(m.mood);
+  if (nb !== m.moodBand) {
+    if (nb === 'happy') toast(`🐾「${m.petName}」はごきげん！`);
+    else if (nb === 'grumpy') toast(`🐾「${m.petName}」はごきげんななめ…なでたり餌をあげよう`);
+    m.moodBand = nb;
+  }
+}
+// Pキー：最寄りのペットを なでる/餌、または野生動物を なつかせる
+function petInteract() {
+  let best = null, bd = 3.8;
+  for (const m of mobs) {
+    if (m.dying) continue;
+    const tame = PET_TAME_TYPES.indexOf(m.def.type) >= 0 && !m.home && !m.companion && !m.pet;
+    if (!(m.pet || tame)) continue;
+    const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
+    if (d < bd) { bd = d; best = m; }
+  }
+  if (!best) { if (typeof toast === 'function') toast('近くにペット/なつかせられる動物がいない（牛羊豚鶏馬に 餌(肉/りんご/卵)を持って P）'); return; }
+  if (best.pet) {
+    const food = PET_FOODS.find(f => (itemCounts[f] || 0) > 0);
+    if (best.petHunger > 40 && food) feedPet(best, food); else patPet(best);
+    return;
+  }
+  if (pets.length >= MAX_PETS) { toast(`ペットは最大${MAX_PETS}匹まで`); return; }
+  const food = PET_FOODS.find(f => (itemCounts[f] || 0) > 0);
+  if (!food) { toast('なつかせるには餌が必要（肉/りんご/卵のどれか）'); return; }
+  itemCounts[food]--;
+  initPet(best, {});
+  best.mood = clampPet(best.mood + 15, 0, 100); best.petHunger = clampPet(best.petHunger - 30, 0, 100); best.moodBand = petMoodBand(best.mood);
+  petEmote(best); window.playSFX && window.playSFX('eat');
+  toast(`🐾「${best.petName}」がなついた！ 性格:${best.traits.map(t => PET_TRAITS[t].label).join('・')}`);
+  scheduleSave();
+}
+function feedPet(m, food) {
+  itemCounts[food]--;
+  m.mood = clampPet(m.mood + (petHas(m, 'glutton') ? 34 : 24), 0, 100);
+  m.petHunger = clampPet(m.petHunger - 55, 0, 100);
+  petEmote(m); window.playSFX && window.playSFX('eat');
+  toast(`🐾「${m.petName}」に${ITEM_NAMES[food]}をあげた（${petMoodLabel(m)}）`);
+  petBandToast(m); scheduleSave();
+}
+function patPet(m) {
+  const base = petHas(m, 'clingy') ? 10 : petHas(m, 'aloof') ? 4 : 7;
+  m.mood = clampPet(m.mood + (m.patCd > 0 ? Math.ceil(base * 0.3) : base), 0, 100);
+  m.patCd = 0.6;
+  petEmote(m); window.playSFX && window.playSFX('pickup');
+  toast(`🐾「${m.petName}」をなでた（${petMoodLabel(m)}・空腹${Math.round(m.petHunger)}%）`);
+  petBandToast(m); scheduleSave();
+}
+// ペットAI：機嫌(mood)と癖(traits)で 追従距離・速さ・仕草・弾み が変わる
+function updatePet(m, dt, dx, dz, dist) {
+  if (!m.petMarker) attachPetMarker(m);            // 後着テンプレ対応
+  if (m.petHaloMixer) m.petHaloMixer.update(dt);
+  m.patCd = Math.max(0, (m.patCd || 0) - dt);
+  if (dist > PET_TELEPORT) {                        // 迷子防止ワープ
+    const a = player.yaw + Math.PI, tx = player.pos.x + Math.sin(a) * 2.0, tz = player.pos.z + Math.cos(a) * 2.0;
+    m.obj.position.set(tx, floorYNear(tx, tz, player.pos.y), tz); m.gy = null; setMobAnim(m, 'idle'); return;
+  }
+  // --- 機嫌(mood)の自然変化 ---
+  let hungerRate = 0.5; if (petHas(m, 'lazy')) hungerRate *= 0.65; if (petHas(m, 'glutton')) hungerRate *= 1.7;
+  m.petHunger = clampPet(m.petHunger + hungerRate * dt, 0, 100);
+  let dm = -0.30 * dt;
+  if (dist < 6) dm += (petHas(m, 'clingy') ? 0.42 : 0.26) * dt;                              // そばにいると満たされる
+  else if (dist > 22) dm -= (petHas(m, 'clingy') ? 0.55 : petHas(m, 'aloof') ? 0.12 : 0.32) * dt; // 放置はしょんぼり
+  if (m.petHunger > 70) dm -= 0.45 * dt;                                                     // 空腹で下がる
+  if (petHas(m, 'timid') && nearestHostileTo(m.obj.position.x, m.obj.position.z, 10)) dm -= 1.1 * dt; // びびりは怖がる
+  m.mood = clampPet(m.mood + dm, 0, 100);
+  petBandToast(m);
+  const band = petMoodBand(m.mood);
+  // --- 追従距離・速さ（機嫌・癖で変化）---
+  let want = band === 'happy' ? 2.3 : band === 'normal' ? 4.2 : 7.5;
+  if (petHas(m, 'clingy')) want *= 0.7;
+  if (petHas(m, 'lazy') || petHas(m, 'aloof')) want *= 1.35;
+  if (petHas(m, 'timid')) want += 1.5;
+  let spd = band === 'happy' ? 8.5 : band === 'normal' ? 6 : 3.6;
+  if (petHas(m, 'lazy')) spd *= 0.7;
+  if (petHas(m, 'playful') && band !== 'grumpy') spd *= 1.15;
+  // --- 癖の発動（一定間隔でミニ仕草）---
+  m.habitCd -= dt;
+  if (m.habitCd <= 0) {
+    m.habitCd = 4 + Math.random() * 5;
+    if (band !== 'grumpy' && petHas(m, 'playful') && Math.random() < 0.6) { m.zoomT = 1.1 + Math.random() * 1.0; m.zoomDir = Math.random() < 0.5 ? 1 : -1; }
+    else if (petHas(m, 'lazy') && Math.random() < 0.6) m.sitT = 2 + Math.random() * 2.5;
+    else if (band === 'grumpy' && Math.random() < 0.5) m.sulkT = 1.0 + Math.random() * 1.4;
+    else if (petHas(m, 'aloof') && Math.random() < 0.5) m.sitT = 1.4 + Math.random() * 1.6;
+  }
+  // --- 移動の決定 ---
+  let moving = false, anim = 'idle', hx = 0, hz = 0;
+  const faceP = () => { m.obj.rotation.y = Math.atan2(-dx, -dz); };
+  const faceAway = () => { m.obj.rotation.y = Math.atan2(dx, dz); };
+  if (m.sitT > 0) { m.sitT -= dt; anim = 'idle'; faceP(); }
+  else if (m.zoomT > 0) {                                   // やんちゃ：プレイヤー周りをくるくるダッシュ
+    m.zoomT -= dt;
+    const ang = Math.atan2(dz, dx) + m.zoomDir * Math.PI / 2;
+    hx = Math.cos(ang); hz = Math.sin(ang);
+    if (dist > want + 1.5) { hx += dx / dist; hz += dz / dist; }
+    moving = true; anim = 'walk'; spd *= 1.4;
+  }
+  else if (band === 'grumpy' && m.sulkT > 0) { m.sulkT -= dt; hx = -dx / dist; hz = -dz / dist; moving = true; anim = 'walk'; spd *= 0.8; } // 拗ねて離れる
+  else if (dist > want) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; if (dist > 14) spd *= 1.7; }
+  else { anim = 'idle'; if (band === 'grumpy') faceAway(); else faceP(); }
+  if (moving) tryMoveMob(m, hx, hz, spd, dt);
+  // --- 接地＋弾み（ごきげんだとぴょこぴょこ＋しっぽワグ）---
+  const fy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
+  m.gy = (m.gy == null) ? fy : m.gy + (fy - m.gy) * Math.min(1, dt * 12);
+  m.hopT += dt * (anim === 'walk' ? 9 : 5);
+  let bob = 0;
+  if (band === 'happy') bob = Math.max(0, Math.sin(m.hopT)) * 0.10 * (petHas(m, 'playful') ? 1.7 : 1);
+  m.obj.position.y = m.gy + bob;
+  if (band === 'happy' && !moving) m.obj.rotation.y += Math.sin(m.hopT * 1.3) * 0.05;
+  // --- 機嫌の絵文字（ハート）---
+  m.emoteCd -= dt;
+  if (m.emoteCd <= 0) { m.emoteCd = band === 'happy' ? 2.0 + Math.random() * 1.4 : 7 + Math.random() * 4; if (band === 'happy') petEmote(m); }
+  setMobAnim(m, anim);
+}
+// 起動時に一度だけ「もふ」を連れてくる（セーブに居れば復元が優先）
+let petIntroDone = false;
+function maybeIntroducePet() {
+  if (petIntroDone || !mobsRestored || !mobTemplates['chinchilla']) return;
+  petIntroDone = true;
+  if (pets.length > 0) return;                       // セーブから復元済みなら出さない
+  const a = player.yaw + Math.PI, sx = player.pos.x + Math.sin(a) * 2.2, sz = player.pos.z + Math.cos(a) * 2.2;
+  const m = spawnMob('chinchilla', sx, sz, { hp: 30 });
+  if (m) {
+    initPet(m, { petName: 'もふ', traits: ['playful'], mood: 72, petHunger: 10 });
+    if (typeof toast === 'function') toast('🐾 ペットのチンチラ「もふ」がついてきた！（Pでなでる/餌・やんちゃ）');
+  }
+}
 // 海ボス クラーケンAI：海面に半身を出して定位置に留まり、船(プレイヤー)が近いと触手で攻撃。陸へ上がらない。
 function updateKraken(m, dt, dx, dz, dist) {
   if (m.seaX == null) { m.seaX = m.obj.position.x; m.seaZ = m.obj.position.z; }
@@ -2879,6 +3071,9 @@ function spawnMob(type, x, z, opts = {}) {
     mob.hostile = false; mob.home = null; mob.cid = ++companionIdSeq;
     companions.push(mob); attachAllyMarker(mob);
   }
+  if (opts.pet) { // セーブからのペット復元（なつかせは petInteract / maybeIntroducePet で行う）
+    initPet(mob, { petName: opts.petName, traits: opts.traits, mood: opts.mood, petHunger: opts.petHunger });
+  }
   return mob;
 }
 // セーブされたモブ一覧を復元（テンプレ読込完了後に updateMobs から1回だけ呼ばれる）
@@ -2894,6 +3089,8 @@ function restorePendingMobs() {
       state: md.st,
       home: (md.hm && Number.isFinite(md.hm.x) && Number.isFinite(md.hm.z)) ? md.hm : undefined, // 住人の定住アンカー復元
       companion: md.cp ? true : undefined, cmdMode: md.cm, maxHp: Number.isFinite(md.mhp) ? md.mhp : undefined, // 仲間の復元
+      pet: md.pt ? true : undefined, petName: md.pn, traits: (md.ptr ? String(md.ptr).split(',') : undefined), // ペットの復元
+      mood: Number.isFinite(md.pmd) ? md.pmd : undefined, petHunger: Number.isFinite(md.phg) ? md.phg : undefined,
     });
   }
   pendingMobLoad = null;
@@ -2959,7 +3156,7 @@ function spawnHostileNear(cave) {
 }
 function spawnNeutralNear() {
   // 動物のみ（villager・住人NPCは村/砦に定住／魚は水中専用＝ここ(地上)では湧かせない）
-  const pool = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && !d.resident && !d.aquatic && mobTemplates[d.type]);
+  const pool = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && !d.resident && !d.aquatic && !d.petbase && mobTemplates[d.type]);
   if (!pool.length) return;
   const def = pool[Math.floor(Math.random()*pool.length)];
   const ang = Math.random()*Math.PI*2, dist = M.spawnMin + Math.random()*(M.spawnMax-M.spawnMin);
@@ -3030,6 +3227,7 @@ function updateMobs(dt) {
     if (Object.keys(mobTemplates).length) restorePendingMobs();
     return;
   }
+  maybeIntroducePet(); // 🐾 起動後に一度だけペット「もふ」を連れてくる（復元優先・早期return多めで軽量）
   spawnLogic(dt);     // ④ 昼夜・地下を考慮した湧き
   updateSpawners(dt); // ② ダンジョンのスポナー稼働
   updateBossSpots(dt); // ⑥ 城/砦/魔窟のボス出現点
@@ -3057,6 +3255,7 @@ function updateMobs(dt) {
     const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z;
     const dist = Math.hypot(dx, dz) || 0.0001;
     const dy = Math.abs(m.obj.position.y - player.pos.y); // 垂直距離。地下/上空に詰まった敵の「見えない攻撃」を遮断する
+    if (m.pet) { updatePet(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 🐾 ペットは despawn しない・専用AI（機嫌/癖）
     if (m.companion) { updateCompanion(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 仲間は despawn しない・専用AI
     if (dist > M.despawn) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
     if (m.def.sea) { updateKraken(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 海ボス専用AI（昼消滅・陸チェイスしない）
@@ -3325,7 +3524,7 @@ function updateArrows(dt) {
     let consumed = false;
     if (a.friendly) { // 味方の矢：モブに命中
       for (let j = mobs.length-1; j >= 0; j--) {
-        const m = mobs[j]; if (m.dying) continue;
+        const m = mobs[j]; if (m.dying || m.pet) continue; // 🐾 ペットには味方の矢も当たらない
         const p = m.obj.position;
         const dd = (a.obj.position.x-p.x)**2 + (a.obj.position.y-(p.y+0.7))**2 + (a.obj.position.z-p.z)**2;
         if (dd < 0.8) { hitMob(m, a.dmg, a.isCrit, 'bow', 0, a.vx, a.vz, WEAPONS.bow.knock); scene.remove(a.obj); arrows.splice(i,1); consumed = true; break; }
@@ -3782,7 +3981,7 @@ function resolveMeleeHit(isCrit) {
   const dot = Math.max(0, w.dot - (isCrit ? 0.15 : 0)); // 会心は扇を広げる
   let any = false;
   for (let i = mobs.length - 1; i >= 0; i--) {
-    const m = mobs[i]; if (m.dying) continue;
+    const m = mobs[i]; if (m.dying || m.pet) continue; // 🐾 自分のペットには当たらない（誤爆で殺さない）
     const p = m.obj.position;
     const vx = p.x - ox, vy = (p.y + 0.6) - oy, vz = p.z - oz;
     const d = Math.hypot(vx, vy, vz);
@@ -3851,6 +4050,13 @@ function killMob(m) {
     if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); } else m.dieTimer = 0; // 死亡演出後に mobs から除去
     scheduleSave(); return; // 仲間死亡では討伐EXP/ドロップは出さない（味方なので）
   }
+  if (m.pet) { // 🐾 ペットが倒れたら pets から即削除（次回起動で「もふ」は戻ってくる）。EXP/ドロップは出さない
+    const pi = pets.indexOf(m); if (pi >= 0) pets.splice(pi, 1);
+    m.pet = false; removePetMarker(m);
+    if (typeof toast === 'function') toast(`🐾 ペット「${m.petName || ''}」が倒れた…`);
+    if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); } else m.dieTimer = 0;
+    scheduleSave(); return;
+  }
   spawnDrop(MOB_DROP[m.def.type], m.obj.position.x, m.obj.position.y, m.obj.position.z);
   maybeDropEquip(m); // 装備品の抽選ドロップ
   // 討伐EXP（敵の強さ＝最大HP比例、ボスは加算）
@@ -3911,7 +4117,7 @@ function applySkillDamage(s) {
   const need = s.effect === 'line' ? 0.93 : s.effect === 'strike' ? 0.35 : -1; // aoe=全方位 / strike=前方広 / line=細い前方貫通
   let hits = 0;
   for (let i = mobs.length - 1; i >= 0; i--) {
-    const m = mobs[i]; if (m.dying) continue;
+    const m = mobs[i]; if (m.dying || m.pet) continue; // 🐾 自分のペットには当たらない（誤爆で殺さない）
     const p = m.obj.position;
     const vx = p.x - ox, vy = (p.y + 0.6) - oy, vz = p.z - oz;
     const d = Math.hypot(vx, vy, vz);
