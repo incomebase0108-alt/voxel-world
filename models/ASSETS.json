@@ -16,8 +16,8 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 24287632,
-    "size_mb": 23.162
+    "size_bytes": 24095632,
+    "size_mb": 22.979
   },
   "assets": [
     {
@@ -1345,12 +1345,12 @@
       "file": "enemy_wolf.glb",
       "name": "enemy_wolf",
       "category": "その他",
-      "size_bytes": 453972,
-      "size_mb": 0.4329,
+      "size_bytes": 261972,
+      "size_mb": 0.2498,
       "clips": [],
       "meshes": 1,
       "nodes": 1,
-      "materials": 86,
+      "materials": 42,
       "error": null
     },
     {
