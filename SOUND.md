@@ -19,7 +19,9 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 | 危険度レイヤー | `setDangerLevel(0..1)` / `getDangerLevel()` | 敵接近で緊張ドローンがfade in／離れると引く。毎フレーム/定期で呼ぶだけ |
 | 仲間 | `onCompanionJoin/Reply/Hit/Leave(type)` | — |
 | 攻撃 | `onAttackHit(weapon,isCrit)` / `onAttackWhiff()` / `onAttackCharge('start'|'full')` | — |
-| 音量/診断 | `setMasterVolume/SfxVolume/BgmVolume/AmbVolume`・`setSfxGain(key,x)`・`getSoundDiag()` | ④設定・実機診断 |
+| 音量（統一） | `setVolume(bus,0..1)` / `getVolume(bus)` | bus=`master`/`bgm`(music)/`sfx`(se)/`ambient`(amb) |
+| 一時停止 | `setAudioPaused(true/false)` / `isAudioPaused()` | Esc一時停止連携＝全音を黙らせ復帰（設定は保持） |
+| 音量/診断（個別） | `setMasterVolume/SfxVolume/BgmVolume/AmbVolume`・`setSfxGain(key,x)`・`getSoundDiag()` | ④設定・実機診断 |
 
 ## バス構成
 ```
@@ -249,12 +251,20 @@ NPCが仲間になる新機能向け。口は防御的（未呼出なら無音�
 
 ### 全体音量（0..1）
 ```js
+// ⑪ 統一API（3号機 設定UI 推奨）：bus = 'master'|'bgm'(music)|'sfx'(se)|'ambient'(amb)
+window.setVolume('bgm', 0.4);   window.getVolume('bgm');
+window.listVolumeBuses();        // ['master','bgm','sfx','ambient']
+// ⑪ 一時停止（Esc連携）：全音を黙らせ→復帰（音量設定は保持）
+window.setAudioPaused(true);    window.isAudioPaused();
+
+// 個別の従来API（同じ値を操作・互換）
 window.setMasterVolume(0.8);  window.getMasterVolume();
 window.setSfxVolume(0.7);     window.getSfxVolume();
 window.setBgmVolume(0.4);     window.getBgmVolume();
+window.setAmbVolume(0.5);     window.getAmbVolume();   // 環境音
 window.setMuted(true);        window.isMuted();
 // まとめて
-window.SoundSettings.get();           // {master, sfx, bgm, muted, gains}
+window.SoundSettings.get();           // {master, sfx, bgm, amb, muted, gains}
 window.SoundSettings.set('sfx', 0.6);
 ```
 

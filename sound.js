@@ -71,9 +71,10 @@
     bgmDuck.gain.setTargetAtTime(d.bgm, c.currentTime, 0.4); // 0.4s 時定数で自然に
     ambDuck.gain.setTargetAtTime(d.amb, c.currentTime, 0.4);
   }
+  let audioPaused = false; // P5: Esc 一時停止などで全音を黙らせる（master を 0 に）
   function applyVolumes() {
     if (!master) return;
-    const m = vol.muted ? 0 : vol.master;
+    const m = (vol.muted || audioPaused) ? 0 : vol.master; // ミュート/一時停止中は全体0
     master.gain.value = m;
     sfxBus.gain.value = vol.sfx;
     bgmBus.gain.value = vol.bgm;
@@ -1006,6 +1007,15 @@
   window.setSfxGain      = (name, v) => window.SoundSettings.setGain(name, v); // 個別SE倍率
   window.getSfxGain      = (name) => window.SoundSettings.getGain(name);
 
+  // ⑪ P5: バス指定の統一音量API（3号機 設定UI 向け）。bus = 'master'|'bgm'(music)|'sfx'(se)|'ambient'(amb)。
+  const BUS_KEY = { master: 'master', bgm: 'bgm', music: 'bgm', sfx: 'sfx', se: 'sfx', ambient: 'amb', amb: 'amb' };
+  window.setVolume = (bus, v) => { const k = BUS_KEY[String(bus).toLowerCase()]; if (k) window.SoundSettings.set(k, v); };
+  window.getVolume = (bus) => { const k = BUS_KEY[String(bus).toLowerCase()]; return k ? vol[k] : undefined; };
+  window.listVolumeBuses = () => ['master', 'bgm', 'sfx', 'ambient'];
+  // ⑪ 一時停止/再開（Esc 一時停止連携）。true で全音を黙らせ、false で復帰（音量設定は保持）。
+  window.setAudioPaused = (p) => { audioPaused = !!p; applyVolumes(); };
+  window.isAudioPaused   = () => audioPaused;
+
   // 決定的テスト：bgmBus 経路を直接鳴らす。鳴れば「bgmBus→master→出力」は生きていて
   // 原因は scene gain（gainで消えている）／鳴らなければ bgmBus 経路が断、と一発で切り分く。
   window.testBGMBeep = () => {
@@ -1043,8 +1053,8 @@
       duck: { bgm: bgmDuck ? +bgmDuck.gain.value.toFixed(2) : null, amb: ambDuck ? +ambDuck.gain.value.toFixed(2) : null }, // P2 ダッキング係数（戦闘/ボスで<1）
       dangerLevel: dangerLevel, dangerLayer: !!dangerNodes, // P2 危険度レイヤー
       spatial: { listenerHook: typeof window.getPlayerPose === 'function', mobHook: typeof window.getMobPositions === 'function', biomeHook: typeof window.getBiome === 'function' }, // ③ コア側の読み取り口が揃っているか
-      muted: vol.muted,
-      vol: { master: vol.master, sfx: vol.sfx, bgm: vol.bgm },
+      muted: vol.muted, audioPaused: audioPaused, // P5 一時停止状態
+      vol: { master: vol.master, sfx: vol.sfx, bgm: vol.bgm, amb: vol.amb },
       musicSceneCalledByCore: typeof window.__setMusicSceneCalled === 'boolean' ? window.__setMusicSceneCalled : '(未計測)',
     };
   };
