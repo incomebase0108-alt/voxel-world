@@ -1505,6 +1505,9 @@ let playerSlow = 0; // ★女王さくらの「おしっこ」被弾でのスリ
 let hasSakuraCape = false; // ★女王さくら撃破の超レア報酬「さくらの毛皮マント」（防御+10%・常時）
 let selBlock = B.grass;
 let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
+let topDown = true;      // true=見下ろし視点（真上やや後方から俯瞰）。Fキーで 一人称→三人称→見下ろし を循環
+let topDownH = 16;       // 見下ろしカメラの高さ（ホイールで増減）
+let topDownBack = 7;     // 見下ろしカメラの後方オフセット（斜め見下ろしの角度を作る）
 let avatarYaw = 0;       // 三人称アバターの向き（移動方向に追従）
 let camShake = 0;        // カメラシェイク強度（0..1・命中/会心/必殺/被弾で上げ、毎フレーム減衰）
 let ridingMob = null;    // 騎乗中の馬（Rキーで乗降）
@@ -1645,10 +1648,18 @@ function updatePlayer(dt) {
   if (!Number.isFinite(player.yaw)) player.yaw = 0;       // NaN救済（不正な視点入力やセーブ破損から復帰）
   if (!Number.isFinite(player.pitch)) player.pitch = 0;   // 真上固定/空のみ表示を起こさない
   player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch)); // 念のため毎フレームclamp
-  camera.rotation.y = player.yaw;
-  camera.rotation.x = player.pitch;
-  camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
-  if (thirdPerson) { camera.translateZ(4.5); camera.position.y += 0.3; } // ローカル+Z=後方
+  if (topDown) {
+    // 見下ろし：プレイヤーの真上やや後方から俯瞰。マウスX(yaw)で世界が回る／高さはホイール
+    const bx = Math.sin(player.yaw) * topDownBack, bz = Math.cos(player.yaw) * topDownBack;
+    camera.up.set(0, 1, 0);
+    camera.position.set(player.pos.x + bx, player.pos.y + topDownH, player.pos.z + bz);
+    camera.lookAt(player.pos.x, player.pos.y + 1, player.pos.z);
+  } else {
+    camera.rotation.y = player.yaw;
+    camera.rotation.x = player.pitch;
+    camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
+    if (thirdPerson) { camera.translateZ(4.5); camera.position.y += 0.3; } // ローカル+Z=後方
+  }
   // ③ 手応え：カメラシェイク（命中/会心/必殺/被弾で上がる camShake をランダム微小オフセットで表現→減衰）
   if (camShake > 0.001) {
     const a = camShake * 0.22;
@@ -1670,7 +1681,7 @@ function updatePlayer(dt) {
       avatarYaw += diff * Math.min(1, dt * 12);          // 滑らかに回頭
     }
     playerAvatar.rotation.y = avatarYaw;
-    playerAvatar.visible = thirdPerson;
+    playerAvatar.visible = thirdPerson || topDown; // 見下ろしでも本体（さくら）を表示
     // チンチラ主人公：アニメが無いので移動中はコードでぴょこぴょこ弾ませる（地上のみ）
     if (playerIsChinchilla) {
       playerHopT += dt * (moving ? 11 : 5);
@@ -2083,13 +2094,24 @@ canvas.addEventListener('mouseup', (e) => {
   if (e.button === 0) onAttackUp();      // 弓の発射・押下状態の解除
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', (e) => { // 見下ろし時：ホイールでカメラの高さ（ズーム）を調整
+  if (!topDown) return;
+  e.preventDefault();
+  topDownH = Math.max(6, Math.min(40, topDownH + Math.sign(e.deltaY) * 1.5));
+  topDownBack = topDownH * 0.44; // 高さに比例して斜め角を維持
+}, { passive: false });
 document.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code.startsWith('Digit')) {
     const n = parseInt(e.code.slice(5)) - 1;
     if (n >= 0 && n < HOTBAR.length) { selBlock = HOTBAR[n]; updateHotbar(); }
   }
-  if (e.code === 'KeyF') thirdPerson = !thirdPerson; // 一人称⇄三人称
+  if (e.code === 'KeyF') { // 視点を循環：一人称 → 三人称 → 見下ろし → 一人称
+    if (topDown) { topDown = false; thirdPerson = false; }
+    else if (thirdPerson) { thirdPerson = false; topDown = true; }
+    else { thirdPerson = true; }
+    if (typeof toast === 'function') toast('🎥 視点：' + (topDown ? '見下ろし（ホイールでズーム）' : thirdPerson ? '三人称' : '一人称'));
+  }
   if (e.code === 'KeyH') { diagVisible = !diagVisible; diagEl.style.display = diagVisible ? 'block' : 'none'; } // 診断パネル
   if (e.code === 'KeyG') { // 天候を手動切替：晴れ→雨→雪→雷→…
     const order = ['clear','rain','snow','thunder'];
@@ -2305,7 +2327,7 @@ function buildDiag() {
     `背景色       : #${scene.background.getHexString()}`,
     `カメラ位置   : ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}`,
     `カメラ向き   : ${dir.x.toFixed(2)}, ${dir.y.toFixed(2)}, ${dir.z.toFixed(2)}`,
-    `視点         : ${thirdPerson ? '三人称' : '一人称'}`,
+    `視点         : ${topDown ? '見下ろし(高さ'+topDownH.toFixed(0)+')' : thirdPerson ? '三人称' : '一人称'}（F切替）`,
     `アバター向き : ${(avatarYaw*180/Math.PI).toFixed(0)}°`,
     `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
