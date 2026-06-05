@@ -138,7 +138,7 @@ const itemCounts = { meat:0, egg:0, coin:0, apple:0, coal:0, iron:0, gold:0, him
 const bossKills = {}; // ⑥ ボス種別ごとの討伐数（達成感の記録。セーブ・H診断に反映）
 // 📖 物語の進行状態（章/フラグ）。セーブに含めて復元。3号機へは getQuestState() で渡す。
 //   chapter: prologue(序章・脱走前) → escape(脱走演出中) → world(自由探索) → boss(女王さくら出現中) → cleared(撃破)
-function defaultProgress() { return { version: 1, chapter: 'prologue', escaped: false, queenSeen: false, queenDefeated: false }; }
+function defaultProgress() { return { version: 1, chapter: 'prologue', escaped: false, queenSeen: false, queenDefeated: false, bred: false, dexMilestone: 0 }; }
 let progress = defaultProgress();
 // 📖 クエスト/章立て（データのみ。表示は3号機が window.getQuestState() を読んで描画）。
 //   章: prologue/escape（序章＝脱走）→ world（自由探索＝なつかせ/共闘）→ boss（女王さくら出現）→ cleared（撃破）
@@ -156,9 +156,12 @@ function getQuestState() {
     ];
   } else if (ch === 'cleared') {
     objectives = [ { id: 'win', label: '女王さくらを倒した — 革命成就', done: true } ];
-  } else { // world / boss
+  } else { // world / boss（第1章＝自由の世界）
+    const dexN = (typeof dexSeen !== 'undefined') ? dexSeen.size : 0;
     objectives = [
       { id: 'tame', label: `野生チンチラをなつかせる（${petN}/${MAX_PETS}）`, done: petN >= 1 },
+      { id: 'dex', label: `毛色図鑑を集める（${dexN}/8色）`, done: dexN >= 4 },
+      { id: 'breed', label: '繁殖で新しい仲間を生む', done: !!progress.bred },
       { id: 'ally', label: '小動物を仲間にして共闘する', done: allyN >= 1 },
       { id: 'find', label: '「さくらの間」で女王さくらを見つける', done: !!progress.queenSeen },
       { id: 'boss', label: '最終ボス・女王さくらを倒す', done: !!progress.queenDefeated },
@@ -1080,6 +1083,7 @@ function loadWorld(slot = currentSlot) {
       const p = defaultProgress();
       if (typeof obj.progress.chapter === 'string') p.chapter = obj.progress.chapter;
       p.escaped = !!obj.progress.escaped; p.queenSeen = !!obj.progress.queenSeen; p.queenDefeated = !!obj.progress.queenDefeated;
+      p.bred = !!obj.progress.bred; p.dexMilestone = Number.isFinite(obj.progress.dexMilestone) ? obj.progress.dexMilestone : 0;
       progress = p;
     }
     if (Array.isArray(obj.dex)) { dexSeen.clear(); for (const c of obj.dex) if (CHIN_COLORS.indexOf(c) >= 0) dexSeen.add(c); } // 🧬 図鑑復元
@@ -3014,7 +3018,13 @@ const CHIN_COLORS = ['grey', 'beige', 'white', 'ebony', 'violet', 'sapphire', 'b
 const CHIN_DISPLAY = { grey:{name:'標準',hex:'#8f9196'}, beige:{name:'ベージュ',hex:'#b0a392'}, white:{name:'ホワイト',hex:'#ece9e6'}, ebony:{name:'エボニー',hex:'#353539'}, violet:{name:'バイオレット',hex:'#9b93a6'}, sapphire:{name:'サファイア',hex:'#8a98ad'}, brown:{name:'ブラウン',hex:'#7a6450'}, pink:{name:'ピンク',hex:'#f0d9d6'} };
 const dexSeen = new Set();                                         // 図鑑：見つけた/育てた毛色（color suffix）
 function chinColorOf(m) { const t = m && m.def && m.def.type; if (!t) return null; if (t === 'chinchilla' || t === 'chinchilla_violet_baby') return t === 'chinchilla' ? 'beige' : 'violet'; const s = t.indexOf('chinchilla_') === 0 ? t.slice(11) : null; return CHIN_COLORS.indexOf(s) >= 0 ? s : null; }
-function dexDiscover(color) { if (color && CHIN_COLORS.indexOf(color) >= 0 && !dexSeen.has(color)) { dexSeen.add(color); scheduleSave(); } }
+function dexDiscover(color) {
+  if (!(color && CHIN_COLORS.indexOf(color) >= 0 && !dexSeen.has(color))) return;
+  dexSeen.add(color); scheduleSave();
+  // 物語のマイルストーン演出（図鑑が進むと革命の高まりをトースト）
+  if (dexSeen.size >= 4 && progress.dexMilestone < 4) { progress.dexMilestone = 4; if (typeof toast === 'function') toast('🌸 毛色図鑑が半分に！仲間のチンチラが増えてきた——革命の輪が広がる'); }
+  if (dexSeen.size >= 8 && progress.dexMilestone < 8) { progress.dexMilestone = 8; if (typeof toast === 'function') toast('🏆 全8色コンプリート！君は色とりどりのチンチラ王国を築いた'); }
+}
 // 遺伝表：特定の掛け合わせは特別色、それ以外は親のどちらかを継ぐ＋稀に突然変異（thematicな簡易モデル）
 const CHIN_CROSS = { 'grey+white':'violet', 'ebony+grey':'ebony', 'beige+white':'pink', 'sapphire+violet':'sapphire', 'brown+white':'beige', 'beige+ebony':'brown' };
 function breedColor(a, b) {
@@ -3360,6 +3370,7 @@ function updatePet(m, dt, dx, dz, dist) {
       if (baby) {
         initPet(baby, { mood: 75 }); dexDiscover(childColor);
         m.breedCd = o.breedCd = 90 + Math.random() * 30;                    // 親はしばらく繁殖休み
+        if (!progress.bred) { progress.bred = true; scheduleSave(); }        // 📖 初繁殖の達成フラグ
         petEmote(m); petEmote(o); petEmote(baby);
         if (window.playAnimalSFX) try { window.playAnimalSFX('pet', 'happy', { x: baby.obj.position.x, y: baby.obj.position.y, z: baby.obj.position.z }); } catch (e) {}
         if (typeof toast === 'function') toast(`🌸💕 あかちゃんチンチラが生まれた！（毛色：${CHIN_DISPLAY[childColor].name}）`);
