@@ -2868,13 +2868,24 @@ function updateCompanion(m, dt, dx, dz, dist) {
     m.obj.position.set(tx, floorYNear(tx, tz, player.pos.y), tz);
     setMobAnim(m, 'idle'); return;
   }
-  if (m.def.type === 'guineapig') { // モルモット：鳴いて味方を癒す（回復オーラ）
+  if (m.def.type === 'guineapig') { // モルモット：鳴いて範囲回復（回復オーラ）
     m.healCd = (m.healCd || 0) - dt;
     if (m.healCd <= 0) {
       m.healCd = 3.2; let healed = false;
       for (const c of companions) if (c !== m && c.hp < (c.maxHp || COMPANION_HP)) { c.hp = Math.min(c.maxHp || COMPANION_HP, c.hp + 2); healed = true; }
       if (hp > 0 && hp < maxHpEff() && dist < 10) { hp = Math.min(maxHpEff(), hp + 1); healed = true; }
-      if (healed) { spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.0, m.obj.position.z, 1.0, 0.4); critterSE(m, 'skill'); } // モルモット：癒しスキル発動SE
+      if (healed) { // 範囲回復FX＝足元のオーラ環＋ハート、＋skill SE
+        spawnFx('fx_ally_halo', m.obj.position.x, m.obj.position.y + 0.1, m.obj.position.z, 1.1, 1.7);
+        spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.0, m.obj.position.z, 1.0, 0.4);
+        critterSE(m, 'skill');
+      }
+    }
+  } else if (m.def.type === 'rabbit') { // うさぎ：俊足斥候＝周囲の敵を一瞬ハイライトして知らせる
+    m.scoutCd = (m.scoutCd || 0) - dt;
+    if (m.scoutCd <= 0) {
+      m.scoutCd = 5; let spotted = false;
+      for (const o of mobs) { if (!o.hostile || o.dying) continue; const d = Math.hypot(o.obj.position.x - player.pos.x, o.obj.position.z - player.pos.z); if (d < 18) { spawnFx('fx_ally_star', o.obj.position.x, o.obj.position.y + 1.7, o.obj.position.z, 1.2, 0.5); spotted = true; } }
+      if (spotted) critterSE(m, 'skill'); // 見つけたらスタンピングで警告
     }
   }
   const aggro = m.cmdMode === 'wait' ? 7 : m.cmdMode === 'attack' ? 22 : 16; // 索敵範囲（待機は自衛のみ・attackは広い）
@@ -2887,10 +2898,12 @@ function updateCompanion(m, dt, dx, dz, dist) {
       m.obj.rotation.y = Math.atan2(-tdx, -tdz); animName = 'attack';
       if (m.atkCd <= 0) { m.atkCd = 1.1; shootArrowEx(m.obj.position.x, m.obj.position.y + 0.6, m.obj.position.z, tdx, (target.obj.position.y + 0.5) - (m.obj.position.y + 0.6), tdz, 18, true, COMPANION_DMG, false); if (window.playSFX) window.playSFX('bow'); critterSE(m, 'skill'); } // リス：木の実投げのチチッ
     } else if (td > 2.0) { const h = chaseHeadingTo(m, dt, target.obj.position.x, target.obj.position.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; spd = (m.def.type === 'rabbit') ? 18 : 14; } // うさぎは俊足
-    else { // 近接：強めの攻撃＋接敵による被ダメ（ハリネズミは丸まって大幅軽減＝盾役）
+    else { // 近接：強めの攻撃＋接敵による被ダメ（ハリネズミは丸まり盾ステートで大幅軽減＝盾役）
       m.obj.rotation.y = Math.atan2(-tdx, -tdz); animName = 'attack';
+      if (m.def.type === 'hedgehog') { m.curlSeCd = (m.curlSeCd || 0) - dt; if (m.curlSeCd <= 0) { m.curlSeCd = 2.5; critterSE(m, 'curl'); } } // 丸まり盾のフスフス（連打防止に~2.5s毎）
       if (m.atkCd <= 0) { m.atkCd = 0.7; companionAttack(m, target, COMPANION_DMG); }
-      if (m.dmgCd <= 0) { m.dmgCd = 1.2; companionTakeDamage(m, Math.max(1, Math.round((C.meleeDmg - 1) * (m.def.type === 'hedgehog' ? 0.35 : 1)))); if (m.def.type === 'hedgehog') critterSE(m, 'curl'); } // ハリネズミ：丸まり防御のフスフス
+      // ハリネズミは丸まり度(m.curl 0..1)に応じて被ダメ減（最大~0.3倍）。他は等倍。
+      if (m.dmgCd <= 0) { m.dmgCd = 1.2; const red = (m.def.type === 'hedgehog') ? (1 - 0.7 * (m.curl || 0)) : 1; companionTakeDamage(m, Math.max(1, Math.round((C.meleeDmg - 1) * red))); }
     }
   } else if (m.cmdMode !== 'wait') { // 追従（待機は留まる）
     if (dist > 3.5) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk';
@@ -4310,7 +4323,7 @@ function updateArrows(dt) {
         const m = mobs[j]; if (m.dying || m.pet || m.companion || !m.hostile) continue; // 味方の矢は敵だけに当たる（ペット/仲間/中立は素通り）
         const p = m.obj.position;
         const dd = (a.obj.position.x-p.x)**2 + (a.obj.position.y-(p.y+0.7))**2 + (a.obj.position.z-p.z)**2;
-        if (dd < 0.8) { hitMob(m, a.dmg, a.isCrit, 'bow', 0, a.vx, a.vz, WEAPONS.bow.knock); scene.remove(a.obj); arrows.splice(i,1); consumed = true; break; }
+        if (dd < 0.8) { hitMob(m, a.dmg, a.isCrit, 'bow', 0, a.vx, a.vz, WEAPONS.bow.knock); spawnFx('fx_collapse', a.obj.position.x, a.obj.position.y, a.obj.position.z, 0.4, 0.4); scene.remove(a.obj); arrows.splice(i,1); consumed = true; break; } // 着弾の小さな土煙（リスの木の実/弓 共通）
       }
     } else { // 敵の矢：プレイヤーに命中
       const px = player.pos.x, py = player.pos.y+0.9, pz = player.pos.z;
