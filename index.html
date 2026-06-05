@@ -1296,17 +1296,18 @@ function updateSky(dt) {
 }
 
 // ===== 軸2: 天候（パーティクル＋雷＋自動遷移）=====
-let weather = 'clear';     // 'clear' | 'rain' | 'snow' | 'thunder'
+let weather = 'clear';     // 'clear' | 'rain' | 'snow' | 'thunder' | 'petal'(桜吹雪)
 let flash = 0;             // 雷の閃光の強さ（0..1、減衰）
 let nextStrike = 4;        // 次の落雷までの秒数
 let autoWeather = true;    // 自動天候変化（Jキーで on/off）
 let weatherTimer = 30 + Math.random()*30; // 次の自動遷移までの秒数
 // 自然な遷移テーブル（晴れは続きやすい／雷は雨の強状態でやがて雨か晴れへ）
 const WEATHER_TRANS = {
-  clear:   ['clear','clear','rain','snow'],
+  clear:   ['clear','clear','rain','snow','petal'],   // 晴れは続きやすい。たまに桜吹雪
   rain:    ['rain','thunder','clear','rain'],
   snow:    ['snow','snow','clear'],
   thunder: ['rain','rain','clear'],
+  petal:   ['petal','clear','clear'],                  // 桜吹雪はやがて晴れへ
 };
 function stepWeatherAuto(dt) {
   if (!autoWeather) return;
@@ -1336,10 +1337,15 @@ function makeField(count, color, size, opacity) {
 }
 const rainField = makeField(2000, 0x9fb8ff, 0.12, 0.55);
 const snowField = makeField(1200, 0xffffff, 0.20, 0.90);
+const petalField = makeField(700, 0xffc6da, 0.34, 0.95); // 🌸 桜吹雪（ピンクの花びら。P4で素材差し替え予定）
+// 天候→2号機の天候音マッピング（rain/snow/clear。実装が無くても typeof で安全）
+const WEATHER_AUDIO = { clear: 'clear', rain: 'rain', thunder: 'rain', snow: 'snow', petal: 'clear' };
 function setWeather(w) {
   weather = w;
   rainField.points.visible = (w === 'rain' || w === 'thunder');
   snowField.points.visible = (w === 'snow');
+  petalField.points.visible = (w === 'petal');
+  try { if (window.setWeatherAudio) window.setWeatherAudio(WEATHER_AUDIO[w] || 'clear'); } catch (e) {} // 天候音は2号機口を呼ぶだけ
 }
 window.setWeather = setWeather; // コンソールからも手動切替可
 function updateField(f, dt, baseSpeed, sway) {
@@ -1360,6 +1366,7 @@ function updateField(f, dt, baseSpeed, sway) {
 function updateParticles(dt) {
   updateField(rainField, dt, 28, 0);     // 雨：速く落下
   updateField(snowField, dt, 3, 0.012);  // 雪：ゆっくり舞う
+  updateField(petalField, dt, 2.2, 0.03); // 🌸 桜吹雪：ふわっと横に流れて舞い落ちる
 }
 
 // ===== 雲（時間帯・天候の上に乗せる上層レイヤー）=====
@@ -1967,7 +1974,8 @@ function updateHealth(dt) {
   {
     const bx = Math.floor(player.pos.x), bz = Math.floor(player.pos.z);
     const bi = biomeAt(bx, bz);
-    const shade = (bi === 'rocky' || bi === 'forest' || bi === 'snow') || playerUnderground();
+    const overcast = (weather === 'rain' || weather === 'snow' || weather === 'thunder'); // 雨/雪/雷＝曇って涼しい
+    const shade = (bi === 'rocky' || bi === 'forest' || bi === 'snow') || playerUnderground() || overcast;
     let dH;
     if (playerHeadInWater() || waterAtPlayer(0.2)) dH = -32;     // 水で急冷
     else if (bi === 'desert' && isDay()) dH = 11;                // 砂漠の直射日光
@@ -2161,8 +2169,8 @@ document.addEventListener('keydown', (e) => {
     if (typeof toast === 'function') toast('🎥 視点：' + (topDown ? '見下ろし（ホイールでズーム）' : thirdPerson ? '三人称' : '一人称'));
   }
   if (e.code === 'KeyH') { diagVisible = !diagVisible; diagEl.style.display = diagVisible ? 'block' : 'none'; } // 診断パネル
-  if (e.code === 'KeyG') { // 天候を手動切替：晴れ→雨→雪→雷→…
-    const order = ['clear','rain','snow','thunder'];
+  if (e.code === 'KeyG') { // 天候を手動切替：晴れ→雨→雪→雷→桜吹雪→…
+    const order = ['clear','rain','snow','thunder','petal'];
     setWeather(order[(order.indexOf(weather) + 1) % order.length]);
     weatherTimer = 25 + Math.random()*35; // 手動切替時は自動遷移を先送り
   }
