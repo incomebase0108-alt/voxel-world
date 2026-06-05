@@ -71,11 +71,14 @@ WebAudio による合成音。本体コードと疎結合で、コアは `window
 ---
 
 ## 3D空間音響（③）
-コアの読み取り口があれば自動有効化（無ければ黙って無効）。
+コアの読み取り口があれば自動有効化（無ければ黙って無効）。**1号機が実装済み**（`getMobPositions`/`getPlayerPose`/`getBiome`）なので実機で稼働。
 - `window.getMobPositions()` → `[{x, y, z, type, hostile}, ...]`
-- `window.getPlayerPose()` → `{x, y, z, yaw, pitch}`
+- `window.getPlayerPose()` → `{x, y, z, yaw, pitch}`（リスナー位置・向きに反映）
 
 周囲モブ（半径36m）の鳴き声を距離・方向で減衰（PannerNode）。`playSFX('mob', {type, x, y, z})` の push 型3Dにも対応。
+
+**動物SE（critter）の空間化（P2）**: `playAnimalSFX(species, event, {x,y,z})` は座標があれば内部で `makePanner` を生成し、`tone/noise → panner → sfxBus → master → limiter → 出力` の経路で**距離減衰つきの定位音**になる。`critterSE`（index.html）は常に座標を渡すので全 critter SE が空間化される。パンナーは `inverse`/`equalpower`・`refDistance 4`/`maxDistance 40`/`rolloff 1`、発音後 2 秒で自動 `disconnect`（ノードリーク防止）。
+- **セーフティ・リミッタ**: `master` 直前に `DynamicsCompressor`（threshold −3dB / ratio 20 / 速attack）を挿入し、多数のSE＋BGM重畳時も**クリップしない**。抑制量は `getSoundDiag().limiterReductionDb` で確認可（0＝余裕／負＝ピーク抑制中）。
 
 ---
 

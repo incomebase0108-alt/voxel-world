@@ -25,18 +25,29 @@
     pet_squeak: 1, pet_bite: 1, pet_happy: 1, pet_pee: 1,                                              // ペット(さくら)
   };
   let curMul = 1; // 再生中SEの倍率（tone/noise が参照。playSFX が設定）
+  let limiter = null; // ③ master 直前のセーフティ・リミッタ（多数のSE＋BGM重畳時のクリップ防止）
 
   function ac() {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       ctx = new AC();
-      // バス構成： source → (sfxBus|bgmBus) → master → destination
+      // バス構成： source → (sfxBus|bgmBus|ambBus) → master → limiter → destination
       master = ctx.createGain();
       sfxBus = ctx.createGain();
       bgmBus = ctx.createGain();
       ambBus = ctx.createGain(); // ① 環境音アンビエンス（BGMの下）
-      sfxBus.connect(master); bgmBus.connect(master); ambBus.connect(master); master.connect(ctx.destination);
+      // セーフティ・リミッタ：ピークだけを抑える透明な設定（threshold高め＋速いattack＝音色は変えずクリップのみ防止）。
+      limiter = ctx.createDynamicsCompressor();
+      try {
+        limiter.threshold.value = -3.0;  // -3dB を超えるピークのみ抑制
+        limiter.knee.value = 0;          // ハードニー＝リミッタ的
+        limiter.ratio.value = 20;        // 実質ブリックウォール
+        limiter.attack.value = 0.003;
+        limiter.release.value = 0.25;
+      } catch (e) {}
+      sfxBus.connect(master); bgmBus.connect(master); ambBus.connect(master);
+      master.connect(limiter); limiter.connect(ctx.destination); // master → limiter → 出力
       applyVolumes();
     }
     if (ctx.state === 'suspended') ctx.resume(); // ユーザー操作起点で再開
@@ -809,6 +820,8 @@
       bgmBusGain: bgmBus ? +bgmBus.gain.value.toFixed(3) : null,
       sfxBusGain: sfxBus ? +sfxBus.gain.value.toFixed(3) : null,
       masterGain: master ? +master.gain.value.toFixed(3) : null,
+      limiterReductionDb: limiter ? +limiter.reduction.toFixed(2) : null, // ③ リミッタが今どれだけ抑制中か（0=余裕／負=ピーク抑制中）
+      spatial: { listenerHook: typeof window.getPlayerPose === 'function', mobHook: typeof window.getMobPositions === 'function', biomeHook: typeof window.getBiome === 'function' }, // ③ コア側の読み取り口が揃っているか
       muted: vol.muted,
       vol: { master: vol.master, sfx: vol.sfx, bgm: vol.bgm },
       musicSceneCalledByCore: typeof window.__setMusicSceneCalled === 'boolean' ? window.__setMusicSceneCalled : '(未計測)',
