@@ -1086,6 +1086,7 @@ window.VoxelGame = {
   // 3号機UI向け：毎フレーム呼ばれる軽量スナップショット（実体は全てランタイムで解決）
   state: () => ({
     hp, maxHp: maxHpEff(), hunger, maxHunger: P.maxHunger, breath, maxBreath: P.breathMax,
+    heat: Math.round(heat), overheat: heat >= 85,                  // 体温（暑さ管理・チンチラ）
     level: playerLevel, exp: Math.round(playerExp), expToNext: expToNext(playerLevel),
     inWater: breath < P.breathMax, selBlock,
     hotbar: HOTBAR.map(b => ({ block:b, name:NAMES[b], swatch:SWATCH[b], count:counts[b]||0, active:b===selBlock })),
@@ -1777,6 +1778,8 @@ let drownAccum = 0;
 let hurtFlash = 0;            // 被ダメージ時の赤フラッシュ（0..1、減衰）
 let fallPeakY = 0;           // 落下開始の最高到達点
 let prevOnGround = true;
+let heat = 0;                // 体温（チンチラは暑さに弱い。0..100。日中/砂漠で上昇、水/夜/日陰/砂浴びで低下）
+let heatHurtAccum = 0, heatWarnT = 0, dustCd = 0;
 
 function eatFood() {
   if (hunger >= P.maxHunger) return;
@@ -1786,6 +1789,22 @@ function eatFood() {
   hunger = Math.min(P.maxHunger, hunger + P.food[item]);
   window.playSFX && window.playSFX('eat');
   scheduleSave();
+}
+
+// 砂浴び：砂地/岩場で体温を一気に下げる（チンチラの十八番）。近くのペットの機嫌も上がる
+function dustBath() {
+  if (dustCd > 0) return;
+  const bx = Math.floor(player.pos.x), bz = Math.floor(player.pos.z);
+  const ground = getBlock(bx, Math.floor(player.pos.y) - 1, bz);
+  if (!player.onGround || (ground !== B.sand && ground !== B.stone)) { if (typeof toast === 'function') toast('砂浴びは砂地か岩場で（Nキー）'); return; }
+  dustCd = 3;
+  heat = Math.max(0, heat - 55);
+  spawnFx('fx_collapse', player.pos.x, player.pos.y + 0.2, player.pos.z, 1.4, 1.4); // 砂煙
+  window.playSFX && window.playSFX('place');
+  if (typeof pets !== 'undefined') for (const p of pets) {
+    if (Math.hypot(p.obj.position.x - player.pos.x, p.obj.position.z - player.pos.z) < 5) { p.mood = clampPet(p.mood + 12, 0, 100); petEmote(p); }
+  }
+  if (typeof toast === 'function') toast('🛁 砂浴びでさっぱり！（体温ダウン）');
 }
 
 function damage(amount, cause) {
@@ -1818,7 +1837,7 @@ window.VoxelGame.respawn = () => { playerDead = false; respawn(); return true; }
 function respawn() {
   const s = findSpawn(); player.pos.set(s.x, s.y, s.z);
   player.vel.set(0, 0, 0);
-  hp = maxHpEff(); breath = P.breathMax; hunger = P.maxHunger;
+  hp = maxHpEff(); breath = P.breathMax; hunger = P.maxHunger; heat = 0; heatHurtAccum = 0;
   fallPeakY = player.pos.y; prevOnGround = true;
   resetAvatarAnim(); // 復活直後に idle へ。swim 等の引きずりを断つ
   scheduleSave();
@@ -1868,6 +1887,30 @@ function updateHealth(dt) {
   if (hp > 0 && hp < maxHpEff() && hunger >= P.regenHungerMin && gameTime - lastDamageTime >= P.regenDelay) {
     regenAccum += dt;
     if (regenAccum >= P.regenInterval) { regenAccum = 0; hp = Math.min(maxHpEff(), hp + 1); hunger = Math.max(0, hunger - 0.5); scheduleSave(); }
+  }
+
+  // --- 体温（チンチラは暑さに弱い：日中/砂漠で上昇、水・夜・日陰・地下・砂浴びで低下）---
+  {
+    const bx = Math.floor(player.pos.x), bz = Math.floor(player.pos.z);
+    const bi = biomeAt(bx, bz);
+    const shade = (bi === 'rocky' || bi === 'forest' || bi === 'snow') || playerUnderground();
+    let dH;
+    if (playerHeadInWater() || waterAtPlayer(0.2)) dH = -32;     // 水で急冷
+    else if (bi === 'desert' && isDay()) dH = 11;                // 砂漠の直射日光
+    else if (isDay() && !shade) dH = 4;                          // 日向（草原など）
+    else dH = -7;                                                // 夜・日陰・雪原・地下で涼む
+    heat = Math.max(0, Math.min(100, heat + dH * dt));
+    dustCd = Math.max(0, dustCd - dt);
+    heatWarnT = Math.max(0, heatWarnT - dt);
+    if (heat >= 85) {                                            // オーバーヒート＝じわじわダメージ＋スリップ＋警告
+      playerSlow = Math.max(playerSlow, 0.5);
+      heatHurtAccum += dt;
+      if (heatHurtAccum >= 1.6) { heatHurtAccum = 0; if (hp > 1) damage(2, 'heat'); }
+      if (heatWarnT <= 0) { heatWarnT = 4; if (typeof toast === 'function') toast('🥵 オーバーヒート！水・日陰・砂浴び(N)で冷やそう'); }
+    } else {
+      heatHurtAccum = 0;
+      if (heat >= 65 && heatWarnT <= 0) { heatWarnT = 7; if (typeof toast === 'function') toast('☀️ 暑い…日陰や水へ（Nで砂浴び）'); }
+    }
   }
 
   hurtFlash = Math.max(0, hurtFlash - dt * 3); // 赤フラッシュ減衰
@@ -2047,6 +2090,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') fireSkillKey(3);
   if (e.code === 'KeyC') { const eq = effectiveEquipped(); if (eq[2] && !invOpen) useSkill(eq[2]); else cycleWeapon(); }
   if (e.code === 'KeyB') cycleWeapon(); // 武器切替の予備（C が必殺技で埋まっても切替可能に）
+  if (e.code === 'KeyN') dustBath();      // 🛁 砂浴び（砂地/岩場で体温ダウン）
   if (e.code === 'KeyP') petInteract();  // 🐾 ペットをなでる/餌、または近くの動物をなつかせる
   if (e.code === 'KeyT') talkToNPC();   // 近くの住人に話しかける/取引
   if (e.code === 'KeyY') window.VoxelGame.recruit(); // 会話中の住人を仲間に（コイン）※3号機UIボタンと同じ口
@@ -2182,6 +2226,15 @@ const hurtEl = document.createElement('div');
 hurtEl.style.cssText = 'position:fixed;inset:0;z-index:25;pointer-events:none;'
   + 'background:radial-gradient(circle, rgba(180,0,0,0) 40%, rgba(180,0,0,0.6) 100%);opacity:0;';
 document.body.appendChild(hurtEl);
+// 暑さ：オレンジのフチ（オーバーヒート時）＋ 体温ゲージ（🔥）
+const heatEl = document.createElement('div');
+heatEl.style.cssText = 'position:fixed;inset:0;z-index:24;pointer-events:none;'
+  + 'background:radial-gradient(circle, rgba(255,120,0,0) 45%, rgba(255,90,0,0.55) 100%);opacity:0;';
+document.body.appendChild(heatEl);
+const heatGaugeEl = document.createElement('div');
+heatGaugeEl.style.cssText = 'position:fixed;left:50%;bottom:140px;transform:translateX(-50%);z-index:10;'
+  + 'font-size:16px;text-shadow:0 0 3px #000;user-select:none;';
+document.body.appendChild(heatGaugeEl);
 
 // 起動時のセーブ復元は、currentPlayerFile / mobs 等の宣言後（アバター読込の直前）で行う（下方の loadWorld() 呼び出し）
 
@@ -2244,6 +2297,7 @@ function buildDiag() {
     `BGMシーン     : ${musicScene||'-'}（近接敵${dbgNearEnemies} / 水中${dbgMusicWater?'○':'-'} / combat保持${combatHold.toFixed(1)}s）`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
+    `体温         : ${Math.round(heat)}/100 ${heat>=85?'🥵オーバーヒート':heat>=65?'☀️暑い':'😌'}　※砂地/岩場でN=砂浴び・水/夜/日陰で冷える`,
     `スポーン拠点 : ${spawnPoint ? `${spawnPoint.x.toFixed(0)},${spawnPoint.y.toFixed(0)},${spawnPoint.z.toFixed(0)}（${biomeAt(Math.floor(spawnPoint.x), Math.floor(spawnPoint.z))}）` : '未決定'}　※死亡/奈落で常にここへ復帰（oceanなら水際スポーンの兆候）`,
     `騎乗/乗船    : ${ridingMob ? '馬に騎乗中' : ridingBoat ? `船に乗船中(${ridingBoat.kind}/obj${ridingBoat.obj?'有':'無'})` : '徒歩'}　速度vel: ${player.vel.x.toFixed(1)},${player.vel.z.toFixed(1)}`,
     `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
@@ -2766,17 +2820,29 @@ function updateCompanion(m, dt, dx, dz, dist) {
     m.obj.position.set(tx, floorYNear(tx, tz, player.pos.y), tz);
     setMobAnim(m, 'idle'); return;
   }
+  if (m.def.type === 'guineapig') { // モルモット：鳴いて味方を癒す（回復オーラ）
+    m.healCd = (m.healCd || 0) - dt;
+    if (m.healCd <= 0) {
+      m.healCd = 3.2; let healed = false;
+      for (const c of companions) if (c !== m && c.hp < (c.maxHp || COMPANION_HP)) { c.hp = Math.min(c.maxHp || COMPANION_HP, c.hp + 2); healed = true; }
+      if (hp > 0 && hp < maxHpEff() && dist < 10) { hp = Math.min(maxHpEff(), hp + 1); healed = true; }
+      if (healed) spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.0, m.obj.position.z, 1.0, 0.4);
+    }
+  }
   const aggro = m.cmdMode === 'wait' ? 7 : m.cmdMode === 'attack' ? 22 : 16; // 索敵範囲（待機は自衛のみ・attackは広い）
   const target = nearestHostileTo(m.obj.position.x, m.obj.position.z, aggro);
   let moving = false, animName = 'idle', dhx = 0, dhz = 0, spd = 9;
   const leashed = dist > (m.cmdMode === 'attack' ? 30 : 20); // 離れすぎたら戦闘より追従優先
   if (target && !leashed) {
     const tdx = target.obj.position.x - m.obj.position.x, tdz = target.obj.position.z - m.obj.position.z, td = Math.hypot(tdx, tdz) || 0.0001;
-    if (td > 2.0) { const h = chaseHeadingTo(m, dt, target.obj.position.x, target.obj.position.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; spd = 14; } // 敵へ素早く接近
-    else { // 近接：強めの攻撃＋接敵による被ダメ（タンク：少し軽減して耐える）
+    if (m.def.type === 'squirrel' && td > 2.2 && td < 13) { // リス：木の実を投げる遠距離アタッカー
+      m.obj.rotation.y = Math.atan2(-tdx, -tdz); animName = 'attack';
+      if (m.atkCd <= 0) { m.atkCd = 1.1; shootArrowEx(m.obj.position.x, m.obj.position.y + 0.6, m.obj.position.z, tdx, (target.obj.position.y + 0.5) - (m.obj.position.y + 0.6), tdz, 18, true, COMPANION_DMG, false); if (window.playSFX) window.playSFX('bow'); }
+    } else if (td > 2.0) { const h = chaseHeadingTo(m, dt, target.obj.position.x, target.obj.position.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; spd = (m.def.type === 'rabbit') ? 18 : 14; } // うさぎは俊足
+    else { // 近接：強めの攻撃＋接敵による被ダメ（ハリネズミは丸まって大幅軽減＝盾役）
       m.obj.rotation.y = Math.atan2(-tdx, -tdz); animName = 'attack';
       if (m.atkCd <= 0) { m.atkCd = 0.7; companionAttack(m, target, COMPANION_DMG); }
-      if (m.dmgCd <= 0) { m.dmgCd = 1.2; companionTakeDamage(m, Math.max(1, C.meleeDmg - 1)); }
+      if (m.dmgCd <= 0) { m.dmgCd = 1.2; companionTakeDamage(m, Math.max(1, Math.round((C.meleeDmg - 1) * (m.def.type === 'hedgehog' ? 0.35 : 1)))); }
     }
   } else if (m.cmdMode !== 'wait') { // 追従（待機は留まる）
     if (dist > 3.5) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk';
@@ -3141,6 +3207,45 @@ function updateGuard(m, dt) {
   if (moving) tryMoveMob(m, dhx, dhz, spd, dt); else followFloor(m, dt);
   setMobAnim(m, animName);
 }
+// 天敵の個性AI：鳥=上空から急降下／蛇=忍び寄り→lunge／狼=群れで強気／イタチ=ジグザグ俊敏
+function updatePredator(m, dt, dx, dz, dist, dy) {
+  m.atkCd = Math.max(0, (m.atkCd || 0) - dt);
+  const t = m.def.type;
+  // ---- 鳥：飛行＋急降下 ----
+  if (t === 'bird') {
+    m.diveCd = (m.diveCd || 0) - dt; m.diveT = Math.max(0, (m.diveT || 0) - dt);
+    const gy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
+    if (m.diveCd <= 0 && dist < 12 && dy < 7) { m.diveT = 0.9; m.diveCd = 3 + Math.random() * 2.5; } // 急降下開始
+    const tgtY = m.diveT > 0 ? player.pos.y + 0.4 : Math.max(player.pos.y, gy) + 3.2;
+    m.obj.position.y += (tgtY - m.obj.position.y) * Math.min(1, dt * 5);
+    if (dist > 1.4) { const ux = dx / dist, uz = dz / dist, s = m.diveT > 0 ? 12 : 6; m.obj.position.x += ux * s * dt; m.obj.position.z += uz * s * dt; }
+    m.obj.rotation.y = Math.atan2(-dx, -dz);
+    m.obj.rotation.x = m.diveT > 0 ? 0.5 : 0;          // 急降下は前のめり
+    if (m.atkCd <= 0 && dist < 2.2 && Math.abs(m.obj.position.y - player.pos.y) < 2.2) { m.atkCd = 1.4; damage(C.meleeDmg + 2, 'mob'); }
+    return;
+  }
+  // ---- 地上の天敵 ----
+  let moving = false, anim = 'idle', hx = 0, hz = 0, spd = M.speedHostile;
+  if (t === 'snake') {                                  // 蛇：間合いまで忍び寄り→一気に lunge
+    m.lungeT = Math.max(0, (m.lungeT || 0) - dt);
+    if (m.lungeT > 0) { hx = dx / dist; hz = dz / dist; moving = true; anim = 'walk'; spd = 11; }
+    else if (dist <= 1.6) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 1.2; damage(C.meleeDmg, 'mob'); } }
+    else if (dist < 6) { if (m.atkCd <= 0) { m.atkCd = 1.9; m.lungeT = 0.45; } else { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = 1.5; } }
+    else if (dist < 18) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = 2.2; }
+  } else if (t === 'wolf') {                             // 狼：群れると勢いづく（速く・強く）
+    let pack = 0; for (const o of mobs) { if (o.def.type === 'wolf' && !o.dying && Math.hypot(o.obj.position.x - m.obj.position.x, o.obj.position.z - m.obj.position.z) < 14) pack++; }
+    const bold = pack >= 2;
+    if (dist <= 1.7) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 1.0; damage(C.meleeDmg + (bold ? 2 : 0), 'mob'); } }
+    else if (dist < 22) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = bold ? 3.4 : 2.4; }
+  } else {                                               // イタチ：ジグザグに素早く迫る
+    m.wPhase = (m.wPhase || Math.random() * 6) + dt * 7;
+    if (dist <= 1.4) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 0.7; damage(Math.max(1, C.meleeDmg - 1), 'mob'); } }
+    else if (dist < 20) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); const w = Math.sin(m.wPhase) * 0.5; hx = h.x - h.z * w; hz = h.z + h.x * w; moving = true; anim = 'walk'; spd = 3.6; }
+  }
+  if (moving) tryMoveMob(m, hx, hz, spd, dt); else followFloor(m, dt);
+  m.hopT = (m.hopT || 0) + dt * (anim === 'walk' ? 9 : 4);     // アニメ無し＝コードでぴょこ
+  m.obj.position.y = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y) + Math.max(0, Math.sin(m.hopT)) * (t === 'snake' ? 0.02 : 0.06);
+}
 // 経路探索の負荷計測（診断用）。毎秒スナップショットを取る
 let pathCallsAcc = 0, pathNodesAcc = 0, pathCallsPerSec = 0, pathNodesPerSec = 0;
 // 簡易A*（足場グリッド上）。最初の一歩の単位ベクトルを返す。ノード数 maxNodes で打ち切り
@@ -3453,6 +3558,7 @@ function updateMobs(dt) {
 
     if (m.def.aquatic) { updateFishAI(m, dt); continue; } // 海の魚は水中専用AI（地上の徘徊AIに乗せない）
     if (m.def.soldier && m.home && !m.companion) { updateGuard(m, dt); if (m.mixer) m.mixer.update(dt); continue; } // 兵士=駐留地の警備AI（敵に交戦・動物は無視）
+    if (m.def.critter && m.hostile) { updatePredator(m, dt, dx, dz, dist, dy); continue; } // 天敵＝種別ごとの個性AI（鳥=急降下/蛇=奇襲/狼=群れ/イタチ=俊敏）
 
     const role = m.def.role;
     let moving = false, animName = 'idle';
@@ -3698,7 +3804,7 @@ function updateArrows(dt) {
     let consumed = false;
     if (a.friendly) { // 味方の矢：モブに命中
       for (let j = mobs.length-1; j >= 0; j--) {
-        const m = mobs[j]; if (m.dying || m.pet) continue; // 🐾 ペットには味方の矢も当たらない
+        const m = mobs[j]; if (m.dying || m.pet || m.companion || !m.hostile) continue; // 味方の矢は敵だけに当たる（ペット/仲間/中立は素通り）
         const p = m.obj.position;
         const dd = (a.obj.position.x-p.x)**2 + (a.obj.position.y-(p.y+0.7))**2 + (a.obj.position.z-p.z)**2;
         if (dd < 0.8) { hitMob(m, a.dmg, a.isCrit, 'bow', 0, a.vx, a.vz, WEAPONS.bow.knock); scene.remove(a.obj); arrows.splice(i,1); consumed = true; break; }
@@ -4488,6 +4594,8 @@ function loop(now) {
   hpEl.innerHTML = heartsHTML();
   hungerEl.innerHTML = hungerHTML();
   hurtEl.style.opacity = (hurtFlash * 0.7).toFixed(2);
+  heatEl.style.opacity = (Math.max(0, (heat - 55) / 45) * 0.6).toFixed(2);       // 暑いほどオレンジのフチ
+  heatGaugeEl.textContent = heat > 55 ? '🔥'.repeat(Math.max(1, Math.min(5, Math.ceil((heat - 50) / 10)))) : '';
   // 息ゲージ：負値・0除算・Infinity でも repeat() が落ちないよう 0..10 にクランプ
   const bubbles = Math.max(0, Math.min(10, Math.ceil(breath / Math.max(0.001, P.breathMax) * 10)));
   breathEl.textContent = (breath < P.breathMax - 0.05) ? '🫧'.repeat(bubbles) : '';
