@@ -16,8 +16,8 @@
   },
   "totals": {
     "count": 149,
-    "size_bytes": 24515572,
-    "size_mb": 23.38
+    "size_bytes": 25052836,
+    "size_mb": 23.892
   },
   "assets": [
     {
@@ -299,8 +299,8 @@
       "file": "mob_queen_sakura.glb",
       "name": "mob_queen_sakura",
       "category": "モブ",
-      "size_bytes": 547188,
-      "size_mb": 0.5218,
+      "size_bytes": 1084452,
+      "size_mb": 1.0342,
       "clips": [
         "idle",
         "walk",

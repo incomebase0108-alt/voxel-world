@@ -59,21 +59,22 @@ BODY=[];ARML=[];ARMR=[];LEGL=[];LEGR=[]
 
 # ===== 毛玉ヘルパー：本体の輪郭に沿ってふわふわの起伏を足す =====
 def fuzz(g, center, rad, n, sscale, mats):
+    # 豪奢な毛皮：滑らかな小粒タフト(subd=2)を密に重ねて“ふわふわ”に（岩塊感を排除）
     cx,cy,cz=center
     for i in range(n):
         a=random.uniform(0,2*math.pi); b=random.uniform(-0.5,1.0)
-        rr=rad*random.uniform(0.82,1.02)
-        x=cx+math.cos(a)*rr*0.9; y=cy+math.sin(a)*rr*0.55*math.cos(b); z=cz+math.sin(b)*rr
-        s=sscale*random.uniform(0.7,1.15)
-        ico(g,"Fuzz",(x,y,z),(s,s,s),random.choice(mats),subd=1)
+        rr=rad*random.uniform(0.90,1.05)
+        x=cx+math.cos(a)*rr*0.92; y=cy+math.sin(a)*rr*0.55*math.cos(b); z=cz+math.sin(b)*rr
+        s=sscale*random.uniform(0.62,1.0)
+        ico(g,"Fuzz",(x,y,z),(s,s*0.9,s*1.05),random.choice(mats),subd=2)
 
 # ===== 胴（ぽっちゃり洋ナシ型）z≈1.2〜4.2 =====
 sphere(BODY,"Belly",(0,0.18,2.4),(1.85,1.70,1.95),FUR,segs=20,rings=14)     # 下半身（大きい）
 sphere(BODY,"BellyW",(0,0.78,2.2),(1.30,1.05,1.30),BELLY,segs=18,rings=12)  # 白い腹
 sphere(BODY,"Chest",(0,0.30,3.7),(1.45,1.35,1.45),FUR,segs=20,rings=14)     # 上半身
 sphere(BODY,"ChestW",(0,0.85,3.55),(0.92,0.80,0.95),BELLY,segs=16,rings=11) # 白い胸
-fuzz(BODY,(0,0.0,2.6),2.0,26,0.34,[FUR,FUR2,FUR3])                          # 体のもふもふ起伏
-fuzz(BODY,(0,0.0,3.7),1.5,16,0.30,[FUR,FUR3])
+fuzz(BODY,(0,0.0,2.6),2.0,46,0.24,[FUR,FUR2,FUR3])                          # 体のもふもふ起伏（密・小粒）
+fuzz(BODY,(0,0.0,3.7),1.5,30,0.22,[FUR,FUR3])
 
 # ===== 頭（大きい・丸い＝マスコット比率で顔を主役に）z≈3.6〜6.2 =====
 sphere(BODY,"Head",(0,0.45,5.1),(1.75,1.62,1.62),FUR,segs=24,rings=16)
@@ -81,7 +82,8 @@ sphere(BODY,"Head",(0,0.45,5.1),(1.75,1.62,1.62),FUR,segs=24,rings=16)
 sphere(BODY,"Muzzle",(0,1.55,4.55),(0.86,0.58,0.62),BELLY,segs=18,rings=12)
 sphere(BODY,"Cheek1",(0.92,1.30,4.62),(0.50,0.48,0.48),FUR3,segs=12,rings=8) # ぷくぷく頬
 sphere(BODY,"Cheek2",(-0.92,1.30,4.62),(0.50,0.48,0.48),FUR3,segs=12,rings=8)
-fuzz(BODY,(0,-0.2,5.2),1.70,20,0.34,[FUR,FUR3,FUR2])                        # 頭のもふ(後ろ寄り)
+fuzz(BODY,(0,-0.2,5.2),1.70,34,0.24,[FUR,FUR3,FUR2])                        # 頭のもふ(後ろ寄り・密)
+fuzz(BODY,(0,0.30,5.0),1.62,16,0.20,[FUR3,FUR])                             # 頬まわりの柔毛
 
 # 大きな丸い耳（チンチラ＝丸耳）左右・高め。内耳ピンク。
 for sgn in (1,-1):
@@ -105,15 +107,16 @@ for sgn in (1,-1):
 cube(BODY,"Tooth",(0,2.00,4.46),(0.12,0.06,0.09),BELLY)
 
 # ===== 王冠（小さめ・金の発光・頭頂やや前）＝女王の証 =====
-cz=6.55; cy0=0.38
+cz=6.6; cy0=0.38
 import math as _m
-bpy.ops.mesh.primitive_cylinder_add(vertices=18,radius=0.54,depth=0.24,location=(0,cy0,cz))
+bpy.ops.mesh.primitive_cylinder_add(vertices=22,radius=0.74,depth=0.32,location=(0,cy0,cz))
 o=bpy.context.active_object;o.name="CrownBand";o.data.materials.append(GOLD);BODY.append(o)
-for i in range(8):                                   # 王冠の山（尖り）＋宝石
-    a=2*_m.pi*i/8; x=0.54*_m.cos(a); y=cy0+0.54*_m.sin(a)
-    cone(BODY,"CrSpire%d"%i,(x,y,cz+0.26),0.08,0.24,GOLD,verts=6)
-    if i%2==0: ico(BODY,"CrGem%d"%i,(x,y,cz+0.12),(0.06,0.06,0.07),GEMR,subd=1)
-ico(BODY,"CrownTop",(0,cy0,cz+0.46),(0.12,0.12,0.14),GOLD,subd=1)        # 頂飾り
+for i in range(10):                                  # 王冠の山（尖り）＋宝石（大きく荘厳に）
+    a=2*_m.pi*i/10; x=0.74*_m.cos(a); y=cy0+0.74*_m.sin(a)
+    cone(BODY,"CrSpire%d"%i,(x,y,cz+0.36),0.11,0.36,GOLD,verts=6)
+    ico(BODY,"CrGem%d"%i,(x,y,cz+0.18),(0.07,0.07,0.08),GEMR,subd=1)
+ico(BODY,"CrownTop",(0,cy0,cz+0.62),(0.16,0.16,0.18),GOLD,subd=1)        # 頂飾り
+ico(BODY,"CrownTopGem",(0,cy0,cz+0.80),(0.10,0.10,0.11),GEMR,subd=1)
 
 # ===== 首元のミニマント（深紅＋白縁・肩を覆う）=====
 for sgn in (1,-1):
