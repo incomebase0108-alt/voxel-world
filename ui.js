@@ -2292,6 +2292,104 @@
   }
 
   // =====================================================================
+  // ⑤ 計測オーバーレイ（P キーで開閉） — 「重い」の真因切り分け用
+  //   ・コアは無改変。FPS / 最悪フレーム / longtask / 描画ピクセル数を実測する。
+  //   ・state() 休止中でも単独で動く＝起動直後やワールド生成中の停止も拾える。
+  //   ・入城時のような一回性の停止は「200ms超」欄に (何ms, 起動から何秒) で残る。
+  //   ・window.UI.perf() が全文を返す（報告用にそのままコピペできる）。
+  // =====================================================================
+  const perf = { on:false, dom:null, frames:0, winStart:0, fps:0, worst:0, last:0, tasks:[], spikes:[], gpu:'未取得' };
+
+  function perfGpu() {
+    try {
+      const c = document.querySelector('canvas');
+      const gl = c && (c.getContext('webgl2') || c.getContext('webgl'));
+      const d = gl && gl.getExtension('WEBGL_debug_renderer_info');
+      return d ? String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL)) : '不明';
+    } catch (e) { return '取得失敗'; }
+  }
+
+  // longtask = メインスレッドを50ms以上止めた処理。25秒級のフリーズはここに1件で出る。
+  function perfObserve() {
+    if (!window.PerformanceObserver) return;
+    try {
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) {
+          const ms = Math.round(e.duration);
+          perf.tasks.push(ms);
+          if (ms >= 200) perf.spikes.push({ ms, at: Math.round(e.startTime / 1000) });
+          if (perf.spikes.length > 12) perf.spikes.shift();
+          if (perf.tasks.length > 2000) perf.tasks.shift();
+        }
+      }).observe({ entryTypes: ['longtask'] });
+    } catch (e) {}
+  }
+
+  function perfTick(t) {
+    requestAnimationFrame(perfTick);
+    if (perf.last) { const ms = t - perf.last; if (ms > perf.worst) perf.worst = ms; }
+    perf.last = t; perf.frames++;
+    if (!perf.winStart) perf.winStart = t;
+    if (t - perf.winStart >= 1000) {
+      perf.fps = (perf.frames * 1000) / (t - perf.winStart);
+      perf.frames = 0; perf.winStart = t;
+      if (perf.on) perfPaint();
+    }
+  }
+
+  function perfText() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);   // コアの setPixelRatio と同じ上限
+    const mp = (Math.round(innerWidth * dpr) * Math.round(innerHeight * dpr)) / 1e6;
+    const maxTask = perf.tasks.length ? Math.max.apply(null, perf.tasks) : 0;
+    const big = perf.tasks.filter((m) => m >= 200);
+    const st = readState();
+    return [
+      `FPS         : ${perf.fps.toFixed(1)}`,
+      `最悪フレーム : ${perf.worst.toFixed(0)} ms`,
+      `longtask    : ${perf.tasks.length}件 / 最大 ${maxTask} ms`,
+      `200ms超     : ${big.length}件 ${perf.spikes.slice(-4).map((s) => s.ms + 'ms(' + s.at + '秒)').join(' ')}`,
+      `描画px      : ${mp.toFixed(2)} MP (DPR ${dpr} / ${innerWidth}x${innerHeight})`,
+      `GPU         : ${perf.gpu}`,
+      `画質設定    : ${uiSettings.quality} ※コア未消費(index.html は UI_SETTINGS 未読)`,
+      st ? `位置        : ${st.pos.x.toFixed(0)},${st.pos.y.toFixed(0)},${st.pos.z.toFixed(0)} / ${st.biome}` : '位置        : state()休止中',
+    ].join('\n');
+  }
+
+  function perfPaint() {
+    if (!perf.dom) return;
+    perf.dom.textContent = perfText();
+  }
+
+  function perfToggle(show) {
+    perf.on = (show === undefined) ? !perf.on : !!show;
+    if (perf.on && !perf.dom) {
+      perf.dom = el('pre',
+        'position:fixed;top:8px;right:8px;z-index:99999;margin:0;padding:8px 10px;' +
+        'font:11px/1.5 ui-monospace,Consolas,monospace;color:#cfe9ff;white-space:pre;' +
+        'background:rgba(8,14,24,.82);border:1px solid rgba(120,180,255,.35);border-radius:6px;' +
+        'pointer-events:none;text-shadow:0 1px 2px #000', document.body);
+      perf.gpu = perfGpu();
+    }
+    if (perf.dom) perf.dom.style.display = perf.on ? '' : 'none';
+    if (perf.on) perfPaint();
+  }
+
+  function perfReset() { perf.worst = 0; perf.tasks = []; perf.spikes = []; }
+
+  function initPerf() {
+    perfObserve();
+    requestAnimationFrame(perfTick);
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyP' || e.repeat) return;         // コアも ui.js も P は未使用
+      if (e.ctrlKey || e.metaKey || e.altKey) return;    // Ctrl+P(印刷)等は邪魔しない
+      perfToggle();
+    });
+    window.UI = window.UI || {};
+    window.UI.perf = () => { const s = perfText(); console.log(s); return s; };
+    window.UI.perfReset = () => { perfReset(); return true; };
+  }
+
+  // =====================================================================
   // 起動
   // =====================================================================
   function start() {
@@ -2302,6 +2400,7 @@
     exposeFXHooks(); // window.spawnDamagePopup / spawnHitEffect を公開
     requestAnimationFrame(tick);
 
+    initPerf();        // ⑤ 計測オーバーレイ（Pキーで開閉）。計測自体は常時ON
     publishSettings(); // window.UI_SETTINGS を起動時に公開（コアが感度/画質を読めるように）
 
     // UI操作口（1号機はEキー処理から window.UI.toggle('inventory')、Escから open('menu') を呼ぶ＝委譲）
@@ -2363,7 +2462,7 @@
       }
     });
 
-    console.info('[ui] HUD＋FX＋インベントリ起動（3号機）。state()=HUD / spawnDamagePopup()=戦闘演出 / UI.toggle("inventory")。');
+    console.info('[ui] HUD＋FX＋インベントリ起動（3号機）。state()=HUD / spawnDamagePopup()=戦闘演出 / UI.toggle("inventory")。Pキー＝計測オーバーレイ（UI.perf()でテキスト取得）。');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
