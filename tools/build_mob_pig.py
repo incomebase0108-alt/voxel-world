@@ -26,16 +26,21 @@ def set_origin(o,p):
     scene.cursor.location=p;bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
 
 BODY=[]
-sphere(BODY,"Body",(0,0,0.46),(0.20,0.30,0.21),M_PIG,segs=18,rings=12)  # 丸い胴
+sphere(BODY,"Body",(0,0,0.46),(0.205,0.32,0.215),M_PIG,segs=20,rings=13)  # 丸い胴（バレル）
+sphere(BODY,"Chest",(0,0.20,0.47),(0.185,0.16,0.205),M_PIG,segs=18,rings=12) # 肩・胸
+sphere(BODY,"Rump",(0,-0.22,0.45),(0.185,0.15,0.205),M_PIG,segs=18,rings=12) # 尻の張り
 HEAD=[]
-sphere(HEAD,"Head",(0,0.32,0.50),(0.14,0.13,0.13),M_PIG,segs=16,rings=10)
-sphere(HEAD,"Snout",(0,0.46,0.46),(0.08,0.06,0.07),M_SNOUT)
-sphere(HEAD,"NoseL",(0.025,0.51,0.46),(0.015,0.01,0.015),M_NOSE,segs=8,rings=6)
-sphere(HEAD,"NoseR",(-0.025,0.51,0.46),(0.015,0.01,0.015),M_NOSE,segs=8,rings=6)
-sphere(HEAD,"EyeL",(0.07,0.42,0.55),(0.016,0.012,0.018),M_EYE,segs=8,rings=6)
-sphere(HEAD,"EyeR",(-0.07,0.42,0.55),(0.016,0.012,0.018),M_EYE,segs=8,rings=6)
-cyl(HEAD,"EarL",(0.09,0.30,0.60),0.03,0.02,M_PIG,verts=8,rot=(math.radians(20),0,0))
-cyl(HEAD,"EarR",(-0.09,0.30,0.60),0.03,0.02,M_PIG,verts=8,rot=(math.radians(20),0,0))
+sphere(HEAD,"Head",(0,0.32,0.50),(0.145,0.135,0.135),M_PIG,segs=16,rings=11)
+sphere(HEAD,"Snout",(0,0.46,0.45),(0.088,0.078,0.052),M_SNOUT)          # 平たい鼻面
+sphere(HEAD,"SnoutDisc",(0,0.505,0.45),(0.062,0.013,0.056),M_NOSE)     # 鼻先の平らな円盤
+sphere(HEAD,"NoseL",(0.022,0.515,0.45),(0.012,0.012,0.012),M_EYE,segs=8,rings=6) # 鼻孔
+sphere(HEAD,"NoseR",(-0.022,0.515,0.45),(0.012,0.012,0.012),M_EYE,segs=8,rings=6)
+sphere(HEAD,"EyeL",(0.075,0.42,0.55),(0.016,0.012,0.018),M_EYE,segs=8,rings=6)
+sphere(HEAD,"EyeR",(-0.075,0.42,0.55),(0.016,0.012,0.018),M_EYE,segs=8,rings=6)
+earL=sphere(HEAD,"EarL",(0.10,0.29,0.59),(0.05,0.022,0.065),M_PIG,segs=10,rings=7) # 大きめ前垂れ耳
+earR=sphere(HEAD,"EarR",(-0.10,0.29,0.59),(0.05,0.022,0.065),M_PIG,segs=10,rings=7)
+earL.rotation_euler=(math.radians(35),0,math.radians(-12))
+earR.rotation_euler=(math.radians(35),0,math.radians(12))
 # くるりんとした尾
 TAIL=[]
 cyl(TAIL,"Tail",(0,-0.30,0.52),0.012,0.08,M_PIG,verts=8,rot=(math.radians(-50),0,0))

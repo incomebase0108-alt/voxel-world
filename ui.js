@@ -42,6 +42,7 @@
     '葉':'block_leaves', '砂':'block_sand', '雪':'block_snow',
     '木材':'block_planks', '石レンガ':'block_stonebrick', 'ガラス':'block_glass',
     '肉':'item_meat', '卵':'item_egg', 'コイン':'item_coin', 'りんご':'item_apple',
+    'ひまわりの種':'item_himawari',
   };
   function iconUrl(entry) {
     if (!entry) return null;

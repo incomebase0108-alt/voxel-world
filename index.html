@@ -134,8 +134,47 @@ const SWATCH = {
 const HOTBAR = [B.grass, B.dirt, B.stone, B.log, B.leaves, B.sand, B.snow, B.planks, B.stonebrick, B.glass];
 const counts = {};          // ブロック種別ごとの所持数（破壊で増え、設置で減る）
 HOTBAR.forEach(b => counts[b] = 0);
-const itemCounts = { meat:0, egg:0, coin:0, apple:0, coal:0, iron:0, gold:0 }; // ドロップ品・採掘素材の所持数（早期宣言＝ロード時に参照するため）
+const itemCounts = { meat:0, egg:0, coin:0, apple:0, coal:0, iron:0, gold:0, himawari:0 }; // ドロップ品・採掘素材の所持数（himawari=ペットの大好物。早期宣言＝ロード時に参照）
 const bossKills = {}; // ⑥ ボス種別ごとの討伐数（達成感の記録。セーブ・H診断に反映）
+// 📖 物語の進行状態（章/フラグ）。セーブに含めて復元。3号機へは getQuestState() で渡す。
+//   chapter: prologue(序章・脱走前) → escape(脱走演出中) → world(自由探索) → boss(女王さくら出現中) → cleared(撃破)
+function defaultProgress() { return { version: 1, chapter: 'prologue', escaped: false, queenSeen: false, queenDefeated: false, bred: false, dexMilestone: 0 }; }
+let progress = defaultProgress();
+// 📖 クエスト/章立て（データのみ。表示は3号機が window.getQuestState() を読んで描画）。
+//   章: prologue/escape（序章＝脱走）→ world（自由探索＝なつかせ/共闘）→ boss（女王さくら出現）→ cleared（撃破）
+const CHAPTER_NAMES = { prologue: '序章「脱走」', escape: '序章「脱走」', world: '第一章「チンチラ革命」', boss: '最終章「女王さくら」', cleared: 'エピローグ' };
+function getQuestState() {
+  const petN = (typeof pets !== 'undefined') ? pets.length : 0;
+  const allyN = (typeof companions !== 'undefined') ? companions.length : 0;
+  const ch = progress.chapter;
+  let objectives;
+  if (ch === 'prologue' || ch === 'escape') {
+    objectives = [
+      { id: 'wake', label: 'ケージの中で目を覚ます', done: true },
+      { id: 'door', label: 'まぐろが扉を開けるのを待つ', done: ch === 'escape' || progress.escaped },
+      { id: 'escape', label: '1階の玄関から脱走する（妻に捕まらない）', done: !!progress.escaped },
+    ];
+  } else if (ch === 'cleared') {
+    objectives = [ { id: 'win', label: '女王さくらを倒した — 革命成就', done: true } ];
+  } else { // world / boss（第1章＝自由の世界）
+    const dexN = (typeof dexSeen !== 'undefined') ? dexSeen.size : 0;
+    objectives = [
+      { id: 'tame', label: `野生チンチラをなつかせる（${petN}/${MAX_PETS}）`, done: petN >= 1 },
+      { id: 'dex', label: `毛色図鑑を集める（${dexN}/8色）`, done: dexN >= 4 },
+      { id: 'breed', label: '繁殖で新しい仲間を生む', done: !!progress.bred },
+      { id: 'ally', label: '小動物を仲間にして共闘する', done: allyN >= 1 },
+      { id: 'find', label: '「さくらの間」で女王さくらを見つける', done: !!progress.queenSeen },
+      { id: 'boss', label: '最終ボス・女王さくらを倒す', done: !!progress.queenDefeated },
+    ];
+  }
+  return {
+    chapter: ch, chapterName: CHAPTER_NAMES[ch] || ch,
+    escaped: !!progress.escaped, queenSeen: !!progress.queenSeen, queenDefeated: !!progress.queenDefeated,
+    pets: petN, petMax: MAX_PETS, allies: allyN,
+    objectives, done: objectives.every(o => o.done),
+  };
+}
+window.getQuestState = () => { try { return getQuestState(); } catch (e) { return null; } }; // 3号機UI向けの読み取り口
 
 // ===================================================================
 // ⑤ (D)バランスの数値基盤：ゲームの体感を決める数値を1か所に集約
@@ -164,13 +203,16 @@ const CFG = {
     armorPerPiece: 0.12, shieldDef: 0.10, defenseCap: 0.6, // 装備：防具1枚/盾の被ダメ軽減と上限
   },
   mob: {
-    totalCap: 12, hostileCap: 7, neutralCap: 8,        // 同時存在の総/敵性/中立 上限
+    totalCap: 18, hostileCap: 7, neutralCap: 13,       // 同時存在の総/敵性/中立 上限（チンチラだらけ＝中立多め）
     spawnMin: 18, spawnMax: 40, caveMin: 6, caveMax: 18, despawn: 75, // 地上/地下の湧き距離・消滅距離
+    lodNear: 22, lodFar: 48,                           // LOD：近(<22)=フル / 中(22-48)=アニメ・仕草凍結 / 遠(>48)=非表示＋AI間引き
+
     spawnEveryMin: 2, spawnEveryRand: 2,               // 湧き判定の間隔（最小＋ランダム秒）
     speedBoss: 1.4, speedHostile: 2.2, speedNeutral: 1.3, speedVillager: 1.0, // 移動速度
     hp: { cow:6, sheep:6, chicken:4, pig:6, horse:10, villager:6, slime:4, zombie:10, skeleton:8, golem:30, dragon:50, skeleton_king:60, demon:80, kraken:120, queen_sakura:240,
           blacksmith:8, merchant:6, farmer:6, guard:14, child:4, elder:5, woman:6, baker:6,
-          fish:3, fish_koi:3, fish_tropical:3, fish_puffer:4, soldier_spear:16, soldier_sword:18, soldier_captain:26 }, // 種別ごとの体力
+          fish:3, fish_koi:3, fish_tropical:3, fish_puffer:4, soldier_spear:16, soldier_sword:18, soldier_captain:26,
+          weasel:6, bird:7, snake:6, wolf:14, rabbit:5, guineapig:5, squirrel:5, hedgehog:6 }, // 種別ごとの体力（天敵/仲間）
   },
   level: {
     baseExp: 12, curve: 1.6,    // 次Lvまでの必要EXP = round(baseExp * Lv^curve)
@@ -263,20 +305,29 @@ const WATER_LEVEL = SEA - 2; // 水面の高さ（これ以下の窪地は水で
 function continental(wx, wz) { return valueNoise(wx*0.006 + 100, wz*0.006 + 100); }
 function heightAt(wx, wz) {
   const cont = continental(wx, wz);          // 0..1
-  const offset = (cont - 0.45) * 26;         // 海(低)〜内陸(高)の連続オフセット（境界の崖を抑える）
+  const offset = (cont - 0.33) * 26;         // 海(低)〜内陸(高)の連続オフセット（0.33＝陸の多いチンチラ世界＝岩場/森が主役）
   const h = SEA + Math.floor(fbm(wx*0.018, wz*0.018) * AMP * 0.55 + offset);
   return Math.max(1, Math.min(HEIGHT-8, h));
 }
-// バイオーム（地表ブロックの決定に使用）
+// バイオーム（地表ブロックの決定に使用）。チンチラの故郷＝岩場(rocky)＋森(forest)を主役に。
+//   ※valueNoise は低めに偏る分布なので、しきい値は実測分布に合わせて調整（岩場/森が land の主役になるよう）。
 function biomeAt(wx, wz) {
-  if (heightAt(wx, wz) <= WATER_LEVEL + 1) return 'ocean';  // 水際・海
-  const temp = valueNoise(wx*0.005 + 50, wz*0.005 + 50);
-  if (temp > 0.66) return 'desert';
-  if (temp < 0.34) return 'snow';
+  const h = heightAt(wx, wz);
+  if (h <= WATER_LEVEL + 1) return 'ocean';                 // 水際・海
+  const veg  = valueNoise(wx*0.009 - 30, wz*0.009 - 30);    // 植生/岩のムラ
+  const temp = valueNoise(wx*0.006 + 50, wz*0.006 + 50);
+  if (h >= SEA + 5) return 'rocky';                          // 高所＝岩山（チンチラの故郷）
+  if (veg < 0.17) return 'rocky';                            // 低地の岩場
+  if (veg > 0.29) return 'forest';                          // 森（木が密に茂る）
+  if (temp > 0.33) return 'desert';
+  if (temp < 0.155) return 'snow';
   return 'plains';
 }
 function surfaceBlock(bi) {
-  return (bi === 'desert' || bi === 'ocean') ? B.sand : bi === 'snow' ? B.snow : B.grass;
+  if (bi === 'desert' || bi === 'ocean') return B.sand;
+  if (bi === 'snow') return B.snow;
+  if (bi === 'rocky') return B.stone;                       // 岩場＝むき出しの石
+  return B.grass;                                           // plains / forest
 }
 function treeAt(wx, wz) {
   // まばらに木を生やす（決定論的）
@@ -368,7 +419,7 @@ function generateChunk(cx, cz) {
     const wx = cx*CHUNK+x, wz = cz*CHUNK+z;
     const h = heightAt(wx, wz);
     const top = surfaceBlock(biomeAt(wx, wz));
-    const sub = (top === B.sand) ? B.sand : B.dirt; // 砂地は地下も砂
+    const sub = (top === B.sand) ? B.sand : (top === B.stone) ? B.stone : B.dirt; // 砂地は地下も砂／岩場は地下も石
     for (let y=0; y<=h && y<HEIGHT; y++) {
       let b;
       if (y === h)       b = top;
@@ -389,12 +440,15 @@ function generateChunk(cx, cz) {
     for (let y=h+1; y<=WATER_LEVEL && y<HEIGHT; y++) data[idx(x,y,z)] = B.water;
   }
   // 木（葉が隣チャンクにはみ出しても整合するよう、周囲2マスまで走査して刈り込み配置）
+  //   森(forest)=密に茂る／草原=ほどほど／雪原=まばら。砂漠・海・岩場には生やさない。
   for (let z=-2; z<CHUNK+2; z++) for (let x=-2; x<CHUNK+2; x++) {
     const wx = cx*CHUNK+x, wz = cz*CHUNK+z;
-    if (!treeAt(wx, wz)) continue;
-    const h = heightAt(wx, wz);
     const bi = biomeAt(wx, wz);
-    if (h <= WATER_LEVEL || (bi !== 'plains' && bi !== 'snow')) continue; // 砂漠・海には生やさない
+    if (bi !== 'plains' && bi !== 'snow' && bi !== 'forest') continue;
+    const thr = bi === 'forest' ? 0.855 : bi === 'plains' ? 0.972 : 0.988; // 森ほど低しきい＝密（ただし歩ける程度）
+    if (hash2(wx*1.7+11, wz*1.7+7) <= thr) continue;
+    const h = heightAt(wx, wz);
+    if (h <= WATER_LEVEL) continue;
     const th = 4 + (hashi(wx,wz) % 3); // 幹の高さ 4〜6
     for (let t=1; t<=th; t++) stamp(x, h+t, z, B.log);
     const top = h + th;
@@ -404,6 +458,20 @@ function generateChunk(cx, cz) {
           if (Math.abs(lx)+Math.abs(lz)+Math.abs(ly-top) > 3) continue;
           stamp(x+lx, ly, z+lz, B.leaves, true);
         }
+  }
+  // 岩場の岩（岩場biome＝点在する石の塊。チンチラが跳ねて遊べる起伏）。葉のはみ出し同様、周囲2マス走査
+  for (let z=-2; z<CHUNK+2; z++) for (let x=-2; x<CHUNK+2; x++) {
+    const wx = cx*CHUNK+x, wz = cz*CHUNK+z;
+    const bi = biomeAt(wx, wz);
+    if (bi !== 'rocky') continue;
+    const h = heightAt(wx, wz);
+    if (h <= WATER_LEVEL) continue;
+    if (hash2(wx*2.3+3, wz*2.3+5) <= 0.88) continue;        // 約12%に岩塊
+    const s = 1 + (hashi(wx, wz) % 2);                       // 大きさ 1〜2
+    for (let by=0; by<=s; by++) {
+      const r = s - by;
+      for (let bx=-r; bx<=r; bx++) for (let bz=-r; bz<=r; bz++) stamp(x+bx, h+1+by, z+bz, B.stone, true);
+    }
   }
   // ② 構造物（村・ダンジョン）。チャンク跨ぎは各チャンクが自分の領域だけ stamp する
   buildStructures(cx, cz, stamp);
@@ -440,7 +508,7 @@ function buildStructures(cx, cz, stamp) {
       if (hash2(gx*13+1, gz*13+7) > 0.34) continue; // 約1/3のセルに村
       const ox = gx*VILLAGE_CELL + 8 + Math.floor(hash2(gx+2, gz+5) * (VILLAGE_CELL-16));
       const oz = gz*VILLAGE_CELL + 8 + Math.floor(hash2(gx+9, gz+3) * (VILLAGE_CELL-16));
-      if (biomeAt(ox, oz) !== 'plains') continue;       // 平原のみ
+      { const vb = biomeAt(ox, oz); if (vb !== 'plains' && vb !== 'forest') continue; } // 平原・森の開けた所
       if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue; // 水際は不可
       buildVillage(ox, oz, gx, gz, sw);
     }
@@ -460,7 +528,7 @@ function buildStructures(cx, cz, stamp) {
       const ox = gx*FORT_CELL + 12 + Math.floor(hash2(gx+11, gz+6) * (FORT_CELL-24));
       const oz = gz*FORT_CELL + 12 + Math.floor(hash2(gx+8, gz+13) * (FORT_CELL-24));
       const bi = biomeAt(ox, oz);
-      if (bi !== 'plains' && bi !== 'snow') continue; // 平地/雪原（丘含む）
+      if (bi !== 'plains' && bi !== 'snow' && bi !== 'forest') continue; // 平地/雪原/森
       if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue;
       buildFort(ox, oz, sw);
     }
@@ -481,7 +549,7 @@ function buildStructures(cx, cz, stamp) {
       const ox = gx*CASTLE_CELL + 20 + Math.floor(hash2(gx+17, gz+23) * (CASTLE_CELL-40));
       const oz = gz*CASTLE_CELL + 20 + Math.floor(hash2(gx+29, gz+11) * (CASTLE_CELL-40));
       const bi = biomeAt(ox, oz);
-      if (bi !== 'plains' && bi !== 'snow') continue;
+      if (bi !== 'plains' && bi !== 'snow' && bi !== 'forest') continue;
       if (heightAt(ox, oz) <= WATER_LEVEL + 1) continue;
       buildCastle(ox, oz, gx, gz, sw);
     }
@@ -931,16 +999,20 @@ function serializeWorld() {
     equippedSkills: [...equippedSkills],                              // 装備中の必殺技（②）
     counts, itemCounts,                                               // インベントリ
     bossKills: { ...bossKills }, sakuraCape: hasSakuraCape,           // ⑥ ボス討伐数／さくらの毛皮マント所持
+    progress: { ...progress },                                        // 📖 物語の進行（章/脱走/ボス撃破フラグ）
+    dex: [...dexSeen],                                                // 🧬 図鑑：発見した毛色
     playerModel: currentPlayerFile,                                   // 選択アバター
     equip: { weapon: currentWeapon, owned: [...ownedWeapons], armor: { ...equip.armor }, shield: equip.shield, ownedShield }, // 装備
     time: { dayTime, weather, autoWeather, weatherTimer },            // 時刻・天候
     // モブ（騎乗中の馬も含む。位置/向き/HP/状態を保存し、ロード時に再スポーン）
-    mobs: mobs.filter(m => !m.dying).map(m => ({ // 死亡演出中(HP0)のmobはセーブしない＝死んだ仲間/敵を残さない
+    mobs: mobs.filter(m => !m.dying && !m.noSave).map(m => ({ // 死亡演出中(HP0)/house NPC(毎回再生成)はセーブしない
       t: m.def.type,
       x: +m.obj.position.x.toFixed(2), y: +m.obj.position.y.toFixed(2), z: +m.obj.position.z.toFixed(2),
       ry: +m.obj.rotation.y.toFixed(3), hp: m.hp, st: m.state,
       hm: m.home || undefined, // 住人NPCの定住アンカー
       cp: m.companion ? 1 : undefined, cm: m.companion ? m.cmdMode : undefined, mhp: m.companion ? m.maxHp : undefined, // 仲間（種別/指示/最大HP）
+      pt: m.pet ? 1 : undefined, pn: m.pet ? m.petName : undefined, ptr: m.pet ? (m.traits || []).join(',') : undefined, // ペット（名前/性格/機嫌/空腹）
+      pmd: m.pet ? Math.round(m.mood) : undefined, phg: m.pet ? Math.round(m.petHunger) : undefined,
     })),
   };
 }
@@ -1007,6 +1079,14 @@ function loadWorld(slot = currentSlot) {
     if (obj.itemCounts) for (const k in obj.itemCounts) if (itemCounts[k] !== undefined && Number.isFinite(obj.itemCounts[k])) itemCounts[k] = Math.max(0, obj.itemCounts[k]|0);
     if (obj.bossKills && typeof obj.bossKills === 'object') for (const k in obj.bossKills) if (Number.isFinite(obj.bossKills[k])) bossKills[k] = Math.max(0, obj.bossKills[k]|0); // ⑥ 討伐数復元
     if (obj.sakuraCape) hasSakuraCape = true; // さくらの毛皮マント復元
+    if (obj.progress && typeof obj.progress === 'object') { // 📖 進行フラグ復元（壊れ値は既定で補完）
+      const p = defaultProgress();
+      if (typeof obj.progress.chapter === 'string') p.chapter = obj.progress.chapter;
+      p.escaped = !!obj.progress.escaped; p.queenSeen = !!obj.progress.queenSeen; p.queenDefeated = !!obj.progress.queenDefeated;
+      p.bred = !!obj.progress.bred; p.dexMilestone = Number.isFinite(obj.progress.dexMilestone) ? obj.progress.dexMilestone : 0;
+      progress = p;
+    }
+    if (Array.isArray(obj.dex)) { dexSeen.clear(); for (const c of obj.dex) if (CHIN_COLORS.indexOf(c) >= 0) dexSeen.add(c); } // 🧬 図鑑復元
     if (typeof obj.playerModel === 'string') currentPlayerFile = obj.playerModel;
     if (obj.equip && typeof obj.equip === 'object') { // 装備の復元（防御的に）
       if (Array.isArray(obj.equip.owned)) for (const w of obj.equip.owned) if (WEAPONS[w]) ownedWeapons.add(w);
@@ -1057,6 +1137,7 @@ window.VoxelGame = {
   // 3号機UI向け：毎フレーム呼ばれる軽量スナップショット（実体は全てランタイムで解決）
   state: () => ({
     hp, maxHp: maxHpEff(), hunger, maxHunger: P.maxHunger, breath, maxBreath: P.breathMax,
+    heat: Math.round(heat), overheat: heat >= 85,                  // 体温（暑さ管理・チンチラ）
     level: playerLevel, exp: Math.round(playerExp), expToNext: expToNext(playerLevel),
     inWater: breath < P.breathMax, selBlock,
     hotbar: HOTBAR.map(b => ({ block:b, name:NAMES[b], swatch:SWATCH[b], count:counts[b]||0, active:b===selBlock })),
@@ -1082,6 +1163,9 @@ window.VoxelGame = {
     // 仲間パーティ（3号機HUDの仲間表示・指示ボタン用）。操作は VoxelGame.recruit / commandCompanion
     companions: companions.map(c => ({ id:c.cid, name:JOB_LABEL[c.def.type]||c.def.type, type:c.def.type, hp:Math.ceil(c.hp), maxHp:c.maxHp||COMPANION_HP, mode:c.cmdMode })),
     companionMax: MAX_COMPANIONS,
+    // 🐾 ペット（機嫌/癖。将来のHUD表示用。操作は Pキー＝petInteract）
+    pets: pets.map(p => ({ id:p.pid, name:p.petName, type:p.def.type, mood:Math.round(p.mood), moodBand:petMoodBand(p.mood), hunger:Math.round(p.petHunger), traits:(p.traits||[]).slice() })),
+    petMax: MAX_PETS,
     bossKills: { ...bossKills }, sakuraCape: hasSakuraCape,  // ① 討伐記録（3号机ステータス画面用）＋さくらの毛皮マント所持
     // 必殺技（②）：習得済みが1つも無ければ undefined＝3号機HUD非表示。equipped/list/energy を公開
     skills: (() => {
@@ -1181,6 +1265,7 @@ const KF = [
 ].map(k => ({ t:k.t, sky:new THREE.Color(k.sky), sun:new THREE.Color(k.sun), si:k.si, amb:k.amb }));
 
 const WHITE = new THREE.Color(0xffffff);
+const PETAL_SKY = new THREE.Color(0xffd9e6); // 🌸 桜吹雪の春の桃色空
 const _sky = new THREE.Color(), _sun = new THREE.Color();
 function updateSky(dt) {
   dayTime = (dayTime + dt / Math.max(1, CFG.time.dayLength)) % 1; // dayLength=0等での Infinity/NaN を防ぐ
@@ -1196,6 +1281,7 @@ function updateSky(dt) {
   if (weather === 'rain')         { _sky.multiplyScalar(0.7); si *= 0.55; amb *= 0.85; }
   else if (weather === 'snow')    { _sky.lerp(WHITE, 0.18);   amb *= 0.95; }
   else if (weather === 'thunder') { _sky.multiplyScalar(0.5); si *= 0.40; amb *= 0.80; }
+  else if (weather === 'petal' && si > 0.2) { _sky.lerp(PETAL_SKY, 0.16); amb *= 1.05; } // 🌸 桜吹雪＝昼間はやわらかな春の桃色空（夜は控えめ）
   // 雷の閃光：thunder時に一定間隔で発生し、空とライトを一瞬ブースト（音は後付けトリガーだけ用意）
   if (weather === 'thunder') {
     nextStrike -= dt;
@@ -1218,17 +1304,18 @@ function updateSky(dt) {
 }
 
 // ===== 軸2: 天候（パーティクル＋雷＋自動遷移）=====
-let weather = 'clear';     // 'clear' | 'rain' | 'snow' | 'thunder'
+let weather = 'clear';     // 'clear' | 'rain' | 'snow' | 'thunder' | 'petal'(桜吹雪)
 let flash = 0;             // 雷の閃光の強さ（0..1、減衰）
 let nextStrike = 4;        // 次の落雷までの秒数
 let autoWeather = true;    // 自動天候変化（Jキーで on/off）
 let weatherTimer = 30 + Math.random()*30; // 次の自動遷移までの秒数
 // 自然な遷移テーブル（晴れは続きやすい／雷は雨の強状態でやがて雨か晴れへ）
 const WEATHER_TRANS = {
-  clear:   ['clear','clear','rain','snow'],
+  clear:   ['clear','clear','rain','snow','petal'],   // 晴れは続きやすい。たまに桜吹雪
   rain:    ['rain','thunder','clear','rain'],
   snow:    ['snow','snow','clear'],
   thunder: ['rain','rain','clear'],
+  petal:   ['petal','clear','clear'],                  // 桜吹雪はやがて晴れへ
 };
 function stepWeatherAuto(dt) {
   if (!autoWeather) return;
@@ -1258,10 +1345,15 @@ function makeField(count, color, size, opacity) {
 }
 const rainField = makeField(2000, 0x9fb8ff, 0.12, 0.55);
 const snowField = makeField(1200, 0xffffff, 0.20, 0.90);
+const petalField = makeField(700, 0xffc6da, 0.34, 0.95); // 🌸 桜吹雪（ピンクの花びら。P4で素材差し替え予定）
+// 天候→2号機の天候音マッピング（rain/snow/clear。実装が無くても typeof で安全）
+const WEATHER_AUDIO = { clear: 'clear', rain: 'rain', thunder: 'rain', snow: 'snow', petal: 'clear' };
 function setWeather(w) {
   weather = w;
   rainField.points.visible = (w === 'rain' || w === 'thunder');
   snowField.points.visible = (w === 'snow');
+  petalField.points.visible = (w === 'petal');
+  try { if (window.setWeatherAudio) window.setWeatherAudio(WEATHER_AUDIO[w] || 'clear'); } catch (e) {} // 天候音は2号機口を呼ぶだけ
 }
 window.setWeather = setWeather; // コンソールからも手動切替可
 function updateField(f, dt, baseSpeed, sway) {
@@ -1279,9 +1371,46 @@ function updateField(f, dt, baseSpeed, sway) {
   f.points.geometry.attributes.position.needsUpdate = true;
   f.points.position.set(player.pos.x, player.pos.y - 2, player.pos.z); // 箱をプレイヤー追従
 }
+// 🌸 桜吹雪のクローズアップ＝4号機の花びらメッシュ(fx_petal_sakura)を少数プールで舞わせる
+let _petalPool = null;
+function ensurePetalPool() {
+  if (_petalPool || !fxTemplates['fx_petal_sakura']) return;
+  _petalPool = [];
+  for (let i = 0; i < 14; i++) {
+    const o = fxTemplates['fx_petal_sakura'].scene.clone(true);
+    o.visible = false; o.scale.setScalar(0.5 + Math.random() * 0.5); scene.add(o);
+    _petalPool.push({ obj: o, vx: 0, vy: 0, spin: Math.random() * 6 });
+  }
+}
+function updatePetalMeshes(dt) {
+  if (weather !== 'petal') { if (_petalPool) for (const p of _petalPool) if (p.obj.visible) p.obj.visible = false; return; }
+  ensurePetalPool(); if (!_petalPool) return;
+  for (const p of _petalPool) {
+    if (!p.obj.visible) { // 上空から再投入
+      p.obj.visible = true;
+      p.obj.position.set(player.pos.x + (Math.random() * 16 - 8), player.pos.y + 6 + Math.random() * 4, player.pos.z + (Math.random() * 16 - 8));
+      p.vx = (Math.random() * 2 - 1) * 0.6; p.vy = -(0.8 + Math.random() * 0.6);
+    }
+    p.spin += dt * 2;
+    p.obj.position.x += p.vx * dt + Math.sin(p.spin) * 0.3 * dt;
+    p.obj.position.y += p.vy * dt;
+    p.obj.position.z += Math.cos(p.spin * 0.8) * 0.3 * dt;
+    p.obj.rotation.set(p.spin, p.spin * 0.7, p.spin * 0.5); // ひらひら回転
+    if (p.obj.position.y < player.pos.y - 3) p.obj.visible = false;
+  }
+}
+// 🌸 花びらバースト（繁殖/仲良し演出）：指定地点で数枚ぱっと舞い上がって散る
+function spawnPetalBurst(x, y, z, n) {
+  for (let i = 0; i < (n || 5); i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * 0.6;
+    spawnFx('fx_petal_sakura', x + Math.cos(a) * r, y + 0.3 + Math.random() * 0.5, z + Math.sin(a) * r, 1.4, 0.6 + Math.random() * 0.4);
+  }
+}
 function updateParticles(dt) {
   updateField(rainField, dt, 28, 0);     // 雨：速く落下
   updateField(snowField, dt, 3, 0.012);  // 雪：ゆっくり舞う
+  updateField(petalField, dt, 2.2, 0.03); // 🌸 桜吹雪：ふわっと横に流れて舞い落ちる（広域・軽量）
+  updatePetalMeshes(dt);                   // 🌸 近接の花びらメッシュ（4号機素材）
 }
 
 // ===== 雲（時間帯・天候の上に乗せる上層レイヤー）=====
@@ -1472,6 +1601,9 @@ let playerSlow = 0; // ★女王さくらの「おしっこ」被弾でのスリ
 let hasSakuraCape = false; // ★女王さくら撃破の超レア報酬「さくらの毛皮マント」（防御+10%・常時）
 let selBlock = B.grass;
 let thirdPerson = false; // false=一人称 / true=三人称（Fキーで切替）
+let topDown = true;      // true=見下ろし視点（真上やや後方から俯瞰）。Fキーで 一人称→三人称→見下ろし を循環
+let topDownH = 16;       // 見下ろしカメラの高さ（ホイールで増減）
+let topDownBack = 7;     // 見下ろしカメラの後方オフセット（斜め見下ろしの角度を作る）
 let avatarYaw = 0;       // 三人称アバターの向き（移動方向に追従）
 let camShake = 0;        // カメラシェイク強度（0..1・命中/会心/必殺/被弾で上げ、毎フレーム減衰）
 let ridingMob = null;    // 騎乗中の馬（Rキーで乗降）
@@ -1590,7 +1722,7 @@ function updatePlayer(dt) {
   } else {
     // 水面上・陸上：通常重力＋接地時のみジャンプ
     player.vel.y -= 26 * dt;
-    if (keys['Space'] && player.onGround) { player.vel.y = 8.6; player.onGround = false; window.playSFX && window.playSFX('jump'); }
+    if (keys['Space'] && player.onGround) { player.vel.y = 8.6; player.onGround = false; doubleJumpReady = true; window.playSFX && window.playSFX('jump'); }
   }
 
   player.onGround = false;
@@ -1612,10 +1744,18 @@ function updatePlayer(dt) {
   if (!Number.isFinite(player.yaw)) player.yaw = 0;       // NaN救済（不正な視点入力やセーブ破損から復帰）
   if (!Number.isFinite(player.pitch)) player.pitch = 0;   // 真上固定/空のみ表示を起こさない
   player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch)); // 念のため毎フレームclamp
-  camera.rotation.y = player.yaw;
-  camera.rotation.x = player.pitch;
-  camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
-  if (thirdPerson) { camera.translateZ(4.5); camera.position.y += 0.3; } // ローカル+Z=後方
+  if (topDown) {
+    // 見下ろし：プレイヤーの真上やや後方から俯瞰。マウスX(yaw)で世界が回る／高さはホイール
+    const bx = Math.sin(player.yaw) * topDownBack, bz = Math.cos(player.yaw) * topDownBack;
+    camera.up.set(0, 1, 0);
+    camera.position.set(player.pos.x + bx, player.pos.y + topDownH, player.pos.z + bz);
+    camera.lookAt(player.pos.x, player.pos.y + 1, player.pos.z);
+  } else {
+    camera.rotation.y = player.yaw;
+    camera.rotation.x = player.pitch;
+    camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
+    if (thirdPerson) { camera.translateZ(4.5); camera.position.y += 0.3; } // ローカル+Z=後方
+  }
   // ③ 手応え：カメラシェイク（命中/会心/必殺/被弾で上がる camShake をランダム微小オフセットで表現→減衰）
   if (camShake > 0.001) {
     const a = camShake * 0.22;
@@ -1637,7 +1777,12 @@ function updatePlayer(dt) {
       avatarYaw += diff * Math.min(1, dt * 12);          // 滑らかに回頭
     }
     playerAvatar.rotation.y = avatarYaw;
-    playerAvatar.visible = thirdPerson;
+    playerAvatar.visible = thirdPerson || topDown; // 見下ろしでも本体（さくら）を表示
+    // チンチラ主人公：アニメが無いので移動中はコードでぴょこぴょこ弾ませる（地上のみ）
+    if (playerIsChinchilla) {
+      playerHopT += dt * (moving ? 11 : 5);
+      if (moving && player.onGround) playerAvatar.position.y = player.pos.y + Math.max(0, Math.sin(playerHopT)) * 0.13;
+    }
     // 水中うつ伏せ：★物理と同じ「頭水中」基準で発火（浅瀬で腹だけ浸かる時に陸で泳ぐ誤発火を防ぐ＝判定一本化）。
     //   頭が水中＝潜水/遊泳の時だけ前傾90°。水面より上に出たら立ち姿勢へ。swimクリップがあればクリップ再生に委譲。
     const swimming = !ridingBoat && !ridingMob && playerHeadInWater(); // ★swim/walk の選択は playerHeadInWater() の即値のみで決める
@@ -1740,6 +1885,9 @@ let drownAccum = 0;
 let hurtFlash = 0;            // 被ダメージ時の赤フラッシュ（0..1、減衰）
 let fallPeakY = 0;           // 落下開始の最高到達点
 let prevOnGround = true;
+let heat = 0;                // 体温（チンチラは暑さに弱い。0..100。日中/砂漠で上昇、水/夜/日陰/砂浴びで低下）
+let heatHurtAccum = 0, heatWarnT = 0, dustCd = 0;
+let doubleJumpReady = false;  // チンチラの二段ジャンプ（空中でもう一度Spaceで跳ねる。接地で回復）
 
 function eatFood() {
   if (hunger >= P.maxHunger) return;
@@ -1749,6 +1897,38 @@ function eatFood() {
   hunger = Math.min(P.maxHunger, hunger + P.food[item]);
   window.playSFX && window.playSFX('eat');
   scheduleSave();
+}
+
+// 穴掘り：足元の下のブロックを掘って潜る（チンチラの巣作り）。鉱石は素材化。岩盤(最下層)は掘れない
+function burrowDown() {
+  const bx = Math.floor(player.pos.x), bz = Math.floor(player.pos.z);
+  const fy = Math.floor(player.pos.y - 0.1) - 1;
+  if (fy < 1) { if (typeof toast === 'function') toast('これ以上は掘れない（岩盤）'); return; }
+  const b = getBlock(bx, fy, bz);
+  if (b === B.air || b === B.water) { if (typeof toast === 'function') toast('掘れる地面がない（足元で K）'); return; }
+  if (b === B.chest || b === B.spawner) { if (typeof toast === 'function') toast('それは掘れない'); return; }
+  setBlock(bx, fy, bz, B.air);
+  const mat = ORE_MAT[b]; if (mat) { itemCounts[mat] = (itemCounts[mat] || 0) + 1; window.playSFX && window.playSFX('pickup'); }
+  window.playSFX && window.playSFX('break');
+  spawnFx('fx_collapse', bx + 0.5, player.pos.y - 0.6, bz + 0.5, 0.6, 0.8); // 掘った土煙
+}
+// 砂浴び：砂地/岩場で体温を一気に下げる（チンチラの十八番）。近くのペットの機嫌も上がる
+function dustBath() {
+  if (dustCd > 0) return;
+  const bx = Math.floor(player.pos.x), bz = Math.floor(player.pos.z);
+  const ground = getBlock(bx, Math.floor(player.pos.y) - 1, bz);
+  if (!player.onGround || (ground !== B.sand && ground !== B.stone)) { if (typeof toast === 'function') toast('砂浴びは砂地か岩場で（Nキー）'); return; }
+  dustCd = 3;
+  heat = Math.max(0, heat - 55);
+  spawnFx('fx_collapse', player.pos.x, player.pos.y + 0.2, player.pos.z, 1.4, 1.4); // 砂煙
+  window.playSFX && window.playSFX('place');
+  if (typeof pets !== 'undefined') for (const p of pets) {
+    if (Math.hypot(p.obj.position.x - player.pos.x, p.obj.position.z - player.pos.z) < 5) {
+      p.mood = clampPet(p.mood + 12, 0, 100); petEmote(p);
+      if (typeof startPetBath === 'function') startPetBath(p); // 飼い主に合わせて一緒に砂浴び
+    }
+  }
+  if (typeof toast === 'function') toast('🛁 砂浴びでさっぱり！（体温ダウン）');
 }
 
 function damage(amount, cause) {
@@ -1781,7 +1961,7 @@ window.VoxelGame.respawn = () => { playerDead = false; respawn(); return true; }
 function respawn() {
   const s = findSpawn(); player.pos.set(s.x, s.y, s.z);
   player.vel.set(0, 0, 0);
-  hp = maxHpEff(); breath = P.breathMax; hunger = P.maxHunger;
+  hp = maxHpEff(); breath = P.breathMax; hunger = P.maxHunger; heat = 0; heatHurtAccum = 0;
   fallPeakY = player.pos.y; prevOnGround = true;
   resetAvatarAnim(); // 復活直後に idle へ。swim 等の引きずりを断つ
   scheduleSave();
@@ -1798,6 +1978,7 @@ function updateHealth(dt) {
     if (Math.abs(dHp) < 10)    hpRatePerMin     = hpRatePerMin * 0.5 + (dHp * 60) * 0.5;
     prevHungerSample = hunger; prevHpSample = hp;
   }
+  if (player.onGround) doubleJumpReady = true; // 接地で二段ジャンプ回復
   // --- 落下ダメージ（水中は無効＝水に落ちても痛くない）---
   const feetWater = waterAtPlayer(0.5); // ★統一基準（足元・落下判定用）
   if (player.onGround && !prevOnGround && !feetWater) {
@@ -1831,6 +2012,31 @@ function updateHealth(dt) {
   if (hp > 0 && hp < maxHpEff() && hunger >= P.regenHungerMin && gameTime - lastDamageTime >= P.regenDelay) {
     regenAccum += dt;
     if (regenAccum >= P.regenInterval) { regenAccum = 0; hp = Math.min(maxHpEff(), hp + 1); hunger = Math.max(0, hunger - 0.5); scheduleSave(); }
+  }
+
+  // --- 体温（チンチラは暑さに弱い：日中/砂漠で上昇、水・夜・日陰・地下・砂浴びで低下）---
+  {
+    const bx = Math.floor(player.pos.x), bz = Math.floor(player.pos.z);
+    const bi = biomeAt(bx, bz);
+    const overcast = (weather === 'rain' || weather === 'snow' || weather === 'thunder'); // 雨/雪/雷＝曇って涼しい
+    const shade = (bi === 'rocky' || bi === 'forest' || bi === 'snow') || playerUnderground() || overcast;
+    let dH;
+    if (playerHeadInWater() || waterAtPlayer(0.2)) dH = -32;     // 水で急冷
+    else if (bi === 'desert' && isDay()) dH = 11;                // 砂漠の直射日光
+    else if (isDay() && !shade) dH = 4;                          // 日向（草原など）
+    else dH = -7;                                                // 夜・日陰・雪原・地下で涼む
+    heat = Math.max(0, Math.min(100, heat + dH * dt));
+    dustCd = Math.max(0, dustCd - dt);
+    heatWarnT = Math.max(0, heatWarnT - dt);
+    if (heat >= 85) {                                            // オーバーヒート＝じわじわダメージ＋スリップ＋警告
+      playerSlow = Math.max(playerSlow, 0.5);
+      heatHurtAccum += dt;
+      if (heatHurtAccum >= 1.6) { heatHurtAccum = 0; if (hp > 1) damage(2, 'heat'); }
+      if (heatWarnT <= 0) { heatWarnT = 4; if (typeof toast === 'function') toast('🥵 オーバーヒート！水・日陰・砂浴び(N)で冷やそう'); }
+    } else {
+      heatHurtAccum = 0;
+      if (heat >= 65 && heatWarnT <= 0) { heatWarnT = 7; if (typeof toast === 'function') toast('☀️ 暑い…日陰や水へ（Nで砂浴び）'); }
+    }
   }
 
   hurtFlash = Math.max(0, hurtFlash - dt * 3); // 赤フラッシュ減衰
@@ -1988,16 +2194,27 @@ canvas.addEventListener('mouseup', (e) => {
   if (e.button === 0) onAttackUp();      // 弓の発射・押下状態の解除
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', (e) => { // 見下ろし時：ホイールでカメラの高さ（ズーム）を調整
+  if (!topDown) return;
+  e.preventDefault();
+  topDownH = Math.max(6, Math.min(40, topDownH + Math.sign(e.deltaY) * 1.5));
+  topDownBack = topDownH * 0.44; // 高さに比例して斜め角を維持
+}, { passive: false });
 document.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code.startsWith('Digit')) {
     const n = parseInt(e.code.slice(5)) - 1;
     if (n >= 0 && n < HOTBAR.length) { selBlock = HOTBAR[n]; updateHotbar(); }
   }
-  if (e.code === 'KeyF') thirdPerson = !thirdPerson; // 一人称⇄三人称
+  if (e.code === 'KeyF') { // 視点を循環：一人称 → 三人称 → 見下ろし → 一人称
+    if (topDown) { topDown = false; thirdPerson = false; }
+    else if (thirdPerson) { thirdPerson = false; topDown = true; }
+    else { thirdPerson = true; }
+    if (typeof toast === 'function') toast('🎥 視点：' + (topDown ? '見下ろし（ホイールでズーム）' : thirdPerson ? '三人称' : '一人称'));
+  }
   if (e.code === 'KeyH') { diagVisible = !diagVisible; diagEl.style.display = diagVisible ? 'block' : 'none'; } // 診断パネル
-  if (e.code === 'KeyG') { // 天候を手動切替：晴れ→雨→雪→雷→…
-    const order = ['clear','rain','snow','thunder'];
+  if (e.code === 'KeyG') { // 天候を手動切替：晴れ→雨→雪→雷→桜吹雪→…
+    const order = ['clear','rain','snow','thunder','petal'];
     setWeather(order[(order.indexOf(weather) + 1) % order.length]);
     weatherTimer = 25 + Math.random()*35; // 手動切替時は自動遷移を先送り
   }
@@ -2010,6 +2227,14 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') fireSkillKey(3);
   if (e.code === 'KeyC') { const eq = effectiveEquipped(); if (eq[2] && !invOpen) useSkill(eq[2]); else cycleWeapon(); }
   if (e.code === 'KeyB') cycleWeapon(); // 武器切替の予備（C が必殺技で埋まっても切替可能に）
+  // チンチラの二段ジャンプ：空中で Space をもう一度（押した瞬間のみ・長押し連発は無効）
+  if (e.code === 'Space' && !e.repeat && !player.onGround && doubleJumpReady && !ridingBoat && !ridingMob && isPlaying() && !invOpen) {
+    player.vel.y = 8.0; doubleJumpReady = false; window.playSFX && window.playSFX('jump');
+    spawnFx('fx_collapse', player.pos.x, player.pos.y, player.pos.z, 0.6, 0.6); // 空中の砂煙
+  }
+  if (e.code === 'KeyK') burrowDown();    // 🕳 穴掘り（足元を掘って潜る＝チンチラの巣作り）
+  if (e.code === 'KeyN') dustBath();      // 🛁 砂浴び（砂地/岩場で体温ダウン）
+  if (e.code === 'KeyP') petInteract();  // 🐾 ペットをなでる/餌、または近くの動物をなつかせる
   if (e.code === 'KeyT') talkToNPC();   // 近くの住人に話しかける/取引
   if (e.code === 'KeyY') window.VoxelGame.recruit(); // 会話中の住人を仲間に（コイン）※3号機UIボタンと同じ口
   if (e.code === 'KeyU') { // 仲間の指示を一括トグル（追従→攻撃→待機）。3号機UIボタンと併用可
@@ -2144,6 +2369,15 @@ const hurtEl = document.createElement('div');
 hurtEl.style.cssText = 'position:fixed;inset:0;z-index:25;pointer-events:none;'
   + 'background:radial-gradient(circle, rgba(180,0,0,0) 40%, rgba(180,0,0,0.6) 100%);opacity:0;';
 document.body.appendChild(hurtEl);
+// 暑さ：オレンジのフチ（オーバーヒート時）＋ 体温ゲージ（🔥）
+const heatEl = document.createElement('div');
+heatEl.style.cssText = 'position:fixed;inset:0;z-index:24;pointer-events:none;'
+  + 'background:radial-gradient(circle, rgba(255,120,0,0) 45%, rgba(255,90,0,0.55) 100%);opacity:0;';
+document.body.appendChild(heatEl);
+const heatGaugeEl = document.createElement('div');
+heatGaugeEl.style.cssText = 'position:fixed;left:50%;bottom:140px;transform:translateX(-50%);z-index:10;'
+  + 'font-size:16px;text-shadow:0 0 3px #000;user-select:none;';
+document.body.appendChild(heatGaugeEl);
 
 // 起動時のセーブ復元は、currentPlayerFile / mobs 等の宣言後（アバター読込の直前）で行う（下方の loadWorld() 呼び出し）
 
@@ -2193,7 +2427,7 @@ function buildDiag() {
     `背景色       : #${scene.background.getHexString()}`,
     `カメラ位置   : ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}`,
     `カメラ向き   : ${dir.x.toFixed(2)}, ${dir.y.toFixed(2)}, ${dir.z.toFixed(2)}`,
-    `視点         : ${thirdPerson ? '三人称' : '一人称'}`,
+    `視点         : ${topDown ? '見下ろし(高さ'+topDownH.toFixed(0)+')' : thirdPerson ? '三人称' : '一人称'}（F切替）`,
     `アバター向き : ${(avatarYaw*180/Math.PI).toFixed(0)}°`,
     `プレイヤー   : ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}`,
     `時刻 / 天候  : ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} / ${weather}`,
@@ -2206,6 +2440,7 @@ function buildDiag() {
     `BGMシーン     : ${musicScene||'-'}（近接敵${dbgNearEnemies} / 水中${dbgMusicWater?'○':'-'} / combat保持${combatHold.toFixed(1)}s）`,
     `選択ブロック : ${NAMES[selBlock]}（所持${counts[selBlock]||0}）${invOpen ? ' / インベントリ開' : ''}`,
     `バイオーム   : ${biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z))}`,
+    `体温         : ${Math.round(heat)}/100 ${heat>=85?'🥵オーバーヒート':heat>=65?'☀️暑い':'😌'}　※砂地/岩場でN=砂浴び・水/夜/日陰で冷える`,
     `スポーン拠点 : ${spawnPoint ? `${spawnPoint.x.toFixed(0)},${spawnPoint.y.toFixed(0)},${spawnPoint.z.toFixed(0)}（${biomeAt(Math.floor(spawnPoint.x), Math.floor(spawnPoint.z))}）` : '未決定'}　※死亡/奈落で常にここへ復帰（oceanなら水際スポーンの兆候）`,
     `騎乗/乗船    : ${ridingMob ? '馬に騎乗中' : ridingBoat ? `船に乗船中(${ridingBoat.kind}/obj${ridingBoat.obj?'有':'無'})` : '徒歩'}　速度vel: ${player.vel.x.toFixed(1)},${player.vel.z.toFixed(1)}`,
     `R判定        : ${dbgRideMsg}（近接 乗船可船${dbgRideBoats}/難破船${dbgRideWrecks} 馬${mobs.filter(m=>m.def.type==='horse').length}体）`,
@@ -2225,6 +2460,7 @@ function buildDiag() {
     `モブ地中埋没  : ${mobs.filter(m=>m.buried).length}体（透明な敵の監視。0が正常／復帰処理が毎フレーム作動）`,
     `ボス討伐記録 : ドラゴン${bossKills.dragon||0} / スケ王${bossKills.skeleton_king||0} / デーモン${bossKills.demon||0} / クラーケン${bossKills.kraken||0} / 女王さくら${bossKills.queen_sakura||0} / ゴーレム${bossKills.golem||0}　マント${hasSakuraCape?'○':'-'}`,
     `仲間         : ${companions.length}/${MAX_COMPANIONS}人 ${companions.map(c=>`${JOB_LABEL[c.def.type]||c.def.type}(HP${Math.ceil(c.hp)}/${c.maxHp}・${c.cmdMode})`).join(' / ')||'なし'}　※T会話→Y雇用(${COMPANION_COST}coin)／U指示切替(追従/攻撃/待機)`,
+    `ペット🐾     : ${pets.length}/${MAX_PETS}匹 ${pets.map(p=>`${p.petName}[${(p.traits||[]).map(t=>PET_TRAITS[t].label).join('・')}](${petMoodLabel(p)}${Math.round(p.mood)}/空腹${Math.round(p.petHunger)})`).join(' / ')||'なし'}　※Pでなでる/餌・なつかせる`,
     `湧き環境     : ${isNight() ? '夜' : isDay() ? '昼' : '薄明'} / ${playerUnderground() ? '地下(常時湧き)' : '地上'}`,
     `構造物       : 村${villages.size} / スポナー${spawners.size} / プロップ${props.size}(表示${[...props.values()].filter(p=>p.obj).length}) / structテンプレ${Object.keys(structTemplates).length}種`,
     `ドロップ     : 地面${drops.length} / 肉${itemCounts.meat} 卵${itemCounts.egg} コイン${itemCounts.coin} りんご${itemCounts.apple}`,
@@ -2265,6 +2501,8 @@ let playerAvatar = null;
 let mixer = null, actIdle = null, actWalk = null, actAttack = null, actSwim = null, curAction = null;
 let avatarAttackTimer = 0; // >0 の間は攻撃モーション再生中（idle/walk へ戻さない）
 let avatarPitch = 0;       // 三人称アバターの前傾（0=立ち / -PI/2=うつ伏せ＝泳ぎ姿勢）。滑らかに補間
+let playerIsChinchilla = false; // 主人公がチンチラか（アニメ無し→コードでぴょこぴょこ＆スケール調整）
+let playerHopT = 0;        // チンチラ主人公の弾みタイマー
 let wasMoving = false;            // 前フレームの移動状態（移動開始の立ち上がり検出用）
 let moveStartAnimName = '-';      // 直近の「歩き始め」で選ばれたアニメ名（H診断用＝開始時に泳いでないか確認）
 function playAvatarAnim(moving, swimming) {
@@ -2400,15 +2638,23 @@ function updateHeldShield() {
   if (!playerAvatar) return;
   if (equip.shield && equipTemplates.shield) { heldShield = equipTemplates.shield.clone(true); attachWorldFollow(heldShield, SHIELD_HOLD.hand, SHIELD_HOLD.rotX, SHIELD_HOLD.offset); } // 盾は左前腕
 }
-// (C) プレイヤー色選択：5色から選んでアバターを読み込む（選択は保存）
+// (C) プレイヤー＝チンチラ。8色から選んでアバターを読み込む（選択は保存）
+// 主人公アバター8色：4号機の専用「立ち姿勢」player_chinchilla_<色>.glb を本命に、
+//   未配置/失敗時は従来の pet_chinchilla_<色>.glb（fb）へフォールバック（詰み防止）。
 const PLAYER_SKINS = [
-  { file:'models/player.glb',         name:'標準', color:'#8fb5e0' },
-  { file:'models/player_crimson.glb', name:'深紅', color:'#b23a48' },
-  { file:'models/player_azure.glb',   name:'蒼',   color:'#3a6db2' },
-  { file:'models/player_emerald.glb', name:'翠',   color:'#3aa86a' },
-  { file:'models/player_gold.glb',    name:'金',   color:'#d4af37' },
+  { file:'models/player_chinchilla_grey.glb',     fb:'models/pet_chinchilla_grey.glb',     name:'標準',     color:'#8f9196' },
+  { file:'models/player_chinchilla_beige.glb',    fb:'models/pet_chinchilla_beige.glb',    name:'ベージュ', color:'#b0a392' },
+  { file:'models/player_chinchilla_white.glb',    fb:'models/pet_chinchilla_white.glb',    name:'ホワイト', color:'#ece9e6' },
+  { file:'models/player_chinchilla_ebony.glb',    fb:'models/pet_chinchilla_ebony.glb',    name:'エボニー', color:'#353539' },
+  { file:'models/player_chinchilla_violet.glb',   fb:'models/pet_chinchilla_violet.glb',   name:'バイオレット', color:'#9b93a6' },
+  { file:'models/player_chinchilla_sapphire.glb', fb:'models/pet_chinchilla_sapphire.glb', name:'サファイア', color:'#8a98ad' },
+  { file:'models/player_chinchilla_brown.glb',    fb:'models/pet_chinchilla_brown.glb',    name:'ブラウン', color:'#7a6450' },
+  { file:'models/player_chinchilla_pink.glb',     fb:'models/pet_chinchilla_pink.glb',     name:'ピンク',   color:'#f0d9d6' },
 ];
-let currentPlayerFile = localStorage.getItem('voxel_player_model') || 'models/player.glb';
+const DEFAULT_PLAYER_FILE = 'models/player_chinchilla_grey.glb';
+const HERO_HEIGHT = 1.8;   // 主人公チンチラの目標総高(m)。読み込んだGLBの実寸から自動スケール＝モデル差し替えに強い
+function playerFallbackFor(file) { const s = PLAYER_SKINS.find(x => x.file === file); return (s && s.fb) || 'models/pet_chinchilla_grey.glb'; }
+let currentPlayerFile = localStorage.getItem('voxel_player_model') || DEFAULT_PLAYER_FILE;
 
 // ===================================================================
 // 武器・装備の状態（loadWorld より前に宣言＝セーブ復元時の参照を可能に）。挙動関数は後述
@@ -2435,43 +2681,56 @@ let ownedShield = false; // 盾を一度でも入手したか（toggleの可否�
 // 起動時にセーブデータがあれば復元（currentPlayerFile・装備を含む状態をここで確定 → 直後の loadAvatar が反映）
 loadWorld();
 function loadAvatar(file) {
-  currentPlayerFile = file;
+  if (!file || file.indexOf('chinchilla') < 0) file = DEFAULT_PLAYER_FILE; // 主人公は必ずチンチラ（旧人間アバターは弾く）
+  currentPlayerFile = file;                                                // 選択を保持＝セーブされる。本命未配置でもフォールバック表示で、配置後は自動採用
   try { localStorage.setItem('voxel_player_model', file); } catch (e) {}
+  const fb = playerFallbackFor(file);                                      // 本命が読めない時の代替（pet_chinchilla_<色>）
   // 既存アバター・ミキサーを破棄
   if (playerAvatar) { scene.remove(playerAvatar); playerAvatar = null; }
   if (mixer) { mixer.stopAllAction(); mixer = null; }
   actIdle = actWalk = actAttack = actSwim = curAction = null; avatarAttackTimer = 0;
-  gltfLoader.load(file,
-    (gltf) => {
-      playerAvatar = gltf.scene;
-      playerAvatar.rotation.order = 'YXZ'; // ヨー(向き)→ピッチ(前傾)の順＝うつ伏せ時も頭が進行方向を向く
-      playerAvatar.visible = thirdPerson; // 三人称なら即表示
-      scene.add(playerAvatar);
-      captureHandRig(); // ★装着リグ(手アンカー/腕回転)を bind pose で採取（mixer 更新前＝中立）。§3 ワールド追従の基準
-      let v = 0, mc = 0;
-      playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
-      diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc, clips:[] };
-      if (gltf.animations && gltf.animations.length) {
-        mixer = new THREE.AnimationMixer(playerAvatar);
-        const byName = {}; gltf.animations.forEach(c => byName[c.name] = c);
-        diag.glb.clips = gltf.animations.map(c => c.name);
-        actIdle = mixer.clipAction(byName['idle'] || gltf.animations[0]);
-        actWalk = mixer.clipAction(byName['walk'] || gltf.animations[1] || (byName['idle'] || gltf.animations[0]));
-        if (byName['attack']) { actAttack = mixer.clipAction(byName['attack']); actAttack.loop = THREE.LoopOnce; actAttack.clampWhenFinished = true; } // 攻撃モーション
-        if (byName['swim']) actSwim = mixer.clipAction(byName['swim']); // 泳ぎモーション（4号機。あれば前傾の代わりに再生）
-        actIdle.play(); curAction = actIdle;
-        resetAvatarAnim(); // ★ロード/開始直後は明示的に idle へ（swim 等の引きずりを断つ・星野さん報告の固着対策）
-      }
-      updateHeldWeapon(); // 装備中の武器/盾を手に反映（読込直後・セーブ復元の武器も）
-      console.log(`[voxel] アバター読込 OK(${file})：頂点${v} / clips=[${diag.glb.clips}]`);
-    },
-    undefined,
-    (err) => {
-      diag.glb = { tried:true, ok:false, error:String((err && err.message) || err || 'load error'), vertices:0, meshes:0, clips:[] };
-      console.warn('[voxel] アバター読込 失敗（未配置なら無視可）:', err);
+  // 読み込んだGLBを実際に適用（成功ハンドラ＝本命/フォールバック 共通）
+  const applyGltf = (gltf, srcFile) => {
+    playerAvatar = gltf.scene;
+    playerAvatar.rotation.order = 'YXZ'; // ヨー(向き)→ピッチ(前傾)の順＝うつ伏せ時も頭が進行方向を向く
+    playerIsChinchilla = /chinchilla/.test(srcFile);  // チンチラ主人公＝アニメ無し・専用の弾み/スケール
+    if (playerIsChinchilla) { // 総高を HERO_HEIGHT へ正規化＝立ち姿勢の新モデルでも旧ペットでも背丈/カメラ基準を一定に保つ（接地Y=0前提）
+      const box = new THREE.Box3().setFromObject(playerAvatar);
+      const h = Math.max(0.01, box.max.y - box.min.y);
+      playerAvatar.scale.setScalar(HERO_HEIGHT / h);
     }
-  );
+    playerAvatar.visible = thirdPerson; // 三人称なら即表示
+    scene.add(playerAvatar);
+    captureHandRig(); // ★装着リグ(手アンカー/腕回転)を bind pose で採取（mixer 更新前＝中立）。§3 ワールド追従の基準
+    let v = 0, mc = 0;
+    playerAvatar.traverse(o => { if (o.isMesh) { mc++; const p = o.geometry.getAttribute('position'); if (p) v += p.count; } });
+    diag.glb = { tried:true, ok:true, error:null, vertices:v, meshes:mc, clips:[] };
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(playerAvatar);
+      const byName = {}; gltf.animations.forEach(c => byName[c.name] = c);
+      diag.glb.clips = gltf.animations.map(c => c.name);
+      actIdle = mixer.clipAction(byName['idle'] || gltf.animations[0]);
+      actWalk = mixer.clipAction(byName['walk'] || gltf.animations[1] || (byName['idle'] || gltf.animations[0]));
+      if (byName['attack']) { actAttack = mixer.clipAction(byName['attack']); actAttack.loop = THREE.LoopOnce; actAttack.clampWhenFinished = true; } // 攻撃モーション
+      if (byName['swim']) actSwim = mixer.clipAction(byName['swim']); // 泳ぎモーション（4号機。あれば前傾の代わりに再生）
+      actIdle.play(); curAction = actIdle;
+      resetAvatarAnim(); // ★ロード/開始直後は明示的に idle へ（swim 等の引きずりを断つ・星野さん報告の固着対策）
+    }
+    updateHeldWeapon(); // 装備中の武器/盾を手に反映（読込直後・セーブ復元の武器も）
+    console.log(`[voxel] アバター読込 OK(${srcFile})：頂点${v} / clips=[${diag.glb.clips}]`);
+  };
+  // 本命を試し、失敗したらフォールバックへ（さらに失敗時のみ診断にエラー記録）
+  gltfLoader.load(file, (g) => applyGltf(g, file), undefined, (err) => {
+    console.warn('[voxel] 本命アバター読込失敗→フォールバック', file, err);
+    if (fb && fb !== file) gltfLoader.load(fb, (g) => applyGltf(g, fb), undefined, (e2) => {
+      diag.glb = { tried:true, ok:false, error:String((e2 && e2.message) || e2 || 'load error'), vertices:0, meshes:0, clips:[] };
+      console.warn('[voxel] フォールバックも失敗（未配置なら無視可）:', e2);
+    });
+    else diag.glb = { tried:true, ok:false, error:String((err && err.message) || err || 'load error'), vertices:0, meshes:0, clips:[] };
+  });
 }
+// 旧セーブ/旧設定が人間アバターを指していたらチンチラへ移行（主人公＝チンチラ）
+if (!PLAYER_SKINS.some(s => s.file === currentPlayerFile)) currentPlayerFile = DEFAULT_PLAYER_FILE;
 loadAvatar(currentPlayerFile);
 
 // タイトル画面のキャラ選択ボタンを構築
@@ -2514,6 +2773,29 @@ const MOB_DEFS = [
   { type:'fish_koi',      file:'models/mob_fish_koi.glb',      role:'neutral', aquatic:true },
   { type:'fish_tropical', file:'models/mob_fish_tropical.glb', role:'neutral', aquatic:true },
   { type:'fish_puffer',   file:'models/mob_fish_puffer.glb',   role:'neutral', aquatic:true },
+  // ペット：チンチラ「さくら」（pet_chinchilla）。petbase=ランダム湧き対象外・コードからのみ生成し initPet で相棒化
+  { type:'chinchilla', file:'models/pet_chinchilla.glb', role:'neutral', petbase:true },
+  // まぐろ専用：子チンチラ(バイオレット)。小ささはモデルに焼き込み済。petbase=ランダム湧き対象外・序章でのみ生成。未配置時は chinchilla_violet にフォールバック
+  { type:'chinchilla_violet_baby', file:'models/pet_chinchilla_violet_baby.glb', role:'neutral', petbase:true },
+  // 色違いの野生チンチラ（世界に大量に湧く中立動物。餌でなつかせOK＝コレクション）
+  { type:'chinchilla_beige',    file:'models/pet_chinchilla_beige.glb',    role:'neutral', chin:true },
+  { type:'chinchilla_grey',     file:'models/pet_chinchilla_grey.glb',     role:'neutral', chin:true },
+  { type:'chinchilla_white',    file:'models/pet_chinchilla_white.glb',    role:'neutral', chin:true },
+  { type:'chinchilla_ebony',    file:'models/pet_chinchilla_ebony.glb',    role:'neutral', chin:true },
+  { type:'chinchilla_violet',   file:'models/pet_chinchilla_violet.glb',   role:'neutral', chin:true },
+  { type:'chinchilla_sapphire', file:'models/pet_chinchilla_sapphire.glb', role:'neutral', chin:true },
+  { type:'chinchilla_brown',    file:'models/pet_chinchilla_brown.glb',    role:'neutral', chin:true },
+  { type:'chinchilla_pink',     file:'models/pet_chinchilla_pink.glb',     role:'neutral', chin:true },
+  // 敵＝チンチラの天敵4種（基本の敵を置き換え）。critter=アニメ無し→コードでぴょこ動く
+  { type:'weasel', file:'models/enemy_weasel.glb', role:'melee', critter:true }, // イタチ：速い
+  { type:'bird',   file:'models/enemy_bird.glb',   role:'melee', critter:true }, // 鳥：襲ってくる
+  { type:'snake',  file:'models/enemy_snake.glb',  role:'melee', critter:true }, // 蛇：忍び寄る
+  { type:'wolf',   file:'models/enemy_wolf.glb',   role:'melee', critter:true }, // 狼：強い
+  // 仲間＝チンチラの味方になる小動物4種（餌/コインで recruit＝共闘）。ally=雇用可能・neutral
+  { type:'rabbit',    file:'models/ally_rabbit.glb',    role:'neutral', ally:true, critter:true },
+  { type:'guineapig', file:'models/ally_guineapig.glb', role:'neutral', ally:true, critter:true },
+  { type:'squirrel',  file:'models/ally_squirrel.glb',  role:'neutral', ally:true, critter:true },
+  { type:'hedgehog',  file:'models/ally_hedgehog.glb',  role:'neutral', ally:true, critter:true },
   // 王国軍 兵士NPC（4号機・villager骨格＝idle/walk/attack）。resident=城/砦/村に駐留・警戒徘徊
   { type:'soldier_spear',   file:'models/npc_soldier_spear.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
   { type:'soldier_sword',   file:'models/npc_soldier_sword.glb',   role:'neutral', resident:true, job:'兵士', soldier:true },
@@ -2535,6 +2817,7 @@ MOB_DEFS.forEach(def => gltfLoader.load(def.file,
   undefined, () => {}));
 
 const mobs = [];
+let mobFrameTick = 0; // LOD：遠景AIを間引くためのフレームカウンタ
 // 仲間システム：住人NPCをコインで雇って追従＋共闘。companions は mobs の部分集合への参照。
 const companions = [];           // 仲間モブの配列（mobs にも入っている）
 const MAX_COMPANIONS = 3;        // 最大仲間数
@@ -2695,17 +2978,42 @@ function updateCompanion(m, dt, dx, dz, dist) {
     m.obj.position.set(tx, floorYNear(tx, tz, player.pos.y), tz);
     setMobAnim(m, 'idle'); return;
   }
+  if (m.def.type === 'guineapig') { // モルモット：鳴いて範囲回復（回復オーラ）
+    m.healCd = (m.healCd || 0) - dt;
+    if (m.healCd <= 0) {
+      m.healCd = 3.2; let healed = false;
+      for (const c of companions) if (c !== m && c.hp < (c.maxHp || COMPANION_HP)) { c.hp = Math.min(c.maxHp || COMPANION_HP, c.hp + 2); healed = true; }
+      if (hp > 0 && hp < maxHpEff() && dist < 10) { hp = Math.min(maxHpEff(), hp + 1); healed = true; }
+      if (healed) { // 範囲回復FX＝足元のオーラ環＋ハート、＋skill SE
+        spawnFx('fx_ally_halo', m.obj.position.x, m.obj.position.y + 0.1, m.obj.position.z, 1.1, 1.7);
+        spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.0, m.obj.position.z, 1.0, 0.4);
+        critterSE(m, 'skill');
+      }
+    }
+  } else if (m.def.type === 'rabbit') { // うさぎ：俊足斥候＝周囲の敵を一瞬ハイライトして知らせる
+    m.scoutCd = (m.scoutCd || 0) - dt;
+    if (m.scoutCd <= 0) {
+      m.scoutCd = 5; let spotted = false;
+      for (const o of mobs) { if (!o.hostile || o.dying) continue; const d = Math.hypot(o.obj.position.x - player.pos.x, o.obj.position.z - player.pos.z); if (d < 18) { spawnFx('fx_ally_star', o.obj.position.x, o.obj.position.y + 1.7, o.obj.position.z, 1.2, 0.5); spotted = true; } }
+      if (spotted) critterSE(m, 'skill'); // 見つけたらスタンピングで警告
+    }
+  }
   const aggro = m.cmdMode === 'wait' ? 7 : m.cmdMode === 'attack' ? 22 : 16; // 索敵範囲（待機は自衛のみ・attackは広い）
   const target = nearestHostileTo(m.obj.position.x, m.obj.position.z, aggro);
   let moving = false, animName = 'idle', dhx = 0, dhz = 0, spd = 9;
   const leashed = dist > (m.cmdMode === 'attack' ? 30 : 20); // 離れすぎたら戦闘より追従優先
   if (target && !leashed) {
     const tdx = target.obj.position.x - m.obj.position.x, tdz = target.obj.position.z - m.obj.position.z, td = Math.hypot(tdx, tdz) || 0.0001;
-    if (td > 2.0) { const h = chaseHeadingTo(m, dt, target.obj.position.x, target.obj.position.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; spd = 14; } // 敵へ素早く接近
-    else { // 近接：強めの攻撃＋接敵による被ダメ（タンク：少し軽減して耐える）
+    if (m.def.type === 'squirrel' && td > 2.2 && td < 13) { // リス：木の実を投げる遠距離アタッカー
       m.obj.rotation.y = Math.atan2(-tdx, -tdz); animName = 'attack';
+      if (m.atkCd <= 0) { m.atkCd = 1.1; shootArrowEx(m.obj.position.x, m.obj.position.y + 0.6, m.obj.position.z, tdx, (target.obj.position.y + 0.5) - (m.obj.position.y + 0.6), tdz, 18, true, COMPANION_DMG, false); if (window.playSFX) window.playSFX('bow'); critterSE(m, 'skill'); } // リス：木の実投げのチチッ
+    } else if (td > 2.0) { const h = chaseHeadingTo(m, dt, target.obj.position.x, target.obj.position.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; spd = (m.def.type === 'rabbit') ? 18 : 14; } // うさぎは俊足
+    else { // 近接：強めの攻撃＋接敵による被ダメ（ハリネズミは丸まり盾ステートで大幅軽減＝盾役）
+      m.obj.rotation.y = Math.atan2(-tdx, -tdz); animName = 'attack';
+      if (m.def.type === 'hedgehog') { m.curlSeCd = (m.curlSeCd || 0) - dt; if (m.curlSeCd <= 0) { m.curlSeCd = 2.5; critterSE(m, 'curl'); } } // 丸まり盾のフスフス（連打防止に~2.5s毎）
       if (m.atkCd <= 0) { m.atkCd = 0.7; companionAttack(m, target, COMPANION_DMG); }
-      if (m.dmgCd <= 0) { m.dmgCd = 1.2; companionTakeDamage(m, Math.max(1, C.meleeDmg - 1)); }
+      // ハリネズミは丸まり度(m.curl 0..1)に応じて被ダメ減（最大~0.3倍）。他は等倍。
+      if (m.dmgCd <= 0) { m.dmgCd = 1.2; const red = (m.def.type === 'hedgehog') ? (1 - 0.7 * (m.curl || 0)) : 1; companionTakeDamage(m, Math.max(1, Math.round((C.meleeDmg - 1) * red))); }
     }
   } else if (m.cmdMode !== 'wait') { // 追従（待機は留まる）
     if (dist > 3.5) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); dhx = h.x; dhz = h.z; moving = true; animName = 'walk';
@@ -2713,6 +3021,11 @@ function updateCompanion(m, dt, dx, dz, dist) {
   }
   if (moving) tryMoveMob(m, dhx, dhz, spd, dt);
   else followFloor(m, dt);
+  if (m.def.critter) { // アニメ無しの仲間動物はコードで種別の仕草＋ぴょこ
+    // ハリネズミ：近接戦闘中は丸まって盾になる演出／モルモットは平時ごきげん（ポップコーン）
+    const scared = (m.def.type === 'hedgehog') && !!target && animName === 'attack';
+    critterGesture(m, dt, { moving, animName, scared, happy: !target });
+  }
   setMobAnim(m, animName);
 }
 // 仲間マーカー：頭上に fx_ally_star（金の五芒星・0.6m）。loop再生＋横回転＋上下バウンスで「味方」を一目で示す。
@@ -2738,7 +3051,772 @@ function updateAllyMarker(m, dt) {
   m.allyMarker.rotation.y += dt * 1.6;                                // 横回転
   if (m.allyMixer) m.allyMixer.update(dt);                            // loopクリップ
 }
+// ===================================================================
+// ペットシステム（実物チンチラ「さくら」がモデル）
+//   ・機嫌(mood 0..100)：そばにいる/餌/なでるで上がり、放置/空腹/恐怖で下がる
+//   ・癖(traits)：やんちゃ/なまけ/甘えん坊/食いしん坊/びびり/つんでれ → 距離・速さ・仕草が変わる
+//   ・見た目の動き：ごきげんだとぴょこぴょこ弾みワグ、不機嫌だとそっぽ向いて拗ねる
+//   ・操作：Pキーで なでる/餌（自分のペット）／なつかせる（野生動物＋餌）
+// ===================================================================
+const pets = [];
+let petIdSeq = 0;
+const MAX_PETS = 4;
+// 🧬 チンチラ8色の遺伝＋図鑑（なつかせ/繁殖で発見した毛色を記録）
+const CHIN_COLORS = ['grey', 'beige', 'white', 'ebony', 'violet', 'sapphire', 'brown', 'pink'];
+const CHIN_DISPLAY = { grey:{name:'標準',hex:'#8f9196'}, beige:{name:'ベージュ',hex:'#b0a392'}, white:{name:'ホワイト',hex:'#ece9e6'}, ebony:{name:'エボニー',hex:'#353539'}, violet:{name:'バイオレット',hex:'#9b93a6'}, sapphire:{name:'サファイア',hex:'#8a98ad'}, brown:{name:'ブラウン',hex:'#7a6450'}, pink:{name:'ピンク',hex:'#f0d9d6'} };
+const dexSeen = new Set();                                         // 図鑑：見つけた/育てた毛色（color suffix）
+function chinColorOf(m) { const t = m && m.def && m.def.type; if (!t) return null; if (t === 'chinchilla' || t === 'chinchilla_violet_baby') return t === 'chinchilla' ? 'beige' : 'violet'; const s = t.indexOf('chinchilla_') === 0 ? t.slice(11) : null; return CHIN_COLORS.indexOf(s) >= 0 ? s : null; }
+function dexDiscover(color) {
+  if (!(color && CHIN_COLORS.indexOf(color) >= 0 && !dexSeen.has(color))) return;
+  dexSeen.add(color); scheduleSave();
+  // 物語のマイルストーン演出（図鑑が進むと革命の高まりをトースト）
+  if (dexSeen.size >= 4 && progress.dexMilestone < 4) { progress.dexMilestone = 4; if (typeof toast === 'function') toast('🌸 毛色図鑑が半分に！仲間のチンチラが増えてきた——革命の輪が広がる'); }
+  if (dexSeen.size >= 8 && progress.dexMilestone < 8) { progress.dexMilestone = 8; if (typeof toast === 'function') toast('🏆 全8色コンプリート！君は色とりどりのチンチラ王国を築いた'); }
+}
+// 遺伝表：特定の掛け合わせは特別色、それ以外は親のどちらかを継ぐ＋稀に突然変異（thematicな簡易モデル）
+const CHIN_CROSS = { 'grey+white':'violet', 'ebony+grey':'ebony', 'beige+white':'pink', 'sapphire+violet':'sapphire', 'brown+white':'beige', 'beige+ebony':'brown' };
+function breedColor(a, b) {
+  if (a === b) return a;                                          // 純血同士＝同色（true breeding）
+  const key = [a, b].sort().join('+');
+  if (CHIN_CROSS[key] && Math.random() < 0.55) return CHIN_CROSS[key]; // 特別な掛け合わせ
+  if (Math.random() < 0.08) return CHIN_COLORS[Math.floor(Math.random() * CHIN_COLORS.length)]; // 稀な突然変異
+  return Math.random() < 0.5 ? a : b;                             // 通常は親のどちらかの色
+}
+function getDexState() {
+  return {
+    total: CHIN_COLORS.length, discovered: dexSeen.size,
+    colors: CHIN_COLORS.map(c => ({ color: c, name: CHIN_DISPLAY[c].name, hex: CHIN_DISPLAY[c].hex,
+      discovered: dexSeen.has(c),
+      owned: (typeof pets !== 'undefined') ? pets.filter(p => chinColorOf(p) === c).length : 0 })),
+  };
+}
+window.getDexState = () => { try { return getDexState(); } catch (e) { return null; } }; // 3号機の図鑑UI向け読み取り口
+const PET_FOODS = ['himawari', 'meat', 'apple', 'egg'];           // 餌（大好物のひまわりから消費）
+const PET_FAVORITE = 'himawari';                                  // 大好物（特別に機嫌が上がる）
+const PET_TAME_TYPES = ['cow', 'sheep', 'pig', 'chicken', 'horse']; // 野生からなつかせられる動物
+const PET_TELEPORT = 44;                                          // これ以上離れたら近くへワープ（迷子防止）
+const PET_TRAITS = {
+  playful: { label: 'やんちゃ' }, lazy: { label: 'なまけ' }, clingy: { label: '甘えん坊' },
+  glutton: { label: '食いしん坊' }, timid: { label: 'びびり' }, aloof: { label: 'つんでれ' },
+  wary: { label: '警戒心' },
+};
+const PET_NAMES = ['ふく', 'チビ', 'マル', 'ココ', 'むぎ', 'きなこ', 'あずき', 'そら'];
+const clampPet = (v, a, b) => Math.max(a, Math.min(b, v));
+function petMoodBand(v) { return v >= 66 ? 'happy' : v >= 33 ? 'normal' : 'grumpy'; }
+function petMoodLabel(m) { const b = petMoodBand(m.mood); return b === 'happy' ? 'ごきげん' : b === 'normal' ? 'ふつう' : 'ごきげんななめ'; }
+function petHas(m, t) { return m.traits && m.traits.indexOf(t) >= 0; }
+function pickPetTraits() {
+  const keys = Object.keys(PET_TRAITS);
+  const a = keys[Math.floor(Math.random() * keys.length)];
+  if (Math.random() < 0.5) { let b; do { b = keys[Math.floor(Math.random() * keys.length)]; } while (b === a); return [a, b]; }
+  return [a];
+}
+// 頭上マーカー（fx_ally_halo＝「あなたのペット」の目印）
+function attachPetMarker(m) {
+  if (m.petMarker || !m.obj) return;
+  const tpl = fxTemplates['fx_ally_halo']; if (!tpl) return; // 未読込なら updatePet で後追い
+  const o = tpl.scene.clone(true); o.scale.setScalar(0.42); o.position.set(0, m.petMarkH || 1.0, 0);
+  m.obj.add(o); m.petMarker = o;
+  if (tpl.animations.length) { m.petHaloMixer = new THREE.AnimationMixer(o); m.petHaloMixer.clipAction(tpl.animations[0]).play(); }
+}
+function removePetMarker(m) {
+  if (m.petMarker && m.petMarker.parent) m.petMarker.parent.remove(m.petMarker); m.petMarker = null; m.petHaloMixer = null;
+  if (m.petShadow) { scene.remove(m.petShadow); m.petShadow = null; } // 影も一緒に片付ける
+  if (m.petFur && m.petFur.parent) { m.petFur.parent.remove(m.petFur); m.petFur = null; } // ファーの殻も
+}
+function petEmote(m) { spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + (m.petMarkH || 1.0) + 0.15, m.obj.position.z, 1.1, 0.5); }
+// 相棒化（野生mob／セーブ復元mob を共通でペットに）
+function initPet(m, opts = {}) {
+  m.pet = true; m.hostile = false; m.home = null; m.companion = false; m.cmdMode = null;
+  m.pid = ++petIdSeq;
+  m.petName = opts.petName || PET_NAMES[Math.floor(Math.random() * PET_NAMES.length)];
+  if (m.petName === 'もふ') m.petName = 'さくら'; // 旧セーブの名前を本名へ移行
+  m.traits = (Array.isArray(opts.traits) && opts.traits.length) ? opts.traits.filter(t => PET_TRAITS[t]) : pickPetTraits();
+  if (!m.traits.length) m.traits = pickPetTraits();
+  m.mood = Number.isFinite(opts.mood) ? clampPet(opts.mood, 0, 100) : 60;
+  m.petHunger = Number.isFinite(opts.petHunger) ? clampPet(opts.petHunger, 0, 100) : 12;
+  m.moodBand = petMoodBand(m.mood);
+  m.petMarkH = m.def.type === 'horse' ? 2.3 : m.def.type.indexOf('chinchilla') === 0 ? 0.95 : 1.35;
+  m.patCd = 0; m.emoteCd = 1.5 + Math.random() * 2; m.habitCd = 3 + Math.random() * 4;
+  m.hopT = Math.random() * 6; m.sitT = 0; m.zoomT = 0; m.sulkT = 0; m.gy = null; m.zoomDir = 1;
+  m.biteT = 0; m.fumeT = 0; m.standT = 0; m.angerCd = 3 + Math.random() * 3; // 怒り行動（噛みつき/立ちオシッコ/プンプン）
+  m.eatT = 0; m.alertT = 0;                                                  // 手で持って食べる演出 / 警戒スキャン
+  m.queenSeen = false;                                                       // 最終ボス「女王さくら」を察知済みか（同名つながり演出）
+  // --- リアルな仕草（すべてルートobjの変形で表現＝メッシュ差し替えに強い）---
+  m.breathPh = Math.random() * 6.28;                                         // 呼吸の位相（常時のかすかな上下）
+  m.groomT = 0;                                                              // 毛づくろい中の残り秒
+  m.bathT = 0; m.bathFxCd = 0;                                               // 砂浴び中の残り秒／砂煙クールダウン
+  m.popT = 0;                                                                // ぴょこ跳ね（ごきげん時の単発ジャンプ）
+  m.earT = 0; m.earCd = 1.5 + Math.random() * 3;                            // 耳ぴく（擬似：頭側を一瞬ぴくっと傾ける）
+  m.breedCd = 30 + Math.random() * 20;                                       // 🧬 繁殖クールダウン（なつかせ直後はしばらく繁殖しない）
+  dexDiscover(chinColorOf(m));                                               // 図鑑：この毛色を発見
+  if (pets.indexOf(m) < 0) pets.push(m);
+  attachPetFur(m);                                                           // ふさふさ感：先にファーの殻（マーカー複製を避けるため最初に）
+  attachPetMarker(m);
+  attachPetShadow(m);                                                        // ふさふさ感：足元のソフトシャドウ
+}
+// 機嫌バンドのヒステリシス版：境界(33/66)での往復フリッカを防ぐ（±5の余白で切り替え）
+function petBandHyst(m) {
+  const cur = m.moodBand, v = m.mood;
+  if (cur === 'happy')  return v >= 61 ? 'happy'  : (v < 33 ? 'grumpy' : 'normal');
+  if (cur === 'grumpy') return v < 38  ? 'grumpy' : (v >= 66 ? 'happy' : 'normal');
+  return v >= 66 ? 'happy' : (v < 33 ? 'grumpy' : 'normal'); // normal/未設定から
+}
+function petBandToast(m) {
+  const nb = petBandHyst(m);
+  if (nb !== m.moodBand) {
+    if (nb === 'happy') toast(`🐾「${m.petName}」はごきげん！`);
+    else if (nb === 'grumpy') toast(`🐾「${m.petName}」はごきげんななめ…なでたり餌をあげよう`);
+    m.moodBand = nb;
+  }
+}
+// Pキー：最寄りのペットを なでる/餌、または野生動物を なつかせる
+function petInteract() {
+  let best = null, bd = 3.8;
+  for (const m of mobs) {
+    if (m.dying) continue;
+    const tame = (PET_TAME_TYPES.indexOf(m.def.type) >= 0 || m.def.chin) && !m.home && !m.companion && !m.pet;
+    if (!(m.pet || tame)) continue;
+    const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
+    if (d < bd) { bd = d; best = m; }
+  }
+  if (!best) {
+    // 近くにいなければ「呼ぶ」＝最寄りのペットを呼び寄せる（少し離れていても駆けてくる）
+    let callee = null, cbd = 40;
+    for (const p of pets) { if (p.dying) continue; const d = Math.hypot(p.obj.position.x - player.pos.x, p.obj.position.z - player.pos.z); if (d < cbd) { cbd = d; callee = p; } }
+    if (callee) {
+      callee.callT = 4.0; callee.mood = clampPet(callee.mood + 3, 0, 100); petEmote(callee);
+      if (window.playAnimalSFX) window.playAnimalSFX('pet', 'happy', { x: callee.obj.position.x, y: callee.obj.position.y, z: callee.obj.position.z });
+      if (typeof toast === 'function') toast(`🐾「${callee.petName}」を呼んだ — こっちへ来る！`);
+      return;
+    }
+    if (typeof toast === 'function') toast('近くにペット/なつかせられる動物がいない（牛羊豚鶏馬に 餌(肉/りんご/卵)を持って P）'); return;
+  }
+  if (best.pet) {
+    const food = PET_FOODS.find(f => (itemCounts[f] || 0) > 0);
+    if (best.petHunger > 40 && food) feedPet(best, food); else patPet(best);
+    return;
+  }
+  if (pets.length >= MAX_PETS) { toast(`ペットは最大${MAX_PETS}匹まで`); return; }
+  const food = PET_FOODS.find(f => (itemCounts[f] || 0) > 0);
+  if (!food) { toast('なつかせるには餌が必要（肉/りんご/卵のどれか）'); return; }
+  itemCounts[food]--;
+  initPet(best, {});
+  best.mood = clampPet(best.mood + 15, 0, 100); best.petHunger = clampPet(best.petHunger - 30, 0, 100); best.moodBand = petMoodBand(best.mood);
+  best.eatT = 2.0; // なついた直後に手で持って食べる
+  petEmote(best); window.playSFX && window.playSFX('eat');
+  toast(`🐾「${best.petName}」がなついた！ 性格:${best.traits.map(t => PET_TRAITS[t].label).join('・')}`);
+  scheduleSave();
+}
+function feedPet(m, food) {
+  itemCounts[food]--;
+  const fav = food === PET_FAVORITE;                            // 大好物（ひまわり）は特別
+  let gain = petHas(m, 'glutton') ? 34 : 24; if (fav) gain += 16;
+  m.mood = clampPet(m.mood + gain, 0, 100);
+  m.petHunger = clampPet(m.petHunger - (fav ? 65 : 55), 0, 100);
+  m.eatT = 2.2;                                                 // 座って手で持って食べる
+  petEmote(m); if (fav) petEmote(m); window.playSFX && window.playSFX('eat');
+  toast(fav ? `🌻「${m.petName}」がひまわりを手で持ってもぐもぐ！（大好物・${petMoodLabel(m)}）`
+            : `🐾「${m.petName}」に${ITEM_NAMES[food]}をあげた（手で持ってもぐもぐ・${petMoodLabel(m)}）`);
+  petBandToast(m); scheduleSave();
+}
+function patPet(m) {
+  if (m.mood < 18) { // 機嫌が最悪だと、なでようとしても噛みつく（つんでれ）
+    const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z, dist = Math.hypot(dx, dz) || 1;
+    petBite(m, dx, dz, dist); m.mood = clampPet(m.mood - 2, 0, 100); scheduleSave(); return;
+  }
+  const base = petHas(m, 'clingy') ? 10 : petHas(m, 'aloof') ? 4 : 7;
+  m.mood = clampPet(m.mood + (m.patCd > 0 ? Math.ceil(base * 0.3) : base), 0, 100);
+  m.patCd = 0.6;
+  petEmote(m); window.playSFX && window.playSFX('pickup');
+  toast(`🐾「${m.petName}」をなでた（${petMoodLabel(m)}・空腹${Math.round(m.petHunger)}%）`);
+  petBandToast(m); scheduleSave();
+}
+// 怒り行動（機嫌が悪いチンチラの十八番）。タイマーを立てて updatePet 側で見た目を動かす
+function petBite(m, dx, dz, dist) {           // 噛みつく：前へ素早く突進
+  m.biteT = 0.5;
+  m.obj.rotation.y = Math.atan2(-dx, -dz);
+  camShake = Math.max(camShake, 0.16);
+  window.playSFX && window.playSFX('hit');
+  if (typeof toast === 'function') toast(`💢「${m.petName}」が噛みついた！`);
+}
+function petPee(m, dx, dz, dist) {            // 立っておしっこを飛ばす（ボスの女王さくらと同じ威嚇）
+  m.standT = 1.1;                              // 立ち上がる演出
+  m.obj.rotation.y = Math.atan2(-dx, -dz);     // 相手の方を向く
+  const fx = m.obj.position.x + dx / dist * 0.6, fz = m.obj.position.z + dz / dist * 0.6;
+  if (typeof spawnSplash === 'function') spawnSplash(fx, m.obj.position.y + 0.6, fz, 14);
+  if (dist < 2.6) playerSlow = Math.max(playerSlow, 1.2); // 近いとオシッコ被弾でちょいスリップ（コミカル）
+  window.playSFX && window.playSFX('hit');
+  if (typeof toast === 'function') toast(`💦「${m.petName}」が立っておしっこを飛ばした！（おこ）`);
+}
+function petFume(m) {                          // プンプン：その場で小刻みに震えて怒る
+  m.fumeT = 1.1;
+  window.playSFX && window.playSFX('pickup');
+  if (typeof toast === 'function') toast(`💢「${m.petName}」はプンプン怒っている…`);
+}
+// 足元が砂地/岩場か（チンチラが砂浴びできる地面）
+function onDustGround(m) {
+  const b = getBlock(Math.floor(m.obj.position.x), Math.floor(m.obj.position.y) - 1, Math.floor(m.obj.position.z));
+  return b === B.sand || b === B.stone;
+}
+// 砂浴び開始：その場でぱたぱた転がってご機嫌になる（暑さに弱いチンチラの十八番）
+function startPetBath(m) {
+  if (m.bathT > 0 || m.biteT > 0 || m.standT > 0) return;
+  m.bathT = 1.8 + Math.random() * 0.8; m.bathFxCd = 0;
+  m.mood = clampPet(m.mood + 6, 0, 100); m.moodBand = petMoodBand(m.mood);
+}
+// ── ふさふさ感の演出（影／フェイクファー）。どちらもルートobjへ後付け＝メッシュ非依存 ──
+const PET_FUR_RIM = true;                       // フェイクファー（やわらかい輪郭）の ON/OFF（重い/不要なら false）
+let _petShadowTex = null;
+function petShadowTexture() {                    // 黒の放射状グラデ＝やわらかい接地影（全ペット共用）
+  if (_petShadowTex) return _petShadowTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+  grad.addColorStop(0, 'rgba(0,0,0,0.42)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.20)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  _petShadowTex = new THREE.CanvasTexture(cv);
+  return _petShadowTex;
+}
+function attachPetShadow(m) {                    // 足元に敷くソフトシャドウ（sceneに直付けし updatePet で追従）
+  if (m.petShadow || !m.obj) return;
+  const geo = new THREE.PlaneGeometry(1, 1);
+  const mat = new THREE.MeshBasicMaterial({ map: petShadowTexture(), transparent: true, depthWrite: false });
+  const sh = new THREE.Mesh(geo, mat);
+  sh.rotation.x = -Math.PI / 2; sh.renderOrder = -1;
+  const s = (m.def.type.indexOf('chinchilla') === 0) ? 0.7 : 1.2; // 体格に合わせた影の広さ
+  sh.userData.baseScale = s; sh.scale.set(s, s, s);
+  scene.add(sh); m.petShadow = sh;
+}
+function attachPetFur(m) {                        // ひと回り大きい裏面シェル＝毛のふわっとした輪郭（リム風）
+  if (m.petFur || !m.obj || !PET_FUR_RIM) return;
+  const fur = m.obj.clone(true);                  // 形状を複製（geometryは共有・読み取りのみ）。※マーカー付与前に呼ぶこと
+  const furMat = new THREE.MeshBasicMaterial({
+    color: 0xfff3e6, transparent: true, opacity: 0.10,
+    side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  fur.traverse(o => { if (o.isMesh) { o.material = furMat; o.renderOrder = 1; } });
+  fur.scale.setScalar(1.035);
+  m.obj.add(fur); m.petFur = fur;
+}
+// ペットAI：機嫌(mood)と癖(traits)で 追従距離・速さ・仕草・弾み が変わる
+function updatePet(m, dt, dx, dz, dist) {
+  if (!m.petFur) attachPetFur(m);                  // 後着テンプレ対応（ファー殻）
+  if (!m.petMarker) attachPetMarker(m);            // 後着テンプレ対応
+  if (!m.petShadow) attachPetShadow(m);            // 後着テンプレ対応（接地影）
+  if (m.petHaloMixer) m.petHaloMixer.update(dt);
+  m.patCd = Math.max(0, (m.patCd || 0) - dt);
+  if (dist > PET_TELEPORT) {                        // 迷子防止ワープ
+    const a = player.yaw + Math.PI, tx = player.pos.x + Math.sin(a) * 2.0, tz = player.pos.z + Math.cos(a) * 2.0;
+    m.obj.position.set(tx, floorYNear(tx, tz, player.pos.y), tz); m.gy = null; setMobAnim(m, 'idle'); return;
+  }
+  // --- 機嫌(mood)の自然変化 ---
+  let hungerRate = 0.5; if (petHas(m, 'lazy')) hungerRate *= 0.65; if (petHas(m, 'glutton')) hungerRate *= 1.7;
+  m.petHunger = clampPet(m.petHunger + hungerRate * dt, 0, 100);
+  let dm = -0.30 * dt;
+  if (dist < 6) dm += (petHas(m, 'clingy') ? 0.42 : 0.26) * dt;                              // そばにいると満たされる
+  else if (dist > 22) dm -= (petHas(m, 'clingy') ? 0.55 : petHas(m, 'aloof') ? 0.12 : 0.32) * dt; // 放置はしょんぼり
+  if (m.petHunger > 70) dm -= 0.45 * dt;                                                     // 空腹で下がる
+  if (petHas(m, 'timid') && nearestHostileTo(m.obj.position.x, m.obj.position.z, 10)) dm -= 1.1 * dt; // びびりは怖がる
+  if (petHas(m, 'wary') && dm > 0) dm *= 0.82;                                                       // 警戒心＝心を開くのがゆっくり
+  m.mood = clampPet(m.mood + dm, 0, 100);
+  petBandToast(m);
+  const band = m.moodBand || petMoodBand(m.mood); // ヒステリシス反映後のバンドを使う
+  // --- 最終ボス「女王さくら」を察知＝同名の主に身構える（毛を逆立てる）---
+  let queen = null;
+  for (const o of mobs) {
+    if (o.def.type === 'queen_sakura' && !o.dying) {
+      const qd = Math.hypot(o.obj.position.x - m.obj.position.x, o.obj.position.z - m.obj.position.z);
+      if (qd < 32) { queen = o; break; }
+    }
+  }
+  if (queen) {
+    if (!m.queenSeen) { // 初遭遇：毛を逆立てて身構える（緊張で機嫌が少し下がる）
+      m.queenSeen = true; m.alertT = 1.8; m.mood = clampPet(m.mood - 6, 0, 100); m.moodBand = petMoodBand(m.mood);
+      if (typeof toast === 'function') toast(`🐾「${m.petName}」は女王さくらに気づき、毛を逆立てて身構えた…！`);
+    }
+  } else if (m.queenSeen) m.queenSeen = false;
+  // --- 追従距離・速さ（機嫌・癖で変化）---
+  let want = band === 'happy' ? 2.3 : band === 'normal' ? 4.2 : 7.5;
+  if (petHas(m, 'clingy')) want *= 0.7;
+  if (petHas(m, 'lazy') || petHas(m, 'aloof')) want *= 1.35;
+  if (petHas(m, 'timid')) want += 1.5;
+  let spd = band === 'happy' ? 8.5 : band === 'normal' ? 6 : 3.6;
+  if (petHas(m, 'lazy')) spd *= 0.7;
+  if (petHas(m, 'playful') && band !== 'grumpy') spd *= 1.15;
+  // 餌を持っていると寄ってくる（大好物ひまわりだと一目散）
+  const holdingFav = (itemCounts[PET_FAVORITE] || 0) > 0;
+  const holdingFood = holdingFav || PET_FOODS.some(f => (itemCounts[f] || 0) > 0);
+  if (holdingFood && dist < 16) { want = Math.min(want, holdingFav ? 1.5 : 2.0); spd = Math.max(spd, holdingFav ? 9 : 7); }
+  // 警戒心：敵が視界(12m)にいると間合いを広く取り慎重になる
+  if (petHas(m, 'wary') && nearestHostileTo(m.obj.position.x, m.obj.position.z, 12)) want += 2.0;
+  if (queen) want = Math.max(want, 3.5); // 女王さくらには近づきすぎない（同名でも懐かない）
+  if ((m.callT || 0) > 0) { m.callT -= dt; want = Math.min(want, 1.6); spd = Math.max(spd, 10); } // 「呼ぶと来る」＝Pで呼ばれたら一直線に駆け寄る
+  // --- 癖の発動（一定間隔でミニ仕草）---
+  m.habitCd -= dt;
+  if (m.habitCd <= 0) {
+    m.habitCd = 4 + Math.random() * 5;
+    if (band !== 'grumpy' && petHas(m, 'playful') && Math.random() < 0.6) { m.zoomT = 1.1 + Math.random() * 1.0; m.zoomDir = Math.random() < 0.5 ? 1 : -1; }
+    else if (petHas(m, 'lazy') && Math.random() < 0.6) m.sitT = 2 + Math.random() * 2.5;
+    else if (band === 'grumpy' && Math.random() < 0.5) m.sulkT = 1.0 + Math.random() * 1.4;
+    else if (petHas(m, 'aloof') && Math.random() < 0.5) m.sitT = 1.4 + Math.random() * 1.6;
+    if (petHas(m, 'wary') && m.alertT <= 0 && m.zoomT <= 0 && m.sitT <= 0 && Math.random() < 0.45) m.alertT = 1.0 + Math.random() * 1.2; // 警戒：辺りをうかがう
+    // リアルな日常しぐさ（機嫌で頻度・種類が変わる）。大きな行動が無く落ち着いている時だけ
+    const calm = m.zoomT <= 0 && m.sitT <= 0 && m.sulkT <= 0 && m.biteT <= 0 && m.fumeT <= 0 && m.standT <= 0 && m.eatT <= 0 && m.bathT <= 0 && m.groomT <= 0;
+    if (calm) {
+      if (band === 'happy' && m.popT <= 0 && Math.random() < 0.45) m.popT = 0.5;                       // ごきげん：その場でぴょこんと跳ねる
+      else if (band !== 'grumpy' && onDustGround(m) && Math.random() < 0.30) startPetBath(m);          // 砂地/岩場で気が向くと砂浴び
+      else if (band !== 'grumpy' && Math.random() < 0.5) m.groomT = 1.6 + Math.random() * 1.4;         // 落ち着くと毛づくろい
+    }
+  }
+  // --- 怒り：噛みつく / 立ってオシッコ / プンプン ---
+  //   ① 近くの敵に対して威嚇（機嫌に関係なく・びびりは除く＝防衛本能）
+  //   ② ごきげんななめが続くと、その場で八つ当たり（プレイヤーへ）
+  m.angerCd -= dt;
+  const idle = m.zoomT <= 0 && m.sitT <= 0 && m.biteT <= 0 && m.fumeT <= 0 && m.standT <= 0;
+  if (m.angerCd <= 0 && idle) {
+    const foe = petHas(m, 'timid') ? null : nearestHostileTo(m.obj.position.x, m.obj.position.z, 9); // 索敵やや広め＝早めに気づく
+    if (foe) {
+      m.angerCd = 1.5 + Math.random() * 1.5;          // 敵が居る間は短い間隔で連続して助太刀（共闘の手応え）
+      const fdx = foe.obj.position.x - m.obj.position.x, fdz = foe.obj.position.z - m.obj.position.z, fd = Math.hypot(fdx, fdz) || 1;
+      const isQueen = foe.def.type === 'queen_sakura';                                                          // 同名の女王には噛みつかない（畏れ＆威嚇）
+      if (!isQueen && fd < 2.2 && Math.random() < 0.5) { petBite(m, fdx, fdz, fd); if (!foe.dying) companionAttack(m, foe, 4); } // 敵を噛む（少しダメージ＝助太刀）
+      else petPee(m, fdx, fdz, fd);                                                                              // 敵におしっこ威嚇
+    } else if (queen) {                                                                                          // 女王さくらが視界に＝遠目から立ちオシッコ/プンプンで威嚇
+      m.angerCd = 4 + Math.random() * 4;
+      const qdx = queen.obj.position.x - m.obj.position.x, qdz = queen.obj.position.z - m.obj.position.z, qd = Math.hypot(qdx, qdz) || 1;
+      if (Math.random() < 0.6) petPee(m, qdx, qdz, qd); else petFume(m);
+    } else if (band === 'grumpy') {
+      m.angerCd = 5 + Math.random() * 5;
+      const r = Math.random();
+      if (dist < 3.2 && r < 0.4) petBite(m, dx, dz, dist);
+      else if (r < 0.72) petPee(m, dx, dz, dist);
+      else petFume(m);
+    }
+  }
+  // --- 野生チンチラへの反応：近くの色違い野生チンチラに気づいて挨拶（向く＋ハート）---
+  m.socialCd = (m.socialCd || 0) - dt;
+  if (m.socialCd <= 0) {
+    m.socialCd = 3 + Math.random() * 3;
+    let wild = null, wd = 6;
+    for (const o of mobs) { if (o.def.chin && !o.pet && !o.dying) { const d = Math.hypot(o.obj.position.x - m.obj.position.x, o.obj.position.z - m.obj.position.z); if (d < wd) { wd = d; wild = o; } } }
+    if (wild && band !== 'grumpy') { m.wildLook = wild; m.wildLookT = 1.4; if (Math.random() < 0.5) petEmote(m); }
+  }
+  if ((m.wildLookT || 0) > 0) m.wildLookT -= dt;
+  // --- 🧬 繁殖：ごきげんなチンチラ同士が寄り添うと子が生まれる（毛色は遺伝）。pid小さい側が起点＝二重出産防止 ---
+  m.breedCd = Math.max(0, (m.breedCd || 0) - dt);
+  const myColor = chinColorOf(m);
+  if (myColor && band === 'happy' && m.breedCd <= 0 && pets.length < MAX_PETS && m.eatT <= 0 && m.bathT <= 0) {
+    for (const o of pets) {
+      if (o === m || o.dying || o.pid < m.pid) continue;                    // 起点は pid 小さい方だけ
+      const oc = chinColorOf(o); if (!oc || petMoodBand(o.mood) !== 'happy' || (o.breedCd || 0) > 0) continue;
+      if (Math.hypot(o.obj.position.x - m.obj.position.x, o.obj.position.z - m.obj.position.z) > 3.5) continue;
+      const childColor = breedColor(myColor, oc);
+      const baby = spawnMob('chinchilla_' + childColor, (m.obj.position.x + o.obj.position.x) / 2 + 0.5, (m.obj.position.z + o.obj.position.z) / 2, {});
+      if (baby) {
+        initPet(baby, { mood: 75 }); dexDiscover(childColor);
+        m.breedCd = o.breedCd = 90 + Math.random() * 30;                    // 親はしばらく繁殖休み
+        if (!progress.bred) { progress.bred = true; scheduleSave(); }        // 📖 初繁殖の達成フラグ
+        petEmote(m); petEmote(o); petEmote(baby);
+        spawnPetalBurst(baby.obj.position.x, baby.obj.position.y + 0.4, baby.obj.position.z, 6); // 🌸 誕生＝花びらが舞う仲良し演出
+        if (window.playAnimalSFX) try { window.playAnimalSFX('pet', 'happy', { x: baby.obj.position.x, y: baby.obj.position.y, z: baby.obj.position.z }); } catch (e) {}
+        if (typeof toast === 'function') toast(`🌸💕 あかちゃんチンチラが生まれた！（毛色：${CHIN_DISPLAY[childColor].name}）`);
+      } else m.breedCd = 20;                                                // 生成失敗時は短い再試行
+      break;
+    }
+  }
+  // --- 移動の決定 ---
+  let moving = false, anim = 'idle', hx = 0, hz = 0;
+  const faceP = () => { m.obj.rotation.y = Math.atan2(-dx, -dz); };
+  const faceAway = () => { m.obj.rotation.y = Math.atan2(dx, dz); };
+  if (m.biteT > 0) { m.biteT -= dt; faceP(); hx = dx / dist; hz = dz / dist; moving = dist > 1.1; anim = 'walk'; spd = 12; } // 噛みつき突進
+  else if (m.eatT > 0) { m.eatT -= dt; faceP(); anim = 'idle'; }                                                          // 手で持ってもぐもぐ
+  else if (m.fumeT > 0) { m.fumeT -= dt; faceP(); anim = 'idle'; m.obj.rotation.y += (Math.random() - 0.5) * 0.14; } // 怒って震える
+  else if (m.bathT > 0) {                                  // 砂浴び：その場でぱたぱた転がる（向きをこまめに変える＋砂煙）
+    m.bathT -= dt; anim = 'idle'; m.obj.rotation.y += (Math.random() - 0.5) * 0.35;
+    m.bathFxCd -= dt;
+    if (m.bathFxCd <= 0) { m.bathFxCd = 0.28; spawnFx('fx_collapse', m.obj.position.x, m.obj.position.y + 0.12, m.obj.position.z, 0.7, 0.7); window.playSFX && window.playSFX('pet_dust'); }
+    if (m.bathT <= 0) petEmote(m);                         // 浴び終わりにごきげんハート
+  }
+  else if (m.groomT > 0) { m.groomT -= dt; anim = 'idle'; faceP(); m.obj.rotation.y += Math.sin(m.hopT * 6) * 0.06; } // 毛づくろい：小刻みに頭を動かす
+  else if (m.sitT > 0) { m.sitT -= dt; anim = 'idle'; faceP(); }
+  else if (m.zoomT > 0) {                                   // やんちゃ：プレイヤー周りをくるくるダッシュ
+    m.zoomT -= dt;
+    const ang = Math.atan2(dz, dx) + m.zoomDir * Math.PI / 2;
+    hx = Math.cos(ang); hz = Math.sin(ang);
+    if (dist > want + 1.5) { hx += dx / dist; hz += dz / dist; }
+    moving = true; anim = 'walk'; spd *= 1.4;
+  }
+  else if (band === 'grumpy' && m.sulkT > 0) { m.sulkT -= dt; hx = -dx / dist; hz = -dz / dist; moving = true; anim = 'walk'; spd *= 0.8; } // 拗ねて離れる
+  else if (dist > want) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; if (dist > 14) spd *= 1.7; }
+  else { // アイドル：たまにプレイヤー周りをうろつく徘徊／野生チンチラへ挨拶／警戒スキャン
+    if (band !== 'grumpy' && m.eatT <= 0 && (m.roamT || 0) <= 0) {
+      m.roamCd = (m.roamCd || 0) - dt;
+      if (m.roamCd <= 0) { m.roamCd = 3 + Math.random() * 4; if (Math.random() < 0.5) { m.roamT = 1.0 + Math.random() * 1.3; const ra = Math.random() * Math.PI * 2, rr = 1.0 + Math.random() * 1.4; m.roamX = player.pos.x + Math.cos(ra) * rr; m.roamZ = player.pos.z + Math.sin(ra) * rr; } }
+    }
+    if ((m.roamT || 0) > 0) { // ふらっと近場を歩く
+      m.roamT -= dt; const rx = m.roamX - m.obj.position.x, rz = m.roamZ - m.obj.position.z, rd = Math.hypot(rx, rz) || 1;
+      if (rd > 0.3) { hx = rx / rd; hz = rz / rd; moving = true; anim = 'walk'; spd = Math.min(spd, 3.2); } else m.roamT = 0;
+    } else {
+      anim = 'idle';
+      if (m.alertT > 0) { m.alertT -= dt; m.obj.rotation.y += dt * 1.4; }
+      else if ((m.wildLookT || 0) > 0 && m.wildLook && !m.wildLook.dying) { const wx = m.wildLook.obj.position.x - m.obj.position.x, wz = m.wildLook.obj.position.z - m.obj.position.z; m.obj.rotation.y = Math.atan2(-wx, -wz); } // 野生チンチラの方を向く
+      else if (band === 'grumpy') faceAway(); else faceP();
+    }
+  }
+  if (moving) tryMoveMob(m, hx, hz, spd, dt);
+  // --- 接地＋弾み（ごきげんだとぴょこぴょこ＋しっぽワグ）---
+  const fy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
+  m.gy = (m.gy == null) ? fy : m.gy + (fy - m.gy) * Math.min(1, dt * 12);
+  m.hopT += dt * (anim === 'walk' ? 9 : 5);
+  let bob = 0;
+  if (m.bathT > 0) bob = Math.abs(Math.sin(m.hopT * 13)) * 0.04;                                      // 砂浴び：細かくぱたぱた
+  else if (m.eatT > 0) bob = Math.abs(Math.sin(m.hopT * 7)) * 0.025;                                   // もぐもぐ（手で持って食べる）
+  else if (band === 'happy') bob = Math.max(0, Math.sin(m.hopT)) * 0.10 * (petHas(m, 'playful') ? 1.7 : 1);
+  if (m.popT > 0) { m.popT -= dt; const t = Math.min(1, 1 - Math.max(0, m.popT) / 0.5); bob += Math.sin(t * Math.PI) * 0.22; } // ぴょこ跳ね（単発ジャンプの弧）
+  m.obj.position.y = m.gy + bob;
+  if (band === 'happy' && !moving && m.eatT <= 0) m.obj.rotation.y += Math.sin(m.hopT * 1.3) * 0.05;
+  // ポーズ別の伸縮：立ちオシッコ=縦に伸びる / 食事=ちょこんと持ち上げる → それ以外は戻る
+  if (m.standT > 0) m.standT -= dt;
+  let tSY = 1.0, tSXZ = 1.0;
+  if (m.standT > 0) { tSY = 1.5; tSXZ = 0.86; }
+  else if (m.bathT > 0) { tSY = 0.74; tSXZ = 1.16; }    // 砂浴び：べちゃっと低く広がる
+  else if (m.eatT > 0) { tSY = 1.12; tSXZ = 0.96; }
+  else if (m.groomT > 0) { tSY = 0.92; tSXZ = 1.05; }   // 毛づくろい：少し丸まる
+  m.obj.scale.y += (tSY - m.obj.scale.y) * Math.min(1, dt * 12);
+  m.obj.scale.x += (tSXZ - m.obj.scale.x) * Math.min(1, dt * 12);
+  m.obj.scale.z += (tSXZ - m.obj.scale.z) * Math.min(1, dt * 12);
+  // --- 呼吸：穏やかな時だけ、ごく小さく上下に膨らむ（常時の生命感・メッシュ非依存）---
+  m.breathPh += dt * (band === 'happy' ? 2.6 : 1.8);
+  if (m.standT <= 0 && m.eatT <= 0 && m.bathT <= 0 && m.popT <= 0) {
+    const br = Math.sin(m.breathPh) * (m.groomT > 0 ? 0.02 : 0.012);
+    m.obj.scale.y *= (1 + br); m.obj.scale.x *= (1 - br * 0.6); m.obj.scale.z *= (1 - br * 0.6);
+  }
+  // --- 耳ぴく（擬似）：ボーンが無いので頭側を一瞬だけ小さく傾けて“ぴくっ”を表現。警戒中は頻発 ---
+  m.earCd -= dt;
+  if (m.earCd <= 0 && m.earT <= 0 && m.biteT <= 0 && m.fumeT <= 0 && m.bathT <= 0) {
+    m.earCd = (m.alertT > 0 || petHas(m, 'wary')) ? 0.8 + Math.random() * 1.4 : 2.5 + Math.random() * 3.5;
+    m.earT = 0.18;
+  }
+  if (m.earT > 0) { m.earT -= dt; m.obj.rotation.z = Math.sin((0.18 - Math.max(0, m.earT)) / 0.18 * Math.PI * 2) * 0.05; }
+  else if (Math.abs(m.obj.rotation.z) > 0.001) m.obj.rotation.z += (0 - m.obj.rotation.z) * Math.min(1, dt * 14); // ぴく後は水平へ戻す
+  // --- 接地影：足元(地表)へ追従。跳ねて浮くほど薄く小さく（弧の高さに応じて）---
+  if (m.petShadow) {
+    const gy = (m.gy != null) ? m.gy : m.obj.position.y;
+    const lift = Math.max(0, m.obj.position.y - gy);
+    const s = (m.petShadow.userData.baseScale || 0.7) * (1 - Math.min(0.5, lift * 1.2));
+    m.petShadow.position.set(m.obj.position.x, gy + 0.02, m.obj.position.z);
+    m.petShadow.scale.set(s, s, s);
+    m.petShadow.material.opacity = 0.9 * (1 - Math.min(0.55, lift * 1.1));
+  }
+  // --- 機嫌の絵文字（ハート）---
+  m.emoteCd -= dt;
+  if (m.emoteCd <= 0) { m.emoteCd = band === 'happy' ? 2.0 + Math.random() * 1.4 : 7 + Math.random() * 4; if (band === 'happy') petEmote(m); }
+  setMobAnim(m, anim);
+}
+// 起動時に一度だけ「さくら」を連れてくる（セーブに居れば復元が優先）
+let petIntroDone = false;
+function maybeIntroducePet() {
+  // ★物語版：さくら＝主人公。よって「ペットのさくら」は自動召喚しない（二人になるため）。
+  //   仲間チンチラの「なつかせ(P＋餌)」システムはそのまま使える（野生チンチラ→仲間）。
+  if (petIntroDone || !mobsRestored) return;
+  petIntroDone = true;
+  if ((itemCounts.himawari || 0) < 12) itemCounts.himawari = 12; // 大好物のひまわりを少し持たせて始める
+}
+// ===================================================================
+// 🏠 「さくらの家」ステージ（提供間取り＝蒲郡邸宅の近似トレース・2階建て）
+//   2階の子供部屋のケージからスタート → ホールの階段で1階 → 玄関から脱走（序章）
+//   ※1ブロック≒1m。スポーン地点を中心に建築（既に建っていれば再建築しない）。
+// ===================================================================
+const HOUSE = { ox:0, oy:0, oz:0, W:28, D1:20, D2:15, exit:null, start:null };
+let houseChecked = false, houseIntroActive = false, houseReached1F = false; // 序章「脱走」の進行（1階に降りたチェックポイント）
+function hSet(x, y, z, b) { setBlock(HOUSE.ox + x, HOUSE.oy + y, HOUSE.oz + z, b); }
+function hFloor(x0, z0, x1, z1, y, b) { for (let x=x0;x<=x1;x++) for (let z=z0;z<=z1;z++) hSet(x,y,z,b); }
+function hClear(x0, z0, x1, z1, y0, y1) { for (let y=y0;y<=y1;y++) for (let x=x0;x<=x1;x++) for (let z=z0;z<=z1;z++) hSet(x,y,z,B.air); }
+function hRing(x0, z0, x1, z1, yb, yt, b) { for (let y=yb;y<=yt;y++){ for (let x=x0;x<=x1;x++){ hSet(x,y,z0,b); hSet(x,y,z1,b);} for (let z=z0;z<=z1;z++){ hSet(x0,y,z,b); hSet(x1,y,z,b);} } }
+function hWallV(x, z0, z1, yb, yt, b) { for (let y=yb;y<=yt;y++) for (let z=z0;z<=z1;z++) hSet(x,y,z,b); }
+function hWallH(z, x0, x1, yb, yt, b) { for (let y=yb;y<=yt;y++) for (let x=x0;x<=x1;x++) hSet(x,y,z,b); }
+function hDoor(x, z, yb, yt) { for (let y=yb;y<=yt;y++) hSet(x,y,z,B.air); }
+function buildMansion() {
+  const W=HOUSE.W, D1=HOUSE.D1, D2=HOUSE.D2, P=B.planks, G=B.stonebrick, Gl=B.glass, L=B.log;
+  // 1F：床・内部クリア・外壁・天井(=2F床/平屋部の屋根)
+  hFloor(0,0,W,D1, 0, P);
+  hClear(1,1,W-1,D1-1, 1, 3);
+  hRing(0,0,W,D1, 1, 3, P);
+  hFloor(0,0,W,D2, 4, P);                  // 2F床/1F天井（2Fは浅いD2まで）
+  hFloor(0,D2+1,W,D1, 4, P);               // ガレージ等の平屋部＝天井(屋根)
+  // 2F：内部クリア・外壁・屋根
+  hClear(1,1,W-1,D2-1, 5, 7);
+  hRing(0,0,W,D2, 5, 7, P);
+  hFloor(0,0,W,D2, 8, P);                   // 屋根
+  // 1F 間仕切り（ドア＝gap）
+  hWallV(18, 1, D1-1, 1, 3, P); hDoor(18,3,1,3); hDoor(18,4,1,3);  // ガレージ仕切り＋出入口
+  hFloor(19,1,W-1,D1-1, 0, G);                                     // ガレージ床=石レンガ
+  hWallV(11, 1, 11, 1, 3, P); hDoor(11,6,1,3);                     // LDK ↔ ホール
+  hWallH(10, 1, 10, 1, 3, P); hDoor(5,10,1,3);                     // LDK上 ↔ キッチン下
+  hDoor(14,D1,1,3); hDoor(15,D1,1,3);                              // 玄関＝脱走出口（南壁）
+  HOUSE.exit = { x:HOUSE.ox+14.5, z:HOUSE.oz+D1+1.5 };
+  hSet(0,2,4,Gl); hSet(0,2,7,Gl); hSet(4,2,0,Gl); hSet(8,2,0,Gl);  // 1F窓
+  // 2F 間仕切り
+  hWallV(7, 1, D2-1, 5, 7, P); hDoor(7,3,5,7); hDoor(7,11,5,7);    // 子供部屋A/B ↔ ホール
+  hWallH(7, 1, 6, 5, 7, P);                                        // 子供A/B 仕切り
+  hWallV(17, 1, D2-1, 5, 7, P); hDoor(17,5,5,7);                   // ホール ↔ 主寝室
+  hSet(3,6,0,Gl); hSet(12,6,0,Gl); hSet(21,6,0,Gl);               // 2F窓
+  // 階段（1Fホール→2Fホール。x=13・z=14→11 で上る）
+  const sx=13;
+  for (let i=0;i<4;i++){ const z=14-i; for (let y=1;y<=1+i;y++) hSet(sx,y,z,P); hClear(sx,z,sx,z, 2+i, 7); hSet(sx,4,z,B.air); }
+  hSet(sx,4,10,P);                                                 // 上り口の2F床（踏み場）
+  // さくらのケージ（2F子供部屋A）＝スタート。天井まで密閉し、まぐろが扉を開けるまで出られない
+  for (let yy=5; yy<=7; yy++) {
+    for (let xx=2; xx<=5; xx++) { hSet(xx,yy,2,L); hSet(xx,yy,5,L); } // 北/南の柵
+    for (let zz=2; zz<=5; zz++) { hSet(2,yy,zz,L); hSet(5,yy,zz,L); } // 西/東の柵
+  }
+  hSet(4,5,4, B.chest);                              // 巣箱
+  HOUSE.cageDoor = { x: HOUSE.ox + 5, z: HOUSE.oz + 3 }; // 扉（東柵 x=5,z=3）。最初は閉。まぐろが開ける
+  // 家具（最低限）
+  hSet(20,5,3,B.leaves); hSet(21,5,3,B.leaves);                    // 主寝室ベッド
+  hSet(8,1,9,G); hSet(9,1,9,G);                                    // 1Fキッチン台
+  hSet(23,1,5,G); hSet(24,1,5,G);                                  // ガレージの車(箱)
+  HOUSE.start = { x:HOUSE.ox+3.5, y:HOUSE.oy+5, z:HOUSE.oz+4.5, yaw:-Math.PI/2 };
+}
+function maybeBuildHouse() {
+  if (houseChecked || !mobsRestored) return;
+  houseChecked = true;
+  const s = findSpawn();
+  HOUSE.ox = Math.floor(s.x) - 14; HOUSE.oz = Math.floor(s.z) - 10; HOUSE.oy = heightAt(Math.floor(s.x), Math.floor(s.z));
+  HOUSE.exit  = { x: HOUSE.ox + 14.5, z: HOUSE.oz + HOUSE.D1 + 1.5 };
+  HOUSE.start = { x: HOUSE.ox + 3.5, y: HOUSE.oy + 5, z: HOUSE.oz + 3.5, yaw: Math.PI/2 }; // ケージ内（東＝扉の方を向く）
+  const built = getBlock(HOUSE.ox, HOUSE.oy + 1, HOUSE.oz) === B.planks;
+  if (!built) {
+    buildMansion();
+    // 序章：2階・子供部屋のケージの中で目覚める（扉はまだ閉じている＝まぐろが開けるまで出られない）
+    player.pos.set(HOUSE.start.x, HOUSE.start.y, HOUSE.start.z); player.vel.set(0, 0, 0); player.yaw = HOUSE.start.yaw;
+    spawnPoint = { x: HOUSE.exit.x, y: HOUSE.oy + 2, z: HOUSE.exit.z };
+    maguroPending = true; maguroPhase = 0; maguroWait = 0; // 💜 まぐろ登場の発端
+    progress.chapter = 'prologue'; progress.escaped = false; houseReached1F = false; // 📖 序章スタート
+    if (typeof toast === 'function') {
+      toast('🏠 ここはあなたの家。2階・子供部屋のケージの中で、さくらは目を覚ました…');
+      setTimeout(() => toast('🪜 扉が開いたら——ホールの階段で1階へ（Space＝ジャンプ／空中でもう一度＝二段）'), 5000);
+      setTimeout(() => toast('🚪 1階の玄関から外へ！ ※内縁の妻に捕まると逆らえずケージへ戻る'), 9000);
+    }
+  } else if (progress.chapter === 'escape' && !progress.escaped) {
+    houseIntroActive = true; // ロード：脱走の途中（扉は開いた）なら判定を再開して続きから
+  }
+  spawnHouseNpcs(); // 飼い主(わたし)＆内縁の妻を配置（建て直さない既存の家でも毎回1回だけ）
+}
+function checkHouseEscape() {
+  if (!houseIntroActive) return;
+  const px = player.pos.x, pz = player.pos.z;
+  // チェックポイント①：2F子供部屋 → ホールの階段 → 1Fへ降りた
+  if (!houseReached1F && player.pos.y <= HOUSE.oy + 2.4 && player.onGround) {
+    houseReached1F = true;
+    if (typeof toast === 'function') toast('🪜 1階に降りた！ 玄関（南）から外へ — ※内縁の妻に捕まらないで');
+  }
+  // チェックポイント②：家の外周を抜けた＝脱走成功（章クリア）
+  if ((px < HOUSE.ox - 1 || px > HOUSE.ox + HOUSE.W + 1 || pz < HOUSE.oz - 1 || pz > HOUSE.oz + HOUSE.D1 + 1) && player.onGround) {
+    houseIntroActive = false;
+    progress.escaped = true; progress.chapter = 'world';                  // 📖 序章クリア＝自由探索へ
+    camShake = Math.max(camShake, 0.5);                                   // 章クリアの手応え（カメラ）
+    if (typeof toast === 'function') toast('🐭✨ 脱走成功！もう飼われない——自由だ！（チンチラ革命のはじまり）');
+    gainExp(10); scheduleSave();                                         // BGMは updateCombatMusic が day/night へ自動復帰
+  }
+}
+// ===================================================================
+// 👫 人間NPC：わたし（飼い主）と 内縁の妻
+//   ・内縁の妻はさくらが大好き（近づいて見守り、ハートを出す）
+//   ・さくらは内縁の妻には逆らわない＝脱走中に妻に捕まると、抱き上げられてケージへ戻される
+//   ・わたし（飼い主）は1階でのんびり。さくらは飼い主には“逆らえる”（すり抜けて脱走できる）
+// ===================================================================
+let houseNpcsSpawned = false;
+function roundRectPath(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function makeTextSprite(text, color) {
+  const fs = 44, pad = 10;
+  const cv = document.createElement('canvas'); const ctx = cv.getContext('2d');
+  ctx.font = `bold ${fs}px sans-serif`;
+  cv.width = Math.ceil(ctx.measureText(text).width) + pad*2; cv.height = fs + pad*2;
+  ctx.font = `bold ${fs}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; roundRectPath(ctx, 0, 0, cv.width, cv.height, 14); ctx.fill();
+  ctx.fillStyle = color || '#fff'; ctx.fillText(text, cv.width/2, cv.height/2 + 2);
+  const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+  sp.scale.set((cv.width/cv.height) * 0.5, 0.5, 1); // 高さ0.5m
+  return sp;
+}
+function spawnHouseNpcs() {
+  if (houseNpcsSpawned) return;
+  if (!mobTemplates['woman'] || !mobTemplates['merchant']) return; // モデル未読込なら次フレーム再挑戦
+  houseNpcsSpawned = true;
+  const O = HOUSE;
+  const wx = O.ox + 10, wz = O.oz + 5;                    // 2Fホール（子供部屋の前）＝さくらを見守る位置
+  const wife = spawnMob('woman', wx, wz, { y: O.oy + 5 });
+  if (wife) initHouseNpc(wife, 'wife', '内縁の妻 🫶さくら大好き', '#ff9ed2', wx, wz, O.oy + 5);
+  const mx = O.ox + 5, mz = O.oz + 6;                     // 1FのLDK
+  const me = spawnMob('merchant', mx, mz, { y: O.oy + 1 });
+  if (me) initHouseNpc(me, 'owner', 'わたし（飼い主）', '#9ec8ff', mx, mz, O.oy + 1);
+}
+function initHouseNpc(m, kind, name, color, ax, az, ay) {
+  m.houseNpc = kind; m.noSave = true; m.hostile = false; m.home = null;
+  m.anchor = { x: ax, z: az, y: ay };
+  m.emoteCd = 3 + Math.random()*4;
+  attachNameTag(m, name, color);
+}
+function attachNameTag(m, text, color, h) {
+  if (!m.obj) return;
+  const sp = makeTextSprite(text, color); sp.position.set(0, (h != null ? h : 2.15), 0); sp.renderOrder = 999; // h省略時=2.15(人間NPC基準)
+  m.obj.add(sp); m.nameTag = sp;
+}
+function updateHouseNpc(m, dt, dx, dz, dist) {
+  const sameFloor = Math.abs(m.obj.position.y - player.pos.y) < 2.0;
+  // 脱走中：内縁の妻がさくらに触れたら「逆らえない」＝抱き上げられてケージへ戻る
+  if (m.houseNpc === 'wife' && houseIntroActive && sameFloor && dist < 1.6) {
+    player.pos.set(HOUSE.start.x, HOUSE.start.y, HOUSE.start.z); player.vel.set(0, 0, 0);
+    houseReached1F = false;                                              // ケージへ戻された＝1階チェックポイントもリセット（やり直し）
+    spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.4, m.obj.position.z, 1.2, 0.6);
+    if (typeof toast === 'function') toast('🫶 内縁の妻にそっと抱き上げられた…さくらは逆らえない。ケージへ戻された');
+    m.emoteCd = 3;
+    followFloor(m, dt);
+    return;
+  }
+  // 目標：妻は同じ階のさくらへ寄る（見守り）／それ以外は自分の定位置へ戻る
+  let tx = m.anchor.x, tz = m.anchor.z, chasing = false;
+  if (m.houseNpc === 'wife' && sameFloor && dist < 12) { tx = player.pos.x; tz = player.pos.z; chasing = true; }
+  const ddx = tx - m.obj.position.x, ddz = tz - m.obj.position.z, dd = Math.hypot(ddx, ddz) || 1e-4;
+  const stop = chasing ? 1.8 : 0.5;
+  let moving = false;
+  if (dd > stop) moving = tryMoveMob(m, ddx/dd, ddz/dd, chasing ? 1.6 : 1.0, dt);
+  else { followFloor(m, dt); if (chasing) m.obj.rotation.y = Math.atan2(-(player.pos.x - m.obj.position.x), -(player.pos.z - m.obj.position.z)); }
+  setMobAnim(m, moving ? 'walk' : (chasing ? 'talk' : 'idle'));
+  // 妻の「大好き」ハート（さくらが近いとき）
+  if (m.houseNpc === 'wife') {
+    m.emoteCd -= dt;
+    if (m.emoteCd <= 0 && chasing && dist < 4.5) { m.emoteCd = 4 + Math.random()*4; spawnFx('fx_ally_heart', m.obj.position.x, m.obj.position.y + 1.55, m.obj.position.z, 1.1, 0.5); }
+  }
+}
+// ===================================================================
+// 💜 まぐろ：死んでしまったバイオレットのチンチラ（さくらの恩人の霊）
+//   序章の発端＝ケージの扉をそっと開けて、さくらを逃がす。役目を終えると光になって消える。
+// ===================================================================
+let maguro = null, maguroPhase = 0, maguroT = 0, maguroPending = false, maguroWait = 0;
+function ghostify(obj, hex) {
+  const col = new THREE.Color(hex);
+  obj.traverse(o => {
+    if (!o.isMesh || !o.material) return;
+    const src = Array.isArray(o.material) ? o.material : [o.material];
+    const out = src.map(mm => { const c = mm.clone(); c.transparent = true; c.opacity = 0.55; c.depthWrite = false; if ('emissive' in c) { c.emissive = col; c.emissiveIntensity = 0.5; } return c; });
+    o.material = Array.isArray(o.material) ? out : out[0];
+  });
+}
+function setGhostOpacity(obj, a) {
+  obj.traverse(o => { if (o.isMesh && o.material) { const src = Array.isArray(o.material) ? o.material : [o.material]; src.forEach(c => { c.opacity = a; }); } });
+}
+function openCageDoor() { // 扉（柵）を上3段とも消して通れるようにする
+  if (HOUSE.cageDoor) for (let y = HOUSE.oy + 5; y <= HOUSE.oy + 7; y++) setBlock(HOUSE.cageDoor.x, y, HOUSE.cageDoor.z, B.air);
+  houseIntroActive = true; maguroPending = false;
+  if (progress.chapter === 'prologue') { progress.chapter = 'escape'; scheduleSave(); } // 📖 扉が開いた＝脱走パート開始
+}
+function startMaguroIntro() {
+  if (!maguroPending) return;
+  maguroWait++;
+  const violet = mobTemplates['chinchilla_violet'];
+  const tpl = violet || mobTemplates['chinchilla'];
+  if (!tpl) { if (maguroWait > 180) { openCageDoor(); } return; } // 3秒待っても未読込なら扉だけ開ける（詰み防止）
+  maguroPending = false;
+  const O = HOUSE;
+  // まぐろ＝子チンチラ専用モデル。小ささ・子ども顔はモデルに焼き込み済（手動スケールしない）。
+  //   未ロード/失敗時は従来の chinchilla_violet（無ければ chinchilla）へフォールバックして詰みを防ぐ。
+  maguro = spawnMob('chinchilla_violet_baby', O.ox + 6.3, O.oz + 3.5, { y: O.oy + 5 })
+        || spawnMob(violet ? 'chinchilla_violet' : 'chinchilla', O.ox + 6.3, O.oz + 3.5, { y: O.oy + 5 });
+  if (!maguro) { openCageDoor(); return; }
+  maguro.maguro = true; maguro.noSave = true; maguro.hostile = false; maguro.home = null;
+  // 子モデル(総高0.787m)が読めたか判定。フォールバックの大人(1.003m)時は浮遊/タグを大人基準へ戻す係数を持たせる
+  maguro.maguroBaby = (maguro.def.type === 'chinchilla_violet_baby');
+  maguro.hoverK = maguro.maguroBaby ? 1.0 : 1.27;           // 1.003/0.787≒1.27（大人フォールバック時の補正）
+  ghostify(maguro.obj, '#b07be0');                           // ※ghostifyは材質の発光/半透明のみ＝体格に応じたサイズ要素は無い（縮小不要）
+  attachNameTag(maguro, '💜まぐろ（バイオレット）', '#d8b3ff', maguro.maguroBaby ? 1.35 : 2.15); // baby総高に合わせ頭上タグを下げる（大人時は従来2.15）
+  maguroPhase = 1; maguroT = 0;
+  if (typeof toast === 'function') toast('💜 天国から、死んでしまったバイオレットのチンチラ「まぐろ」が会いに来た…');
+}
+function maguroMoveTo(tx, ty, tz, dt, sp) {
+  const p = maguro.obj.position, ddx = tx - p.x, ddy = ty - p.y, ddz = tz - p.z;
+  const d = Math.hypot(ddx, ddy, ddz) || 1e-4, step = Math.min(d, sp * dt);
+  p.x += ddx/d * step; p.y += ddy/d * step; p.z += ddz/d * step;
+  if (Math.hypot(ddx, ddz) > 0.05) maguro.obj.rotation.y = Math.atan2(-ddx, -ddz);
+  return d;
+}
+function updateMaguroIntro(dt) {
+  if (maguroPending) { startMaguroIntro(); return; }
+  if (!maguro || maguroPhase === 0) return;
+  maguroT += dt;
+  const O = HOUSE, fy = O.oy + 5, k = maguro.hoverK || 1.0; // k=浮遊オフセット補正（baby=1.0 / 大人フォールバック=1.27）
+  if (maguroPhase === 1) {                 // 扉へそっと近づく（子サイズ：低めにふわっと・小刻みに）
+    maguro.obj.position.y = fy + 0.09 * k + Math.sin(maguroT * 3.6) * 0.04 * k; // 大人0.12/振幅0.06/周期3 → baby 0.09/0.04/3.6
+    const d = maguroMoveTo(O.ox + 5.6, fy + 0.09 * k, O.oz + 3.5, dt, 1.4);
+    if (d < 0.35 || maguroT > 4) {
+      openCageDoor();
+      spawnFx('fx_ally_heart', O.ox + 5.5, fy + 0.45 * k, O.oz + 3.5, 1.2, 0.6); // 子の頭高に合わせ低めに（大人0.6→baby0.45）
+      if (typeof toast === 'function') toast('💜 まぐろがケージの扉をそっと開けた——「さくら、お逃げ。自由になって」');
+      maguroPhase = 3; maguroT = 0;
+    }
+  } else if (maguroPhase === 3) {           // 出口の方へ導いて、ゆっくり消える
+    maguro.obj.position.y = fy + 0.22 * k + Math.sin(maguroT * 3.6) * 0.05 * k; // 大人0.3/振幅0.08/周期3 → baby 0.22/0.05/3.6
+    maguroMoveTo(O.ox + 8.5, fy + 0.38 * k, O.oz + 3.5, dt, 1.0); // 大人0.5 → baby0.38
+    if (maguroT > 1.5) setGhostOpacity(maguro.obj, Math.max(0, 0.55 * (1 - (maguroT - 1.5) / 2.5)));
+    if (maguroT > 4) {
+      scene.remove(maguro.obj);
+      const idx = mobs.indexOf(maguro); if (idx >= 0) mobs.splice(idx, 1);
+      maguro = null; maguroPhase = 4;
+      if (typeof toast === 'function') toast('🐭 まぐろは光になって消えた。さくら、いまこそ脱走のとき——');
+    }
+  }
+}
 // 海ボス クラーケンAI：海面に半身を出して定位置に留まり、船(プレイヤー)が近いと触手で攻撃。陸へ上がらない。
+// ★最終ボス『女王さくら』専用AI：HPで3フェーズ。おしっこAOE＋通常スワイプ、形態2以降は手下召喚。
+//   出現/撃破の音は onQueenAppear/onQueenDefeat（別途）、BGMは queen テーマ（updateCombatMusic）。
+function updateQueen(m, dt, dx, dz, dist, dy) {
+  m.atkCd = Math.max(0, (m.atkCd || 0) - dt);
+  m.summonCd = Math.max(0, (m.summonCd || 0) - dt);
+  const maxHp = M.hp.queen_sakura || 240;
+  const phase = (m.hp / maxHp) > 0.66 ? 1 : (m.hp / maxHp) > 0.33 ? 2 : 3;
+  if ((m.qphase || 1) !== phase) {                  // フェーズ移行＝怒りの演出（1回ずつ）
+    m.qphase = phase; camShake = Math.max(camShake, 0.5);
+    spawnFx('fx_miasma', m.obj.position.x, m.obj.position.y + 0.5, m.obj.position.z, 1.6, 1.2);
+    try { if (window.onEnemyAggro) window.onEnemyAggro(); } catch (e) {}
+    if (typeof toast === 'function') toast(phase === 2 ? '👑💢 女王さくらが怒りに震える…！（第2形態）' : '👑🔥 女王さくらの逆鱗——本気だ…！（最終形態）');
+  }
+  const spd = M.speedBoss * (1 + 0.25 * (phase - 1));
+  let animName = 'attack', moving = false;
+  if (dist > 2.4 || dy > 2.5) { const h = chaseHeading(m, dt); moving = tryMoveMob(m, h.x, h.z, spd, dt); animName = 'walk'; }
+  else {
+    m.obj.rotation.y = Math.atan2(-dx, -dz);
+    if (m.atkCd <= 0) {
+      m.atkCnt = (m.atkCnt || 0) + 1;
+      const peeEvery = phase === 1 ? 3 : 2;          // 高フェーズほど おしっこAOE 頻発
+      if (m.atkCnt % peeEvery === 0) {               // 強：おしっこ範囲攻撃（大ダメージ＋スリップ＋黄飛沫）
+        animName = 'heavy'; m.atkCd = Math.max(1.2, C.golemHeavyCd - 0.4 * (phase - 1));
+        damage(C.golemHeavyDmg * (2 + phase), 'sakura'); playerSlow = 3 + phase;
+        if (typeof spawnSplash === 'function') spawnSplash(player.pos.x, player.pos.y + 0.4, player.pos.z, 14 + phase * 4);
+        camShake = Math.max(camShake, 0.6);
+      } else {                                        // 通常：前足スワイプ
+        animName = 'attack'; m.atkCd = Math.max(0.8, C.golemCd - 0.2 * (phase - 1));
+        damage(C.golemDmg + phase, 'sakura');
+      }
+    }
+  }
+  if (!moving) followFloor(m, dt);
+  // フェーズ2以降：たまに天敵をお供に召喚（総数上限を尊重）
+  if (phase >= 2 && m.summonCd <= 0 && mobs.length < M.totalCap) {
+    m.summonCd = phase === 3 ? 7 : 11;
+    const minion = ['weasel', 'snake', 'wolf'][Math.floor(Math.random() * 3)];
+    if (mobTemplates[minion]) {
+      const a = Math.random() * Math.PI * 2, sx = m.obj.position.x + Math.cos(a) * 2, sz = m.obj.position.z + Math.sin(a) * 2;
+      const mm = spawnMob(minion, sx, sz, {});
+      if (mm) { spawnFx('fx_miasma', sx, mm.obj.position.y + 0.3, sz, 1.2, 0.8); if (typeof toast === 'function') toast('👑 女王さくらが手下を呼んだ！'); }
+    }
+  }
+  setMobAnim(m, animName);
+}
 function updateKraken(m, dt, dx, dz, dist) {
   if (m.seaX == null) { m.seaX = m.obj.position.x; m.seaZ = m.obj.position.z; }
   m.obj.position.x += (m.seaX - m.obj.position.x) * Math.min(1, dt * 0.6); // 緩く定位置へ（流されても戻る）
@@ -2784,6 +3862,165 @@ function updateGuard(m, dt) {
   }
   if (moving) tryMoveMob(m, dhx, dhz, spd, dt); else followFloor(m, dt);
   setMobAnim(m, animName);
+}
+// ===================================================================
+// 🐾 動物8種の「種別の仕草」＝さくらと同じ procedural 方式の汎用版。
+//   アニメ/ボーン無しの単一ノードGLBでも動く（全てルートobjの transform 変形）。
+//   既存AI（天敵の個性AI/仲間スキル）が出す状態(ctx)を受けて見た目の癖を上乗せする。
+// ===================================================================
+function critterGesture(m, dt, ctx) {
+  ctx = ctx || {};
+  if (m._lodMid) { if (m.def.type !== 'bird') m.obj.position.y = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y); return; } // LOD中遠：種別仕草を省いて床追従のみ（鳥は飛行高度をAIに任せる）
+  const t = m.def.type;
+  const walking = !!ctx.moving || ctx.animName === 'walk';
+  const fy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
+  // 歩行↔停止のクロスフェード係数（0=停止/1=歩行）。ポーズや跳ねを滑らかに繋ぐ
+  m.gWalk = (m.gWalk != null ? m.gWalk : (walking ? 1 : 0)) + ((walking ? 1 : 0) - (m.gWalk != null ? m.gWalk : 0)) * Math.min(1, dt * 8);
+  const wf = m.gWalk;                                     // walk factor（補間済み）
+  m.hopT = (m.hopT || 0) + dt * (4 + 5 * wf);             // 歩行で速く（補間）
+  m.gPhase = (m.gPhase || Math.random() * 6) + dt;        // 仕草用の汎用位相
+  const ally = (t === 'rabbit' || t === 'guineapig' || t === 'squirrel' || t === 'hedgehog');
+  let bobAmp = (t === 'snake') ? 0.02 : 0.06;             // 既定の弾み（スライド移動を防ぐぴょこ）
+  let rotZ = 0, rotXTarget = (t === 'bird') ? null : 0, sclY = 1, sclXZ = 1, extraY = 0, yawAdd = 0;
+  const lerp = (a, b) => a + (b - a) * wf;                // 停止値↔歩行値の補間
+  if (t === 'rabbit') {                                   // うさぎ：ぴょこ跳ねロコモーション＋停止中の耳ぴく
+    bobAmp = lerp(0.05, 0.18); m.hopT += dt * 4 * wf;
+    m.earCd = (m.earCd != null ? m.earCd : 1) - dt;
+    if (!walking && m.earCd <= 0 && (m.earT || 0) <= 0) { m.earCd = 1.5 + Math.random() * 2.5; m.earT = 0.18; }
+    if ((m.earT || 0) > 0) { m.earT -= dt; rotZ = Math.sin((0.18 - Math.max(0, m.earT)) / 0.18 * Math.PI * 2) * 0.06; }
+  } else if (t === 'guineapig') {                         // モルモット：ごきげん時に小さくポップコーンジャンプ
+    if (!walking && ctx.happy !== false) {
+      m.popCd = (m.popCd != null ? m.popCd : 1) - dt;
+      if (m.popCd <= 0 && (m.popT || 0) <= 0) { m.popCd = 1.2 + Math.random() * 2.5; m.popT = 0.34; }
+    }
+    if ((m.popT || 0) > 0) { m.popT -= dt; extraY += Math.sin(Math.min(1, 1 - Math.max(0, m.popT) / 0.34) * Math.PI) * 0.22; sclY = 1.08; sclXZ = 0.94; }
+  } else if (t === 'squirrel') {                          // リス：ふさ尾を小刻みに振る＋停止中は座って木の実をかじる
+    rotZ = Math.sin(m.gPhase * 9) * 0.05;
+    if (!walking) { bobAmp = 0.02; m.hopT += dt * 5; sclY = 1 + Math.sin(m.gPhase * 10) * 0.02; }
+  } else if (t === 'hedgehog') {                          // ハリネズミ：scaredで丸まる（縮こまり/針）→安全で戻る
+    m.curl = Math.max(0, Math.min(1, (m.curl || 0) + (ctx.scared ? dt * 4 : -dt * 3)));
+    if (m.curl > 0.02) { sclY = 1 - 0.42 * m.curl; sclXZ = 1 + 0.30 * m.curl; bobAmp = 0.02 * (1 - m.curl); }
+  } else if (t === 'wolf') {                              // 狼：低く構えたプロウル歩き＋遠吠えポーズ（頭上げ）
+    if (ctx.howl) rotXTarget = -0.42;                     // 遠吠え＝頭を上げる
+    else { rotXTarget = lerp(0, 0.18); sclY = lerp(1, 0.93); } // プロウル＝歩行で前傾＋やや低く（補間）
+  } else if (t === 'weasel') {                            // イタチ：ジグザグ(既存AI)に上下バウンドgaitを足す
+    bobAmp = lerp(0.05, 0.13); m.hopT += dt * 5 * wf;
+  } else if (t === 'bird') {                              // 鳥：羽ばたき＝横スケールの小刻みパルス＋ホバの微浮き（pitchはAI側）
+    sclXZ = 1 + Math.sin(m.gPhase * 16) * 0.05; extraY += Math.sin(m.gPhase * 8) * 0.03;
+  } else if (t === 'snake') {                             // 蛇：胴のヨー揺れ＝スリザー波（移動中のみ＝idle時のドリフト防止）
+    if (walking) yawAdd = Math.sin(m.gPhase * 5) * 0.20; bobAmp = 0.015;
+  }
+  // ---- アイドルのバリエーション＋その場ターン（停止中・丸まり/ポップ/溜め以外）----
+  //   全種：きょろきょろ/その場ターン。仲間はさらに eat（前かがみで小刻み）/ groom（体を捻る）。
+  if (!walking && !ctx.windup && (m.curl || 0) < 0.05 && (m.popT || 0) <= 0 && t !== 'bird') {
+    m.idleCd = (m.idleCd != null ? m.idleCd : 1 + Math.random() * 3) - dt;
+    if (m.idleCd <= 0 && (m.idleT || 0) <= 0) {
+      m.idleCd = 2.5 + Math.random() * 3.5;
+      const acts = ally ? ['turn', 'eat', 'groom', 'look'] : ['turn', 'look', 'look'];
+      m.idleAct = acts[Math.floor(Math.random() * acts.length)];
+      m.idleT = (m.idleAct === 'turn') ? 0.7 : 1.3;
+      if (m.idleAct === 'turn') m.idleYaw = m.obj.rotation.y + (Math.random() * 2 - 1) * 1.3;
+    }
+    if ((m.idleT || 0) > 0) {
+      m.idleT -= dt;
+      if (m.idleAct === 'turn') m.obj.rotation.y += (m.idleYaw - m.obj.rotation.y) * Math.min(1, dt * 6); // その場でくるりと向き変え
+      else if (m.idleAct === 'eat') { extraY += Math.abs(Math.sin(m.gPhase * 9)) * 0.03; rotXTarget = 0.25; }   // 餌をついばむ＝前かがみで小刻み
+      else if (m.idleAct === 'groom') { rotZ += Math.sin(m.gPhase * 7) * 0.10; sclY = Math.min(sclY, 0.97); }   // 毛づくろい＝体を捻る
+      else if (m.idleAct === 'look') m.obj.rotation.y += Math.sin(m.gPhase * 1.5) * dt * 1.1;                   // きょろきょろ
+    }
+  }
+  // ---- 敵：攻撃前の溜め（テレグラフ）＝のけぞって構える（読み合いの一拍）----
+  if (ctx.windup) { rotXTarget = -0.30; sclY = 1.05; sclXZ = 0.96; }
+  // ---- 適用（鳥はAIが y/pitch を管理するので上下は触らない）----
+  if (t !== 'bird') m.obj.position.y = fy + Math.max(0, Math.sin(m.hopT)) * bobAmp + extraY;
+  else m.obj.position.y += extraY * dt;                   // 鳥はホバの微揺れだけ薄く足す
+  m.obj.rotation.z = rotZ;
+  m.obj.rotation.y += yawAdd;
+  if (rotXTarget != null) m.obj.rotation.x += (rotXTarget - m.obj.rotation.x) * Math.min(1, dt * 10); // プロウル/遠吠え/溜め/食事はイージングで滑らかに
+  m.obj.scale.y  += (sclY  - m.obj.scale.y)  * Math.min(1, dt * 12);
+  m.obj.scale.x  += (sclXZ - m.obj.scale.x)  * Math.min(1, dt * 12);
+  m.obj.scale.z  += (sclXZ - m.obj.scale.z)  * Math.min(1, dt * 12);
+}
+// 種別SE：2号機の playAnimalSFX に委譲（種×イベント→SEキーの写像・3D定位・リッチ音は API 側が担当）。
+//   座標を渡すことで自動的に距離減衰つきの空間音になる。weasel/guineapig/bird も API 側が正しく振り分ける。
+function critterSE(m, ev) {
+  if (!window.playAnimalSFX) return;
+  const t = (typeof m === 'string') ? m : (m && m.def && m.def.type);
+  const p = m && m.obj && m.obj.position;
+  window.playAnimalSFX(t, ev, p ? { x: p.x, y: p.y, z: p.z } : undefined);
+}
+// 天敵の個性AI：鳥=上空から急降下／蛇=忍び寄り→lunge／狼=群れで強気／イタチ=ジグザグ俊敏
+function updatePredator(m, dt, dx, dz, dist, dy) {
+  m.atkCd = Math.max(0, (m.atkCd || 0) - dt);
+  const t = m.def.type;
+  // 発見SE：索敵圏に入った瞬間に一度だけ鳴く（離れたらリセットして再発見でまた鳴く）
+  const detect = dist < 14 && dy < 8;
+  if (detect && !m.spotted) { m.spotted = true; critterSE(m, 'spot'); try { if (window.onEnemyAggro) window.onEnemyAggro(); } catch (e) {} } // 交戦開始のスティンガー
+  else if (!detect && dist > 20) m.spotted = false;
+  // ---- 鳥：上空旋回 → 急降下アーク → 離脱 のループ（猛禽らしい一撃離脱）----
+  if (t === 'bird') {
+    m.diveCd = (m.diveCd || 0) - dt; m.diveT = Math.max(0, (m.diveT || 0) - dt); m.retreatT = Math.max(0, (m.retreatT || 0) - dt);
+    const gy = floorYNear(m.obj.position.x, m.obj.position.z, m.obj.position.y);
+    const cruiseY = Math.max(player.pos.y, gy) + 3.4;       // 巡航高度
+    if (m.retreatT > 0) {                                   // 離脱：上昇しながら外へ逃げる（仕切り直し）
+      m.obj.position.y += (cruiseY + 1.6 - m.obj.position.y) * Math.min(1, dt * 4);
+      const ux = dx / dist, uz = dz / dist; m.obj.position.x -= ux * 7 * dt; m.obj.position.z -= uz * 7 * dt;
+      m.obj.rotation.y = Math.atan2(-dx, -dz); m.obj.rotation.x = -0.25;
+    } else if (m.diveT > 0) {                               // 急降下アーク：プレイヤーへ突っ込む
+      m.obj.position.y += (player.pos.y + 0.4 - m.obj.position.y) * Math.min(1, dt * 5);
+      if (dist > 1.2) { const ux = dx / dist, uz = dz / dist; m.obj.position.x += ux * 13 * dt; m.obj.position.z += uz * 13 * dt; }
+      m.obj.rotation.y = Math.atan2(-dx, -dz); m.obj.rotation.x = 0.5;   // 前のめり
+      if (m.atkCd <= 0 && dist < 2.2 && Math.abs(m.obj.position.y - player.pos.y) < 2.2) { m.atkCd = 1.4; damage(C.meleeDmg + 2, 'mob'); critterSE(m, 'attack'); m.diveT = 0; m.retreatT = 1.1; } // 命中→離脱
+      else if (m.diveT <= 0) m.retreatT = 0.8;              // 空振りでも一旦離脱
+    } else {                                                // 上空旋回：高度を保って周回し、隙を見て急降下
+      m.obj.position.y += (cruiseY - m.obj.position.y) * Math.min(1, dt * 4);
+      m.orbitA = (m.orbitA != null ? m.orbitA : Math.random() * 6.28) + dt * 1.6;
+      const rad = 6, tx = player.pos.x + Math.cos(m.orbitA) * rad, tz = player.pos.z + Math.sin(m.orbitA) * rad;
+      const ox = tx - m.obj.position.x, oz = tz - m.obj.position.z, od = Math.hypot(ox, oz) || 1e-4;
+      m.obj.position.x += ox / od * Math.min(od, 6 * dt); m.obj.position.z += oz / od * Math.min(od, 6 * dt);
+      m.obj.rotation.y = Math.atan2(-dx, -dz); m.obj.rotation.x = 0;
+      if (m.diveCd <= 0 && dist < 13 && dy < 7) { m.diveT = 0.9; m.diveCd = 3.5 + Math.random() * 2.5; critterSE(m, 'dive'); } // 急降下開始（羽ばたきSE）
+    }
+    critterGesture(m, dt, { moving: true, diving: m.diveT > 0 }); // 羽ばたき/ホバの微揺れ（y/pitchはAI管理）
+    return;
+  }
+  // ---- 地上の天敵 ----
+  let moving = false, anim = 'idle', hx = 0, hz = 0, spd = M.speedHostile, howl = false;
+  if (t === 'snake') {                                  // 蛇：忍び寄り → とぐろを巻いて構え(読み合い) → 一気に lunge → 後退
+    m.lungeT = Math.max(0, (m.lungeT || 0) - dt); m.coilT = Math.max(0, (m.coilT || 0) - dt); m.backT = Math.max(0, (m.backT || 0) - dt);
+    if (m.coiling && m.coilT <= 0) { m.coiling = false; m.lungeT = 0.45; critterSE(m, 'attack'); } // 構え終わり＝突進発動
+    if (m.backT > 0) { hx = -dx / dist; hz = -dz / dist; moving = true; anim = 'walk'; spd = 3.0; } // 噛みついた後はスッと退く
+    else if (m.coilT > 0) { m.obj.rotation.y = Math.atan2(-dx, -dz); } // とぐろ＝その場で静止して構える（一拍の溜め）
+    else if (m.lungeT > 0) { hx = dx / dist; hz = dz / dist; moving = true; anim = 'walk'; spd = 12; }
+    else if (dist <= 1.6) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 1.2; damage(C.meleeDmg, 'mob'); critterSE(m, 'attack'); m.backT = 0.7; } }
+    else if (dist < 6) { if (m.atkCd <= 0 && !m.coiling) { m.atkCd = 2.2; m.coilT = 0.45; m.coiling = true; } else { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = 1.5; } } // 間合いに入ったら まず とぐろ
+    else if (dist < 18) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); hx = h.x; hz = h.z; moving = true; anim = 'walk'; spd = 2.2; }
+  } else if (t === 'wolf') {                             // 狼：群れで側面包囲＋ひと吠え同期。強気(群れ)でないと間合いを詰めない
+    let pack = 0; for (const o of mobs) { if (o.def.type === 'wolf' && !o.dying && Math.hypot(o.obj.position.x - m.obj.position.x, o.obj.position.z - m.obj.position.z) < 14) pack++; }
+    const bold = pack >= 2;
+    if (m.flankBias == null) m.flankBias = (Math.random() * 0.5 + 0.3) * (Math.random() < 0.5 ? 1 : -1); // 個体ごとの回り込み方向
+    m.howlCd = (m.howlCd != null ? m.howlCd : 3 + Math.random() * 4) - dt;
+    if (dist > 4 && dist < 22 && m.howlCd <= 0 && (m.howlT || 0) <= 0) { m.howlT = 1.0; m.howlCd = 6 + Math.random() * 6; critterSE(m, 'howl'); } // 接近前にひと吠え
+    if ((m.howlT || 0) > 0) { m.howlT -= dt; howl = true; }
+    const keep = bold ? 1.7 : 3.4;                       // 強気距離：群れていない狼は間合いを取って唸るだけ
+    if (dist <= 1.9) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 1.0; damage(C.meleeDmg + (bold ? 2 : 0), 'mob'); critterSE(m, 'attack'); } }
+    else if (dist > keep && !howl) { // 側面から包囲（chase に横バイアスを乗せて回り込む）
+      const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); const b = m.flankBias * (bold ? 0.6 : 0.9);
+      hx = h.x - h.z * b; hz = h.z + h.x * b; moving = true; anim = 'walk'; spd = bold ? 3.4 : 2.4;
+    } else if (!howl && !bold) { // 強気でない＝間合いで横歩きして威嚇（包囲を保つ）
+      m.obj.rotation.y = Math.atan2(-dx, -dz); hx = -dz / dist * m.flankBias; hz = dx / dist * m.flankBias; moving = true; anim = 'walk'; spd = 1.8;
+    }
+  } else {                                               // イタチ：ジグザグ＋俊敏ダート＋一撃離脱（hit&run）
+    m.wPhase = (m.wPhase || Math.random() * 6) + dt * 7;
+    m.dartCd = (m.dartCd != null ? m.dartCd : 1) - dt; m.dartT = Math.max(0, (m.dartT || 0) - dt); m.evadeT = Math.max(0, (m.evadeT || 0) - dt);
+    if (m.dartCd <= 0 && dist < 14) { m.dartT = 0.4; m.dartCd = 1.5 + Math.random() * 1.5; }      // 時々ダート（加速）
+    if (m.evadeT > 0) { hx = -dx / dist - dz / dist * 0.6; hz = -dz / dist + dx / dist * 0.6; moving = true; anim = 'walk'; spd = 5.5; } // 斜め後退で回避
+    else if (dist <= 1.4) { m.obj.rotation.y = Math.atan2(-dx, -dz); if (m.atkCd <= 0) { m.atkCd = 0.7; damage(Math.max(1, C.meleeDmg - 1), 'mob'); critterSE(m, 'attack'); m.evadeT = 0.6; } } // 噛んだら離脱（反撃を受けにくいよう少し長め＝hit&runの読み）
+    else if (dist < 20) { const h = chaseHeadingTo(m, dt, player.pos.x, player.pos.z); const w = Math.sin(m.wPhase) * 0.5; hx = h.x - h.z * w; hz = h.z + h.x * w; moving = true; anim = 'walk'; spd = m.dartT > 0 ? 6.5 : 3.6; }
+  }
+  if (moving) tryMoveMob(m, hx, hz, spd, dt); else followFloor(m, dt);
+  const windup = !howl && dist < 2.4 && m.atkCd > 0 && m.atkCd < 0.34; // 攻撃発生直前の溜め（テレグラフ＝読み合いの窓を少し広く）
+  critterGesture(m, dt, { moving, animName: anim, howl, windup }); // 種別の仕草（プロウル/遠吠え/スリザー/バウンド/溜め）＋ぴょこ弾み
 }
 // 経路探索の負荷計測（診断用）。毎秒スナップショットを取る
 let pathCallsAcc = 0, pathNodesAcc = 0, pathCallsPerSec = 0, pathNodesPerSec = 0;
@@ -2879,6 +4116,9 @@ function spawnMob(type, x, z, opts = {}) {
     mob.hostile = false; mob.home = null; mob.cid = ++companionIdSeq;
     companions.push(mob); attachAllyMarker(mob);
   }
+  if (opts.pet) { // セーブからのペット復元（なつかせは petInteract / maybeIntroducePet で行う）
+    initPet(mob, { petName: opts.petName, traits: opts.traits, mood: opts.mood, petHunger: opts.petHunger });
+  }
   return mob;
 }
 // セーブされたモブ一覧を復元（テンプレ読込完了後に updateMobs から1回だけ呼ばれる）
@@ -2894,6 +4134,8 @@ function restorePendingMobs() {
       state: md.st,
       home: (md.hm && Number.isFinite(md.hm.x) && Number.isFinite(md.hm.z)) ? md.hm : undefined, // 住人の定住アンカー復元
       companion: md.cp ? true : undefined, cmdMode: md.cm, maxHp: Number.isFinite(md.mhp) ? md.mhp : undefined, // 仲間の復元
+      pet: md.pt ? true : undefined, petName: md.pn, traits: (md.ptr ? String(md.ptr).split(',') : undefined), // ペットの復元
+      mood: Number.isFinite(md.pmd) ? md.pmd : undefined, petHunger: Number.isFinite(md.phg) ? md.phg : undefined,
     });
   }
   pendingMobLoad = null;
@@ -2936,7 +4178,7 @@ function playerUnderground() {
 function isWaterColumnSurface(x, z) { return heightAt(Math.floor(x), Math.floor(z)) <= WATER_LEVEL; }
 // 敵性モブを近くに湧かせる（cave=地下の足場へ / 地上はリング状）
 function spawnHostileNear(cave) {
-  const types = ['zombie', 'slime', 'skeleton'];
+  const types = ['weasel', 'bird', 'snake', 'wolf']; // チンチラの天敵（基本の敵）
   if (!cave && Math.random() < 0.12) types.push('golem');         // 地上の夜はまれにボス
   if (!cave && Math.random() < 0.05) types.push('dragon');        // ⑤ さらにまれに上位ボス（ドラゴン）
   if (!cave && Math.random() < 0.03) types.push('skeleton_king'); // ⑤ ボス第2弾（大ボス・最も希少）
@@ -2957,11 +4199,17 @@ function spawnHostileNear(cave) {
     spawnMob(type, x, z);
   }
 }
-function spawnNeutralNear() {
+function spawnNeutralNear(chinOnly) {
   // 動物のみ（villager・住人NPCは村/砦に定住／魚は水中専用＝ここ(地上)では湧かせない）
-  const pool = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && !d.resident && !d.aquatic && mobTemplates[d.type]);
-  if (!pool.length) return;
-  const def = pool[Math.floor(Math.random()*pool.length)];
+  // ★チンチラだらけ：85%の確率で色違いチンチラ、残りは従来の動物＋仲間小動物
+  //   chinOnly=true（夜の控えめ湧き）なら色違いチンチラのみ＝仲間/家畜は昼に限定
+  const chins  = MOB_DEFS.filter(d => d.chin && mobTemplates[d.type]);
+  const others = MOB_DEFS.filter(d => !d.hostile && d.type !== 'villager' && !d.resident && !d.aquatic && !d.petbase && !d.chin && mobTemplates[d.type]);
+  let def = null;
+  if (chinOnly) { if (chins.length) def = chins[Math.floor(Math.random()*chins.length)]; }
+  else if (chins.length && (Math.random() < 0.85 || !others.length)) def = chins[Math.floor(Math.random()*chins.length)];
+  else if (others.length) def = others[Math.floor(Math.random()*others.length)];
+  if (!def) return;
   const ang = Math.random()*Math.PI*2, dist = M.spawnMin + Math.random()*(M.spawnMax-M.spawnMin);
   const x = player.pos.x + Math.cos(ang)*dist, z = player.pos.z + Math.sin(ang)*dist;
   if (isWaterColumnSurface(x, z)) return;
@@ -3022,7 +4270,11 @@ function spawnLogic(dt) {
     }
     return;
   }
-  if (neutralN < M.neutralCap) spawnNeutralNear(); // 牛/羊/豚/鶏/馬（村の近くでも湧く）
+  // 中立の地上湧き：昼＝動物/仲間小動物が徘徊（昼徘徊）／夜＝チンチラのみ控えめ（仲間・家畜は出さない）
+  if (neutralN < M.neutralCap) {
+    if (isDay()) spawnNeutralNear();
+    else if (Math.random() < 0.3) spawnNeutralNear(true); // 夜：色違いチンチラだけまばらに
+  }
 }
 function updateMobs(dt) {
   // セーブされたモブの復元（テンプレ読込が済んだら1回だけ。完了まで自動湧きは待たせる）
@@ -3030,6 +4282,12 @@ function updateMobs(dt) {
     if (Object.keys(mobTemplates).length) restorePendingMobs();
     return;
   }
+  mobFrameTick++;      // LOD：遠景AI間引き用
+  maybeBuildHouse();   // 🏠 序章：さくらの家を建てて2階子供部屋からスタート（初回のみ）
+  if (houseChecked && !houseNpcsSpawned) spawnHouseNpcs(); // 👫 人間モデル読込が遅れても確実に配置
+  updateMaguroIntro(dt); // 💜 まぐろがケージの扉を開ける発端の演出
+  checkHouseEscape();  // 🚪 玄関から外へ出たら「脱走成功」
+  maybeIntroducePet(); // 🐾 起動後に一度だけペット「さくら」を連れてくる（復元優先・早期return多めで軽量）
   spawnLogic(dt);     // ④ 昼夜・地下を考慮した湧き
   updateSpawners(dt); // ② ダンジョンのスポナー稼働
   updateBossSpots(dt); // ⑥ 城/砦/魔窟のボス出現点
@@ -3057,7 +4315,18 @@ function updateMobs(dt) {
     const dx = player.pos.x - m.obj.position.x, dz = player.pos.z - m.obj.position.z;
     const dist = Math.hypot(dx, dz) || 0.0001;
     const dy = Math.abs(m.obj.position.y - player.pos.y); // 垂直距離。地下/上空に詰まった敵の「見えない攻撃」を遮断する
+    // --- LOD：大量湧き対策。さくら(pet)/仲間/まぐろ/住人/ボスは保護＝常にフル ---
+    const lodProtected = m.pet || m.companion || m.maguro || m.houseNpc || m.def.role === 'boss' || m.def.queen;
+    const lodFar = !lodProtected && dist > M.lodFar;     // 遠：非表示＋AI間引き
+    m._lodMid = !lodProtected && dist > M.lodNear;       // 中：アニメ/仕草を凍結（critterGesture / mixer が参照）
+    if (m.obj.visible === lodFar) m.obj.visible = !lodFar; // 遠景はレンダリングを止める（描画コスト最大の削減）
+    if (lodFar && ((mobFrameTick + i) % 3 !== 0)) continue; // 遠景は3フレームに1回だけ更新（位置は保持＝瞬間移動を防ぐ）
+    // 交戦開始のスティンガー（汎用敵＝critter以外。critterは個性AI側のspotで発火）。立ち上がりエッジのみ
+    if (m.hostile && !m.def.critter) { const eng = dist < 20 && dy < 4; if (eng && !m._aggro) { m._aggro = true; try { if (window.onEnemyAggro) window.onEnemyAggro(); } catch (e) {} } else if (!eng) m._aggro = false; }
+    if (m.pet) { updatePet(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 🐾 ペットは despawn しない・専用AI（機嫌/癖）
     if (m.companion) { updateCompanion(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 仲間は despawn しない・専用AI
+    if (m.houseNpc) { updateHouseNpc(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 👫 飼い主/内縁の妻は despawn しない・専用AI
+    if (m.maguro) { if (m.mixer) m.mixer.update(dt); continue; } // 💜 まぐろ(霊)は専用カットシーンで動かす・despawnしない
     if (dist > M.despawn) { scene.remove(m.obj); mobs.splice(i,1); continue; } // 遠すぎたら消す
     if (m.def.sea) { updateKraken(m, dt, dx, dz, dist); if (m.mixer) m.mixer.update(dt); continue; } // 海ボス専用AI（昼消滅・陸チェイスしない）
     // ④ 朝＝地上の敵性は陽光で消滅（地下の敵は生存＝洞窟は常時湧き）。プレイヤーから離れた個体のみ
@@ -3085,7 +4354,9 @@ function updateMobs(dt) {
     }
 
     if (m.def.aquatic) { updateFishAI(m, dt); continue; } // 海の魚は水中専用AI（地上の徘徊AIに乗せない）
+    if (m.def.queen) { updateQueen(m, dt, dx, dz, dist, dy); if (m.mixer) m.mixer.update(dt); continue; } // ★女王さくら＝専用フェーズAI
     if (m.def.soldier && m.home && !m.companion) { updateGuard(m, dt); if (m.mixer) m.mixer.update(dt); continue; } // 兵士=駐留地の警備AI（敵に交戦・動物は無視）
+    if (m.def.critter && m.hostile) { updatePredator(m, dt, dx, dz, dist, dy); continue; } // 天敵＝種別ごとの個性AI（鳥=急降下/蛇=奇襲/狼=群れ/イタチ=俊敏）
 
     const role = m.def.role;
     let moving = false, animName = 'idle';
@@ -3120,8 +4391,8 @@ function updateMobs(dt) {
     } else if (role === 'melee' && dist < 20) {
       if (dist > 1.4 || dy > 2.5) { const h = chaseHeading(m, dt); dhx = h.x; dhz = h.z; moving = true; animName = 'walk'; } // 経路探索で追跡（高低差大なら接近優先＝不可視攻撃を遮断）
       else { m.obj.rotation.y = Math.atan2(-dx, -dz); animName = 'attack'; m.atkCd -= dt; if (m.atkCd <= 0) { m.atkCd = C.meleeCd; damage(C.meleeDmg, 'mob'); } }
-    } else if (role === 'neutral' && dist < 5 && !m.home) {
-      dhx = -dx/dist; dhz = -dz/dist; moving = true; animName = 'walk'; // 動物はプレイヤーから逃げる（住人は逃げない）
+    } else if (role === 'neutral' && dist < 5 && !m.home && !m.def.ally) {
+      dhx = -dx/dist; dhz = -dz/dist; moving = true; animName = 'walk'; // 動物はプレイヤーから逃げる（住人・味方動物は逃げない）
     } else if (m.home) {
       // 住人NPCの生活AI：昼=仕事場周辺(半径12)を徘徊／夜=home(村中心・半径3)へ帰る
       const hx = m.home.x - m.obj.position.x, hz = m.home.z - m.obj.position.z, hd = Math.hypot(hx, hz) || 1;
@@ -3143,8 +4414,13 @@ function updateMobs(dt) {
     } else {
       followFloor(m, dt); // 静止時も足場へ吸着
     }
+    // アニメ無しの生き物（チンチラ/天敵/仲間）はコードで種別の仕草＋ぴょこ（スライド移動を防ぐ）
+    if (m.def.chin || m.def.critter) {
+      const scared = (m.def.type === 'hedgehog') && !!nearestHostileTo(m.obj.position.x, m.obj.position.z, 7); // ハリネズミは敵が近いと丸まる
+      critterGesture(m, dt, { moving, animName, scared });
+    }
     setMobAnim(m, animName);
-    if (m.mixer) m.mixer.update(dt);
+    if (m.mixer && !m._lodMid) m.mixer.update(dt); // LOD中遠：リグmobのアニメ更新を凍結（CPU削減）
   }
 }
 // ② 最寄りの村（半径 maxD 内）を返す
@@ -3293,7 +4569,7 @@ function updateSpawners(dt) {
     s.cd -= dt;
     if (s.cd <= 0 && mobs.length < M.totalCap) {
       s.cd = 6 + Math.random()*4;
-      const type = Math.random() < 0.6 ? 'zombie' : 'skeleton';
+      const type = ['weasel', 'snake', 'bird', 'wolf'][Math.floor(Math.random()*4)]; // 巣穴から天敵が湧く
       if (mobTemplates[type]) spawnMob(type, s.x + (Math.random()*2-1), s.z + (Math.random()*2-1), { y: s.y });
     }
   }
@@ -3325,10 +4601,10 @@ function updateArrows(dt) {
     let consumed = false;
     if (a.friendly) { // 味方の矢：モブに命中
       for (let j = mobs.length-1; j >= 0; j--) {
-        const m = mobs[j]; if (m.dying) continue;
+        const m = mobs[j]; if (m.dying || m.pet || m.companion || !m.hostile) continue; // 味方の矢は敵だけに当たる（ペット/仲間/中立は素通り）
         const p = m.obj.position;
         const dd = (a.obj.position.x-p.x)**2 + (a.obj.position.y-(p.y+0.7))**2 + (a.obj.position.z-p.z)**2;
-        if (dd < 0.8) { hitMob(m, a.dmg, a.isCrit, 'bow', 0, a.vx, a.vz, WEAPONS.bow.knock); scene.remove(a.obj); arrows.splice(i,1); consumed = true; break; }
+        if (dd < 0.8) { hitMob(m, a.dmg, a.isCrit, 'bow', 0, a.vx, a.vz, WEAPONS.bow.knock); spawnFx('fx_collapse', a.obj.position.x, a.obj.position.y, a.obj.position.z, 0.4, 0.4); scene.remove(a.obj); arrows.splice(i,1); consumed = true; break; } // 着弾の小さな土煙（リスの木の実/弓 共通）
       }
     } else { // 敵の矢：プレイヤーに命中
       const px = player.pos.x, py = player.pos.y+0.9, pz = player.pos.z;
@@ -3343,7 +4619,7 @@ function updateArrows(dt) {
 // ===================================================================
 // ⑦ 戦闘（プレイヤー→モブ攻撃）とドロップ・アイテム入手
 // ===================================================================
-const ITEM_DEFS = ['meat','egg','coin','apple','coal','iron','gold']; // インベントリ表示用（鉱石素材含む）
+const ITEM_DEFS = ['meat','egg','coin','apple','coal','iron','gold','himawari']; // インベントリ表示用（鉱石素材・ペットの餌含む）
 const ITEM_MODELS = ['meat','egg','coin','apple'];                    // 地面ドロップに3Dモデルがある物のみ（鉱石は採掘→直接所持＝モデル不要）
 const itemTemplates = {};
 ITEM_MODELS.forEach(n => gltfLoader.load(`models/item_${n}.glb`, g => { itemTemplates[n] = g.scene; }, undefined, () => {})); // item_coal/iron/gold.glb は無い＝404回避
@@ -3365,12 +4641,13 @@ STRUCT_DEFS.forEach(k => gltfLoader.load(`models/struct_${k}.glb`,
     undefined, () => {}));
 // ⑥ ボス出現演出 fx（4号機・loopクリップ自走）：魔法陣/瘴気/崩壊。一時生成して数秒で消す。
 const fxTemplates = {}; // kind -> { scene, animations }
-['fx_magic_circle','fx_miasma','fx_collapse','fx_ally_star','fx_ally_heart','fx_ally_halo'].forEach(k => gltfLoader.load(`models/${k}.glb`,
+['fx_magic_circle','fx_miasma','fx_collapse','fx_ally_star','fx_ally_heart','fx_ally_halo','fx_petal_sakura'].forEach(k => gltfLoader.load(`models/${k}.glb`,
   g => { fxTemplates[k] = { scene: g.scene, animations: g.animations || [] }; }, undefined, () => {}));
 const fxList = []; // { obj, mixer, life }
 function spawnFx(kind, x, y, z, life, scale) {
   const tpl = fxTemplates[kind];
   if (!tpl) return;
+  if (fxList.length >= 48) { const old = fxList.shift(); scene.remove(old.obj); } // 安定保険：FXが溜まり過ぎたら最古を即回収（暴走防止）
   const obj = tpl.scene.clone(true);
   obj.position.set(x, y, z);
   if (scale) obj.scale.setScalar(scale);
@@ -3409,7 +4686,9 @@ function updateSplashes(dt) {
 // ⑥ ボス出現の連携：威圧音(2号機 onBossAppear)＋出現fx(4号機 魔法陣/瘴気)。live湧き時のみ（復元時は鳴らさない）
 function onBossSpawned(m) {
   const t = m.def.type, p = m.obj.position;
-  try { window.onBossAppear && window.onBossAppear(t); } catch (e) {} // boss_roar（type別の威圧音）
+  // ★女王さくらだけ専用口（咆哮＋queenテーマ。setMusicScene('queen')は内部で呼ばれる）。汎用三系統は従来の onBossAppear。
+  try { if (m.def.queen) { if (window.onQueenAppear) window.onQueenAppear(); } else if (window.onBossAppear) window.onBossAppear(t); } catch (e) {}
+  if (m.def.queen) { progress.queenSeen = true; if (progress.chapter === 'world') progress.chapter = 'boss'; scheduleSave(); } // 📖 女王と遭遇＝最終章へ
   spawnFx('fx_magic_circle', p.x, p.y + 0.05, p.z, 3.2, 1.6); // 足元の魔法陣
   spawnFx('fx_miasma',       p.x, p.y + 0.4,  p.z, 4.0, 1.4); // 立ち上る瘴気
 }
@@ -3461,8 +4740,9 @@ function openChestProp(x, y, z) {
   p.opened = true;
   if (p.actOpen) { p.actOpen.reset().play(); if (p.actIdle) p.actIdle.stop(); }
 }
-const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご', coal:'石炭', iron:'鉄', gold:'金' };
-const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin' };
+const ITEM_NAMES = { meat:'肉', egg:'卵', coin:'コイン', apple:'りんご', coal:'石炭', iron:'鉄', gold:'金', himawari:'ひまわりの種' };
+const MOB_DROP = { cow:'meat', sheep:'meat', chicken:'egg', slime:'coin', zombie:'coin',
+  weasel:'meat', wolf:'meat', bird:'egg', snake:'coin' }; // 天敵を倒すとドロップ
 // ⑥ ボス撃破の特別報酬（探索の目標＝倒す意味）。exp=追加EXP / gold,coin=資源 / equips=確定レア装備数 / name=表示名
 const BOSS_REWARD = {
   golem:         { exp: 30,  gold: 2, coin: 4,  equips: 1, name: 'ゴーレム' },
@@ -3636,8 +4916,10 @@ const TRADE_TABLE = {
   baker:      [ {give:{coin:3},get:{meat:2}}, {give:{coin:2},get:{apple:2}} ],
   default:    [ {give:{coin:2},get:{apple:1}}, {give:{apple:2},get:{coin:3}} ],
 };
-const NPC_GREETING = { merchant:'いい品揃えだよ、見ていきな', blacksmith:'鉄はあるか？武器を打つぜ', farmer:'作物と交換しないか', baker:'焼きたてだよ！', guard:'通行人か、気をつけてな', elder:'よく来たな、若いの', child:'わー、ぼうけんしゃだ！', woman:'こんにちは', villager:'やあ' };
-const JOB_LABEL = { merchant:'商人', blacksmith:'鍛冶屋', farmer:'農民', baker:'パン屋', guard:'衛兵', elder:'長老', child:'子供', woman:'住人', villager:'村人', soldier_spear:'槍兵', soldier_sword:'剣兵', soldier_captain:'隊長' };
+const NPC_GREETING = { merchant:'いい品揃えだよ、見ていきな', blacksmith:'鉄はあるか？武器を打つぜ', farmer:'作物と交換しないか', baker:'焼きたてだよ！', guard:'通行人か、気をつけてな', elder:'よく来たな、若いの', child:'わー、ぼうけんしゃだ！', woman:'こんにちは', villager:'やあ',
+  rabbit:'いっしょに行こう！', guineapig:'ぷぷっ（仲間にして）', squirrel:'木の実あげる！', hedgehog:'前は任せて！' };
+const JOB_LABEL = { merchant:'商人', blacksmith:'鍛冶屋', farmer:'農民', baker:'パン屋', guard:'衛兵', elder:'長老', child:'子供', woman:'住人', villager:'村人', soldier_spear:'槍兵', soldier_sword:'剣兵', soldier_captain:'隊長',
+  rabbit:'うさぎ', guineapig:'モルモット', squirrel:'リス', hedgehog:'ハリネズミ' };
 let currentTradeNpc = null;
 function equipDisplayName(kind) { return (WEAPONS[kind] && WEAPONS[kind].name) || (kind === 'armor' ? '防具' : kind === 'shield' ? '盾' : kind); }
 function buildTradeSession(m) {
@@ -3666,7 +4948,7 @@ function buildTradeSession(m) {
 // 会話中の住人を雇って仲間にする（3号機UIの「仲間にする」ボタン→ VoxelGame.recruit）
 window.VoxelGame.recruit = () => {
   const m = currentTradeNpc;
-  if (!m || !m.home || m.companion) return false;                       // 会話中の住人(未仲間)のみ
+  if (!m || (!m.home && !m.def.ally) || m.companion) return false;      // 会話中の住人 or 味方動物（未仲間）
   if (companions.length >= MAX_COMPANIONS) { if (typeof toast==='function') toast(`仲間は満員（最大${MAX_COMPANIONS}人）`); return false; }
   if ((itemCounts.coin || 0) < COMPANION_COST) { if (typeof toast==='function') toast(`コインが足りない（${COMPANION_COST}枚必要）`); return false; }
   itemCounts.coin -= COMPANION_COST;
@@ -3674,6 +4956,7 @@ window.VoxelGame.recruit = () => {
   m.maxHp = COMPANION_HP; m.hp = COMPANION_HP; m.cid = ++companionIdSeq;
   companions.push(m); attachAllyMarker(m);
   try { window.onCompanionJoin && window.onCompanionJoin(m.def.type); } catch (e) {}
+  if (m.def.ally) critterSE(m, 'tame'); // 動物のなつかせ成功SE（うさぎ/リス/ハリネズミ/モルモット）
   if (typeof toast === 'function') toast(`${JOB_LABEL[m.def.type]||'住人'}が仲間になった！（追従）`);
   updateHotbar(); scheduleSave();
   return buildTradeSession(m); // 更新後セッションを返してUI再描画
@@ -3709,11 +4992,11 @@ window.VoxelGame.trade = (offerId) => {
 function talkToNPC() {
   let best = null, bd = 4.5; // 会話可能距離（雇用しやすいよう少し広め）
   for (const m of mobs) {
-    if (!m.home || m.dying) continue; // 住人(home付き)のみ
+    if ((!m.home && !(m.def.ally && !m.companion)) || m.dying) continue; // 住人 or 味方動物（未仲間）
     const d = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z);
     if (d < bd) { bd = d; best = m; }
   }
-  if (!best) { if (typeof toast === 'function') toast('近くに住人がいません（村・砦・王国城、または道中の旅人を探そう）'); return; }
+  if (!best) { if (typeof toast === 'function') toast('近くに住人/仲間にできる動物がいません（村や、うさぎ/モルモット/リス/ハリネズミを探そう）'); return; }
   currentTradeNpc = best;
   best.obj.rotation.y = Math.atan2(-(player.pos.x - best.obj.position.x), -(player.pos.z - best.obj.position.z)); // プレイヤーを向く
   setMobAnim(best, 'talk');
@@ -3782,7 +5065,7 @@ function resolveMeleeHit(isCrit) {
   const dot = Math.max(0, w.dot - (isCrit ? 0.15 : 0)); // 会心は扇を広げる
   let any = false;
   for (let i = mobs.length - 1; i >= 0; i--) {
-    const m = mobs[i]; if (m.dying) continue;
+    const m = mobs[i]; if (m.dying || m.pet) continue; // 🐾 自分のペットには当たらない（誤爆で殺さない）
     const p = m.obj.position;
     const vx = p.x - ox, vy = (p.y + 0.6) - oy, vz = p.z - oz;
     const d = Math.hypot(vx, vy, vz);
@@ -3851,6 +5134,13 @@ function killMob(m) {
     if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); } else m.dieTimer = 0; // 死亡演出後に mobs から除去
     scheduleSave(); return; // 仲間死亡では討伐EXP/ドロップは出さない（味方なので）
   }
+  if (m.pet) { // 🐾 ペットが倒れたら pets から即削除（次回起動で「さくら」は戻ってくる）。EXP/ドロップは出さない
+    const pi = pets.indexOf(m); if (pi >= 0) pets.splice(pi, 1);
+    m.pet = false; removePetMarker(m);
+    if (typeof toast === 'function') toast(`🐾 ペット「${m.petName || ''}」が倒れた…`);
+    if (m.aDie) { setMobAnim(m, 'die'); m.dieTimer = (m.aDie.getClip().duration || 0.8); } else m.dieTimer = 0;
+    scheduleSave(); return;
+  }
   spawnDrop(MOB_DROP[m.def.type], m.obj.position.x, m.obj.position.y, m.obj.position.z);
   maybeDropEquip(m); // 装備品の抽選ドロップ
   // 討伐EXP（敵の強さ＝最大HP比例、ボスは加算）
@@ -3862,7 +5152,9 @@ function killMob(m) {
 // ⑥ ボス撃破：出現(roar＋魔法陣＋瘴気)→戦闘(bossBGM)→撃破(ファンファーレ＋崩壊＋特別報酬) で戦いを完結させる
 function defeatBoss(m) {
   const p = m.obj.position, t = m.def.type;
-  try { window.onBossDefeat && window.onBossDefeat(t); } catch (e) {}        // 撃破ファンファーレ（2号機）
+  // ★女王さくらだけ専用の撃破口（撃破後コアが平常BGMへ戻す）。汎用三系統は従来の onBossDefeat。
+  try { if (m.def.queen) { if (window.onQueenDefeat) window.onQueenDefeat(); } else if (window.onBossDefeat) window.onBossDefeat(t); } catch (e) {}
+  if (m.def.queen) { progress.queenDefeated = true; progress.chapter = 'cleared'; scheduleSave(); } // 📖 女王撃破＝革命成就（エピローグ）
   spawnFx('fx_collapse', p.x, p.y + 0.3, p.z, 3.5, 1.8);                     // 崩壊演出（4号機・自走loop）
   const rw = BOSS_REWARD[t] || { exp: 40, gold: 2, coin: 4, equips: 1, name: t };
   gainExp(rw.exp);                                                          // 大量EXP（通常討伐EXPへ上乗せ）
@@ -3911,7 +5203,7 @@ function applySkillDamage(s) {
   const need = s.effect === 'line' ? 0.93 : s.effect === 'strike' ? 0.35 : -1; // aoe=全方位 / strike=前方広 / line=細い前方貫通
   let hits = 0;
   for (let i = mobs.length - 1; i >= 0; i--) {
-    const m = mobs[i]; if (m.dying) continue;
+    const m = mobs[i]; if (m.dying || m.pet) continue; // 🐾 自分のペットには当たらない（誤爆で殺さない）
     const p = m.obj.position;
     const vx = p.x - ox, vy = (p.y + 0.6) - oy, vz = p.z - oz;
     const d = Math.hypot(vx, vy, vz);
@@ -3981,28 +5273,34 @@ function updateAttack(dt) {
 // 戦闘BGM：近くに敵がいれば combat、水中は water、それ以外は時間帯。切替時だけ口を叩く
 // BGMシーンは「毎フレーム再評価＋特殊→平常へ自動復帰」の一本ロジック（water/combat 固着の根絶）
 //   優先順位：水中 water ＞ 戦闘 combat(ヒステリシス付) ＞ 時間帯 day/night
-let musicScene = '', musicTimer = 0, combatHold = 0, bossHold = 0, dbgNearEnemies = 0, dbgMusicWater = false;
+let musicScene = '', musicTimer = 0, combatHold = 0, bossHold = 0, queenHold = 0, dbgNearEnemies = 0, dbgMusicWater = false;
+let ambientUnderground = false; // 環境音 cave 切替の現在状態（地下↔地上の立ち上がりで setAmbient）
 const COMBAT_RADIUS = 14;   // この距離内に敵がいれば戦闘
 const COMBAT_HOLD = 4;      // 敵がいなくなってから平常へ戻すまでの猶予秒（チャタリング防止）
 function updateCombatMusic(dt) {
   // 近接敵数は毎フレーム数える（ヒステリシスを正確に）
-  let near = 0, bossNear = false;
+  let near = 0, bossNear = false, queenNear = false;
   for (const m of mobs) {
-    if (m.hostile && !m.dying
-        && Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z) < COMBAT_RADIUS
-        && Math.abs(m.obj.position.y - player.pos.y) < 4) { near++; if (m.def.role === 'boss') bossNear = true; } // 高低差4超（地下/上空）の敵は戦闘BGMに数えない
+    if (!m.hostile || m.dying) continue;
+    const hd = Math.hypot(m.obj.position.x - player.pos.x, m.obj.position.z - player.pos.z), dyv = Math.abs(m.obj.position.y - player.pos.y);
+    if (hd < COMBAT_RADIUS && dyv < 4) near++;                 // 高低差4超（地下/上空）の雑魚は戦闘BGMに数えない
+    if (m.def.role === 'boss' && hd < COMBAT_RADIUS + 6 && dyv < 8) { if (m.def.queen) queenNear = true; else bossNear = true; } // ボスは大柄＝広め・高低差緩めで判定（テーマを確実に）
   }
   dbgNearEnemies = near;
+  // 環境音：基本オート（getBiome連動）。地下に入った/出た瞬間だけ明示で cave へ切替/解除
+  const ug = playerUnderground();
+  if (ug !== ambientUnderground) { ambientUnderground = ug; try { if (window.setAmbient) window.setAmbient(ug ? 'cave' : null); } catch (e) {} }
   if (near > 0) combatHold = COMBAT_HOLD; else combatHold = Math.max(0, combatHold - dt); // 0体になったら数秒で解除
   if (bossNear) bossHold = COMBAT_HOLD; else bossHold = Math.max(0, bossHold - dt); // ⑥ ボス戦BGMの保持（離脱/撃破後も数秒）
+  if (queenNear) queenHold = COMBAT_HOLD; else queenHold = Math.max(0, queenHold - dt); // ★女王テーマの保持（onQueenAppearが鳴らした queen を毎フレーム維持＝bossで上書きしない）
   musicTimer -= dt;
   if (musicTimer > 0) return;
   musicTimer = 0.25;
   const px = Math.floor(player.pos.x), pz = Math.floor(player.pos.z);
   const inWater = playerHeadInWater(); // ★物理/swim/溺れ と同じ統一基準（頭水中）
   dbgMusicWater = inWater;
-  // ⑥ ボスが近ければ最重厚の boss シーン（2号机）。次いで combat → 水中 → 夜/昼。
-  const sc = bossHold > 0 ? 'boss' : inWater ? 'water' : combatHold > 0 ? 'combat' : isNight() ? 'night' : 'day';
+  // ★女王さくらが近ければ専用 queen テーマ最優先。次いで汎用ボス boss → combat → 水中 → 夜/昼。
+  const sc = queenHold > 0 ? 'queen' : bossHold > 0 ? 'boss' : inWater ? 'water' : combatHold > 0 ? 'combat' : isNight() ? 'night' : 'day';
   if (sc !== musicScene) {
     // ★成功時のみキャッシュ更新：sound.js 未準備なら更新せず次フレーム再試行
     if (typeof window.setMusicScene === 'function') { try { window.setMusicScene(sc); musicScene = sc; } catch (e) {} }
@@ -4091,7 +5389,7 @@ function loop(now) {
   // 時刻表示（dayTime 0.5 を正午=12:00 として24時間換算）
   const hh = Math.floor(((dayTime + 0.5) % 1) * 24);
   const mm = Math.floor((((dayTime + 0.5) % 1) * 24 % 1) * 60);
-  const WNAME = { clear:'晴れ', rain:'雨', snow:'雪', thunder:'雷' };
+  const WNAME = { clear:'晴れ', rain:'雨', snow:'雪', thunder:'雷', petal:'桜吹雪' };
   const wpn = WEAPONS[currentWeapon];
   const draw = (wpn.ranged && mouseDown) ? `　弓溜め:${Math.round(Math.min(1, drawTime/CHARGE_FULL)*100)}%` : '';
   const def = defenseFactor() > 0 ? `　防御:${(defenseFactor()*100).toFixed(0)}%` : '';
@@ -4105,6 +5403,8 @@ function loop(now) {
   hpEl.innerHTML = heartsHTML();
   hungerEl.innerHTML = hungerHTML();
   hurtEl.style.opacity = (hurtFlash * 0.7).toFixed(2);
+  heatEl.style.opacity = (Math.max(0, (heat - 55) / 45) * 0.6).toFixed(2);       // 暑いほどオレンジのフチ
+  heatGaugeEl.textContent = heat > 55 ? '🔥'.repeat(Math.max(1, Math.min(5, Math.ceil((heat - 50) / 10)))) : '';
   // 息ゲージ：負値・0除算・Infinity でも repeat() が落ちないよう 0..10 にクランプ
   const bubbles = Math.max(0, Math.min(10, Math.ceil(breath / Math.max(0.001, P.breathMax) * 10)));
   breathEl.textContent = (breath < P.breathMax - 0.05) ? '🫧'.repeat(bubbles) : '';

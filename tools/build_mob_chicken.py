@@ -37,19 +37,24 @@ def set_origin(o,p):
 # 体（ぷっくり卵形）。中心 z=0.20。
 BODY=[]
 sphere(BODY,"Body",(0,0,0.20),(0.10,0.135,0.115),M_BODY,segs=18,rings=12)
-# 翼（左右・付け根上）
+# 翼（左右・付け根上）＋風切羽の段（後方へレイヤー）
 WINGL=[]; WINGR=[]
 sphere(WINGL,"WingL",(0.10,-0.01,0.21),(0.03,0.09,0.07),M_BODY)
 sphere(WINGR,"WingR",(-0.10,-0.01,0.21),(0.03,0.09,0.07),M_BODY)
-# 尾（背面 -Y、上向き羽）
+for k,dz in enumerate((0.0,-0.03)):
+    cube(WINGL,"WingLf%d"%k,(0.105,-0.07,0.20+dz),(0.022,0.05,0.014),M_BODY,rot=(math.radians(-18),0,0))
+    cube(WINGR,"WingRf%d"%k,(-0.105,-0.07,0.20+dz),(0.022,0.05,0.014),M_BODY,rot=(math.radians(-18),0,0))
+# 尾（背面 -Y、上向きの羽を数枚レイヤーで扇に）
 TAIL=[]
-cube(TAIL,"Tail",(0,-0.14,0.27),(0.07,0.06,0.02),M_BODY,rot=(math.radians(-35),0,0))
+for k,(dz,ang,w) in enumerate([(0.0,-30,0.07),(0.035,-46,0.06),(0.07,-60,0.05)]):
+    cube(TAIL,"Tail%d"%k,(0,-0.14,0.27+dz),(w,0.06,0.016),M_BODY,rot=(math.radians(ang),0,0))
 
-# 頭（前=+Y、上）＋ とさか/肉垂/嘴/目
+# 頭（前=+Y、上）＋ とさか(複数山)/肉垂/嘴/目
 HEAD=[]
 sphere(HEAD,"Head",(0,0.07,0.34),(0.07,0.07,0.07),M_BODY,segs=14,rings=10)
-cube(HEAD,"Comb",(0,0.05,0.41),(0.02,0.05,0.03),M_RED)            # とさか
-sphere(HEAD,"Wattle",(0,0.11,0.30),(0.015,0.02,0.03),M_RED)       # 肉垂
+for k,(yy,h) in enumerate([(0.10,0.022),(0.06,0.030),(0.02,0.024)]):  # とさか3山
+    cube(HEAD,"Comb%d"%k,(0,yy,0.40),(0.015,0.016,h),M_RED)
+sphere(HEAD,"Wattle",(0,0.12,0.29),(0.015,0.02,0.032),M_RED)     # 肉垂
 cube(HEAD,"Beak",(0,0.14,0.33),(0.018,0.04,0.018),M_BEAK)         # 嘴
 sphere(HEAD,"EyeL",(0.05,0.10,0.36),(0.012,0.01,0.014),M_EYE,segs=8,rings=6)
 sphere(HEAD,"EyeR",(-0.05,0.10,0.36),(0.012,0.01,0.014),M_EYE,segs=8,rings=6)

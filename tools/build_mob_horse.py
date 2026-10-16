@@ -47,19 +47,21 @@ sphere(BODY,"EyeR",(-0.07,0.62,1.66),(0.018,0.014,0.02),M_EYE,segs=8,rings=6)
 cube(BODY,"EarL",(0.05,0.55,1.74),(0.02,0.02,0.05),M_BODY,rot=(math.radians(-10),0,0))
 cube(BODY,"EarR",(-0.05,0.55,1.74),(0.02,0.02,0.05),M_BODY,rot=(math.radians(-10),0,0))
 # たてがみ（首の後ろ稜線・濃色）
-for i,t in enumerate([0.0,0.25,0.5,0.75,1.0]):
-    z=1.30+t*0.30; y=0.30+t*0.22
-    cube(BODY,"Mane%d"%i,(0,y,z+0.06),(0.03,0.05,0.07),M_MANE,rot=(math.radians(55),0,0))
-# 尾（背面 -Y、流れる濃色）
+for i,t in enumerate([0.0,0.14,0.28,0.42,0.56,0.70,0.84,1.0]):  # たてがみを密に
+    z=1.30+t*0.32; y=0.30+t*0.22
+    cube(BODY,"Mane%d"%i,(0,y,z+0.06),(0.034,0.046,0.062),M_MANE,rot=(math.radians(55),0,0))
+# 尾（背面 -Y、流れる濃色・房を増やしてふさふさ）
 TAIL=[]
-cyl(TAIL,"Tail",(0,-0.50,1.00),0.04,0.40,M_MANE,rot=(math.radians(28),0,0))
-sphere(TAIL,"TailEnd",(0,-0.56,0.78),(0.05,0.05,0.12),M_MANE)
-# 脚×4（長い・股関節 z=0.85）
+cyl(TAIL,"Tail",(0,-0.50,1.00),0.045,0.42,M_MANE,rot=(math.radians(28),0,0))
+sphere(TAIL,"TailEnd",(0,-0.57,0.76),(0.055,0.055,0.14),M_MANE)
+sphere(TAIL,"TailEnd2",(0,-0.53,0.88),(0.05,0.05,0.10),M_MANE)
+# 脚×4（長い・股関節 z=0.85）。腿(筋肉)を脚に結合して棒脚回避。
 HIP=0.85; LEN=0.86
 def make_leg(n,x,y):
-    leg=cyl([],"_l",(x,y,HIP-LEN/2),0.05,LEN,M_BODY); leg.name=n
-    hoof=cyl([],"_h",(x,y,0.04),0.055,0.08,M_HOOF); hoof.name=n+"_h"
-    bpy.ops.object.select_all(action='DESELECT');leg.select_set(True);hoof.select_set(True)
+    leg=cyl([],"_l",(x,y,HIP-LEN/2),0.044,LEN,M_BODY); leg.name=n
+    thigh=sphere([],"_th",(x,y,HIP-0.12),(0.078,0.082,0.14),M_BODY,segs=12,rings=9); thigh.name=n+"_th"
+    hoof=cyl([],"_h",(x,y,0.04),0.052,0.08,M_HOOF); hoof.name=n+"_h"
+    bpy.ops.object.select_all(action='DESELECT');leg.select_set(True);thigh.select_set(True);hoof.select_set(True)
     bpy.context.view_layer.objects.active=leg;bpy.ops.object.join()
     set_origin(leg,(x,y,HIP));return leg
 legs={}

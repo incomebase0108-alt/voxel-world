@@ -7,7 +7,7 @@
 
 **原点**: プレイヤー/モブ/NPC/構造物=足元中心 z=0 ／ 消費アイテム=形状中心 ／ 装備 剣・ピッケル・斧=柄基部・弓=握り中央・盾/防具=中心。
 
-**合計**: 131 ファイル / 18.08 MB
+**合計**: 162 ファイル / 27.53 MB
 
 
 ## プレイヤー
@@ -16,6 +16,15 @@
 |---|---|---|---|
 | `player.glb` | 1.0230 | `idle`, `walk`, `attack`, `swim` | 5/5 |
 | `player_azure.glb` | 1.0224 | `idle`, `walk`, `attack`, `swim` | 5/5 |
+| `player_chinchilla.glb` | 0.3157 | —（静物） | 1/1 |
+| `player_chinchilla_beige.glb` | 0.3157 | —（静物） | 1/1 |
+| `player_chinchilla_brown.glb` | 0.3157 | —（静物） | 1/1 |
+| `player_chinchilla_ebony.glb` | 0.3156 | —（静物） | 1/1 |
+| `player_chinchilla_grey.glb` | 0.3156 | —（静物） | 1/1 |
+| `player_chinchilla_pink.glb` | 0.3157 | —（静物） | 1/1 |
+| `player_chinchilla_sapphire.glb` | 0.3156 | —（静物） | 1/1 |
+| `player_chinchilla_violet.glb` | 0.3156 | —（静物） | 1/1 |
+| `player_chinchilla_white.glb` | 0.3156 | —（静物） | 1/1 |
 | `player_crimson.glb` | 1.0224 | `idle`, `walk`, `attack`, `swim` | 5/5 |
 | `player_emerald.glb` | 1.0226 | `idle`, `walk`, `attack`, `swim` | 5/5 |
 | `player_gold.glb` | 1.0224 | `idle`, `walk`, `attack`, `swim` | 5/5 |
@@ -24,20 +33,20 @@
 
 | ファイル | 容量(MB) | クリップ | mesh/node |
 |---|---|---|---|
-| `mob_chicken.glb` | 0.1079 | `walk`, `idle`, `die`, `hit` | 7/7 |
-| `mob_cow.glb` | 0.2493 | `walk`, `idle`, `die`, `hit` | 26/26 |
+| `mob_chicken.glb` | 0.1120 | `idle`, `walk` | 7/7 |
+| `mob_cow.glb` | 0.4297 | `idle`, `walk` | 40/40 |
 | `mob_demon.glb` | 0.4007 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_dragon.glb` | 0.3086 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
-| `mob_fish.glb` | 0.1255 | `idle`, `swim` | 2/2 |
-| `mob_fish_koi.glb` | 0.1258 | `idle`, `swim` | 2/2 |
-| `mob_fish_puffer.glb` | 0.1325 | `idle`, `swim` | 2/2 |
-| `mob_fish_tropical.glb` | 0.1290 | `idle`, `swim` | 2/2 |
+| `mob_fish.glb` | 0.1290 | `idle`, `swim` | 2/2 |
+| `mob_fish_koi.glb` | 0.1291 | `idle`, `swim` | 2/2 |
+| `mob_fish_puffer.glb` | 0.1353 | `idle`, `swim` | 2/2 |
+| `mob_fish_tropical.glb` | 0.1325 | `idle`, `swim` | 2/2 |
 | `mob_golem.glb` | 0.2460 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
-| `mob_horse.glb` | 0.1591 | `walk`, `idle`, `die`, `hit` | 6/6 |
+| `mob_horse.glb` | 0.2178 | `idle`, `walk` | 6/6 |
 | `mob_kraken.glb` | 1.6576 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
-| `mob_pig.glb` | 0.1115 | `walk`, `idle`, `die`, `hit` | 7/7 |
-| `mob_queen_sakura.glb` | 0.5218 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
-| `mob_sheep.glb` | 0.2026 | `walk`, `idle`, `die`, `hit` | 7/7 |
+| `mob_pig.glb` | 0.1770 | `idle`, `walk` | 7/7 |
+| `mob_queen_sakura.glb` | 1.0342 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
+| `mob_sheep.glb` | 0.2985 | `idle`, `walk` | 7/7 |
 | `mob_skeleton.glb` | 0.2962 | `idle`, `walk`, `attack` | 5/5 |
 | `mob_skeleton_king.glb` | 0.3635 | `idle`, `walk`, `attack`, `heavy` | 5/5 |
 | `mob_slime.glb` | 0.0429 | `attack`, `walk`, `idle`, `die`, `hit` | 1/1 |
@@ -53,11 +62,13 @@
 | `npc_elder.glb` | 0.2293 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 | `npc_farmer.glb` | 0.2132 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 | `npc_guard.glb` | 0.2306 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
+| `npc_keeper.glb` | 0.2557 | `idle`, `walk`, `sit` | 5/5 |
 | `npc_merchant.glb` | 0.2144 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 | `npc_soldier_captain.glb` | 0.2459 | `idle`, `walk`, `sit`, `work`, `talk`, `attack` | 5/5 |
 | `npc_soldier_spear.glb` | 0.2424 | `idle`, `walk`, `sit`, `work`, `talk`, `attack` | 5/5 |
 | `npc_soldier_sword.glb` | 0.2427 | `idle`, `walk`, `sit`, `work`, `talk`, `attack` | 5/5 |
 | `npc_villager.glb` | 0.2112 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
+| `npc_wife.glb` | 0.2831 | `idle`, `walk` | 5/5 |
 | `npc_woman.glb` | 0.2017 | `idle`, `walk`, `sit`, `work`, `talk` | 5/5 |
 
 ## 構造物
@@ -152,6 +163,30 @@
 |---|---|---|---|
 | `shrine.glb` | 0.1651 | —（静物） | 1/1 |
 
+## その他
+
+| ファイル | 容量(MB) | クリップ | mesh/node |
+|---|---|---|---|
+| `ally_guineapig.glb` | 0.0877 | —（静物） | 1/1 |
+| `ally_hedgehog.glb` | 0.2312 | —（静物） | 1/1 |
+| `ally_rabbit.glb` | 0.1206 | —（静物） | 1/1 |
+| `ally_squirrel.glb` | 0.1169 | —（静物） | 1/1 |
+| `enemy_bird.glb` | 0.2385 | —（静物） | 1/1 |
+| `enemy_snake.glb` | 0.2640 | —（静物） | 1/1 |
+| `enemy_weasel.glb` | 0.3262 | —（静物） | 1/1 |
+| `enemy_wolf.glb` | 0.2498 | —（静物） | 1/1 |
+| `pet_chinchilla.glb` | 0.3321 | —（静物） | 1/1 |
+| `pet_chinchilla_beige.glb` | 0.3321 | —（静物） | 1/1 |
+| `pet_chinchilla_brown.glb` | 0.3321 | —（静物） | 1/1 |
+| `pet_chinchilla_ebony.glb` | 0.3321 | —（静物） | 1/1 |
+| `pet_chinchilla_grey.glb` | 0.3321 | —（静物） | 1/1 |
+| `pet_chinchilla_pink.glb` | 0.3321 | —（静物） | 1/1 |
+| `pet_chinchilla_sapphire.glb` | 0.3321 | —（静物） | 1/1 |
+| `pet_chinchilla_violet.glb` | 0.3320 | —（静物） | 1/1 |
+| `pet_chinchilla_violet_baby.glb` | 0.2756 | —（静物） | 1/1 |
+| `pet_chinchilla_white.glb` | 0.3321 | —（静物） | 1/1 |
+| `sakura_tree.glb` | 0.2271 | —（静物） | 1/1 |
+
 ## 演出（ボス出現FX）
 
 | ファイル | 容量(MB) | クリップ | mesh/node |
@@ -162,6 +197,7 @@
 | `fx_collapse.glb` | 0.0738 | `loop` | 3/3 |
 | `fx_magic_circle.glb` | 0.3806 | `loop` | 3/3 |
 | `fx_miasma.glb` | 0.3016 | `loop` | 3/3 |
+| `fx_petal_sakura.glb` | 0.0116 | —（静物） | 1/1 |
 
 ## 室内・ダンジョン
 
