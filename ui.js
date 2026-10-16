@@ -2338,8 +2338,13 @@
   }
 
   function perfText() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);   // コアの setPixelRatio と同じ上限
-    const mp = (Math.round(innerWidth * dpr) * Math.round(innerHeight * dpr)) / 1e6;
+    // 描画量は canvas の裏側バッファを直接読む。devicePixelRatio から計算しないのは、
+    // コアが setPixelRatio を変えている場合（画質 low 等）に実態とずれるから。
+    const cv = document.querySelector('canvas');
+    const bw = cv && cv.width ? cv.width : Math.round(innerWidth * (window.devicePixelRatio || 1));
+    const bh = cv && cv.height ? cv.height : Math.round(innerHeight * (window.devicePixelRatio || 1));
+    const ratio = (cv && cv.clientWidth) ? (cv.width / cv.clientWidth) : (window.devicePixelRatio || 1);
+    const mp = (bw * bh) / 1e6;
     const maxTask = perf.tasks.length ? Math.max.apply(null, perf.tasks) : 0;
     const big = perf.tasks.filter((m) => m >= 200);
     const st = readState();
@@ -2348,9 +2353,11 @@
       `最悪フレーム : ${perf.worst.toFixed(0)} ms`,
       `longtask    : ${perf.tasks.length}件 / 最大 ${maxTask} ms`,
       `200ms超     : ${big.length}件 ${perf.spikes.slice(-4).map((s) => s.ms + 'ms(' + s.at + '秒)').join(' ')}`,
-      `描画px      : ${mp.toFixed(2)} MP (DPR ${dpr} / ${innerWidth}x${innerHeight})`,
+      `描画px      : ${mp.toFixed(2)} MP (実倍率 ${ratio.toFixed(2)} / ${bw}x${bh} / CSS ${innerWidth}x${innerHeight})`,
       `GPU         : ${perf.gpu}`,
-      `画質設定    : ${uiSettings.quality} ※コア未消費(index.html は UI_SETTINGS 未読)`,
+      // コアが UI_SETTINGS を消費しているかは、low のときの実倍率で判定する
+      // （消費されていれば setPixelRatio(1) になる。high は区別がつかないので値だけ出す）
+      `画質設定    : ${uiSettings.quality}${uiSettings.quality === 'low' ? (ratio <= 1.05 ? ' → コア反映済' : ' → ※コア未反映(実倍率が下がっていない)') : ''}`,
       st ? `位置        : ${st.pos.x.toFixed(0)},${st.pos.y.toFixed(0)},${st.pos.z.toFixed(0)} / ${st.biome}` : '位置        : state()休止中',
     ].join('\n');
   }
