@@ -92,7 +92,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const BUILD = '2026-06-04zi'; // ビルド版数（診断パネルに表示＝星野さんが最新コードか即確認＝キャッシュ/CDN遅延の切り分け用）
 const CHUNK = 16;          // チャンク1辺のブロック数
 const HEIGHT = 48;         // ワールドの高さ（ブロック数）
-const RADIUS = 6;          // プレイヤーから何チャンク先まで描画するか
+let RADIUS = 6;            // プレイヤーから何チャンク先まで描画するか（画質 low では 4・applyUiQuality）
 const BUILD_PER_FRAME = 3; // 1フレームで生成するチャンクの上限（カクつき防止）
 const SEA = 14;            // おおよその地表の基準高さ
 const AMP = 22;            // 地形の起伏の大きさ
@@ -1117,7 +1117,7 @@ window.VoxelGame = {
   input: {
     // ★dx/dy を NaN ガード（undefined/NaN→0）。ui.js が look(dx) を1引数で呼ぶ経路があり、dy=undefined だと
     //   player.pitch が NaN 化→カメラ破綻（スマホで空しか見えない/真上固定）になっていた根治。
-    look: (dx, dy) => { const ax = +dx || 0, ay = +dy || 0; player.yaw -= ax * 0.0045; player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch - ay * 0.0045)); },
+    look: (dx, dy) => { const ax = +dx || 0, ay = +dy || 0; player.yaw -= ax * 0.0045 * uiSensitivity(); player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch - ay * 0.0045 * uiSensitivity())); },
     // ★スマホ仮想スティックのアナログ移動口（合成KeyboardEventの取りこぼし回避）。dx=左右strafe / dz=前後(上=前進=負)。
     //   倒し量(0..1)で速度可変。(0,0)で停止。updatePlayer がキー入力より優先して使う。
     move: (dx, dz) => { touchMove.x = +dx || 0; touchMove.z = +dz || 0; touchMove.active = (Math.abs(touchMove.x) + Math.abs(touchMove.z)) > 0.02; },
@@ -1155,6 +1155,18 @@ renderer.setSize(innerWidth, innerHeight);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, RADIUS*CHUNK*0.55, RADIUS*CHUNK*0.95);
+// ui.js（3号機）の設定 window.UI_SETTINGS = { sensitivity, quality:'high'|'low' } を読む（UI_INTEGRATION.md ③-2）。
+// 'low' は pixelRatio 1・描画半径 4。'high'（既定）は今まで通り pixelRatio min(DPR,2)・半径 6。
+function uiSensitivity() { const v = +(window.UI_SETTINGS && window.UI_SETTINGS.sensitivity); return (isFinite(v) && v > 0) ? v : 1; }
+function applyUiQuality() {
+  const low = !!(window.UI_SETTINGS && window.UI_SETTINGS.quality === 'low');
+  renderer.setPixelRatio(low ? 1 : Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  RADIUS = low ? 4 : 6;
+  scene.fog.near = RADIUS*CHUNK*0.55; scene.fog.far = RADIUS*CHUNK*0.95;
+}
+applyUiQuality();
+window.addEventListener('uisettingschange', applyUiQuality);
 
 // ライト（GLBモデル用。MeshBasicMaterial の地形には影響しない）
 const sun = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -1974,7 +1986,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== canvas) return;
-  const s = 0.0023;
+  const s = 0.0023 * uiSensitivity();
   player.yaw   -= e.movementX * s;
   player.pitch -= e.movementY * s;
   player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch));
